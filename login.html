@@ -1,20 +1,36 @@
 <!DOCTYPE html>
 <html>
+<head>
+  <title>Login</title>
+</head>
 <body>
+
 <h2>Login</h2>
 
-<input id="username" placeholder="Username">
-<input id="password" type="password" placeholder="Password">
+<input id="identifier" placeholder="Name or Email"><br><br>
+<input id="password" type="password" placeholder="Password"><br><br>
+
 <button onclick="login()">Login</button>
 
 <script>
 async function login() {
+
+  const identifier = document.getElementById("identifier").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!identifier || !password) {
+    alert("Fenoy daholo ny saha");
+    return;
+  }
+
   const res = await fetch("/api/login", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify({
-      username: username.value,
-      password: password.value
+      identifier,
+      password
     })
   });
 
