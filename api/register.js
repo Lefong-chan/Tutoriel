@@ -12,37 +12,57 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-export default async function handler(req, res) {
+function generateUID() {
+  return Math.floor(100000000 + Math.random() * 900000000).toString();
+}
 
+export default async function handler(req, res) {
+  
   if (req.headers.origin !== allowedOrigin) {
     return res.status(403).json({ error: "Forbidden origin" });
   }
-
-  if (req.method !== "POST")
-    return res.status(405).end();
-
-  const { name, email, password } = req.body;
-
-  if (!name || !email || !password)
-    return res.status(400).json({ error: "Missing fields" });
-
-  // Soloina _ ny . satria tsy mahazo "." ny key ao Realtime DB
-  const emailKey = email.replace(/\./g, "_");
-
-  const userRef = db.ref("users/" + emailKey);
-  const snap = await userRef.get();
-
-  if (snap.exists())
-    return res.status(400).json({ error: "Email already used" });
-
-  const hashed = await bcrypt.hash(password, 10);
-
-  await userRef.set({
-    name,
+  
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+  
+  const { username, email, password } = req.body;
+  
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+  
+  const snapshot = await db.ref("users").get();
+  const users = snapshot.val();
+  
+  if (users) {
+    for (let uid in users) {
+      if (users[uid].email === email) {
+        return res.status(400).json({ error: "Email already in use" });
+      }
+    }
+  }
+  
+  const hashedPassword = await bcrypt.hash(password, 10);
+  
+  let uid;
+  let exists = true;
+  
+  while (exists) {
+    uid = generateUID();
+    const check = await db.ref("users/" + uid).get();
+    if (!check.exists()) {
+      exists = false;
+    }
+  }
+  
+  await db.ref("users/" + uid).set({
+    uid,
+    username,
     email,
-    password: hashed,
+    password: hashedPassword,
     createdAt: Date.now()
   });
-
-  res.json({ success: true });
+  
+  return res.json({ success: true, uid });
 }
