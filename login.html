@@ -18,9 +18,6 @@
 
 <button onclick="googleLogin()">Continue with Google</button>
 
-<br><br>
-<p id="debug" style="color:red;"></p>
-
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
@@ -68,7 +65,7 @@ window.login = async function() {
       localStorage.setItem("token", data.token);
       window.location.href = "home.html";
     } else {
-      alert(data.error);
+      alert(data.error || "Login failed.");
     }
 
   } catch {
@@ -76,29 +73,16 @@ window.login = async function() {
   }
 };
 
-/* ================= GOOGLE LOGIN (DEBUG VERSION) ================= */
+/* ================= GOOGLE LOGIN ================= */
 
 window.googleLogin = async function() {
 
-  const debug = document.getElementById("debug");
-
   try {
-
-    debug.innerText = "Opening Google popup...";
 
     const result = await signInWithPopup(auth, provider);
     const user = result.user;
 
-    debug.innerText = "Getting ID token...";
-
     const idToken = await user.getIdToken(true);
-
-    if (!idToken) {
-      debug.innerText = "No idToken received!";
-      return;
-    }
-
-    debug.innerText = "Sending token to server...";
 
     const res = await fetch("/api/google-login", {
       method: "POST",
@@ -110,16 +94,15 @@ window.googleLogin = async function() {
 
     const data = await res.json();
 
-    debug.innerText = "Server response: " + JSON.stringify(data);
-
     if (data.token) {
       localStorage.setItem("token", data.token);
       window.location.href = "home.html";
+    } else {
+      alert(data.error || "Google login failed.");
     }
 
   } catch (error) {
-
-    debug.innerText = "Error: " + error.message;
+    alert("Google login failed.");
   }
 };
 
