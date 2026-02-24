@@ -7,7 +7,7 @@
 
 <h2>Login</h2>
 
-<input id="identifier" placeholder="Name or Email"><br><br>
+<input id="identifier" placeholder="Username or Email"><br><br>
 <input id="password" type="password" placeholder="Password"><br><br>
 
 <button onclick="login()">Login</button>
@@ -19,7 +19,7 @@ async function login() {
   const password = document.getElementById("password").value;
 
   if (!identifier || !password) {
-    alert("Fenoy daholo ny saha");
+    alert("Please fill in all fields.");
     return;
   }
 
