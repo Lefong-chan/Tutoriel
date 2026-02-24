@@ -172,10 +172,30 @@
     }
   }
 
+  /* ================= GOOGLE REDIRECT HANDLER ================= */
+  firebase.auth().getRedirectResult().then(async (result) => {
+    if (result.user) {
+      const idToken = await result.user.getIdToken();
+      
+      const res = await fetch("/api/google-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken })
+      });
+
+      const data = await res.json();
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+        window.location.href = "dashboard.html";
+      }
+    }
+  }).catch((error) => {
+    console.error("Redirect login error:", error);
+  });
+
   /* ================= REGISTER (LOCAL) ================= */
   document.getElementById("inscriptionForm").addEventListener("submit", async function(e) {
     e.preventDefault();
-
     const email = document.getElementById("regEmail").value.trim().toLowerCase();
     const password = document.getElementById("regPass").value;
     const terms = document.getElementById("termsCheck").checked;
@@ -191,16 +211,13 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
-
       const data = await res.json();
-
       if (data.success) {
         alert("Registration successful! Please login.");
         container.classList.remove('active');
       } else {
         alert(data.error || "Registration failed.");
       }
-
     } catch (err) {
       alert("Server error.");
     }
@@ -209,7 +226,6 @@
   /* ================= LOGIN (LOCAL) ================= */
   document.getElementById("loginForm").addEventListener("submit", async function(e) {
     e.preventDefault();
-
     const email = document.getElementById("loginEmail").value.trim().toLowerCase();
     const password = document.getElementById("loginPass").value;
 
@@ -219,52 +235,29 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
-
       const data = await res.json();
-
       if (data.token) {
         localStorage.setItem("token", data.token);
         window.location.href = "dashboard.html";
       } else {
         alert(data.error || "Login failed.");
       }
-
     } catch (err) {
       alert("Server error.");
     }
   });
 
-  /* ================= GOOGLE LOGIN / REGISTER ================= */
+  /* ================= GOOGLE LOGIN (REDIRECT MODE) ================= */
   const googleProvider = new firebase.auth.GoogleAuthProvider();
   const googleButtons = document.querySelectorAll(".social-icon.google");
 
   googleButtons.forEach(btn => {
-    btn.addEventListener("click", async () => {
-      try {
-
-        const result = await firebase.auth().signInWithPopup(googleProvider);
-        const idToken = await result.user.getIdToken();
-
-        const res = await fetch("/api/google-login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken })
-        });
-
-        const data = await res.json();
-
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          window.location.href = "dashboard.html";
-        } else {
-          alert(data.error || "Google authentication failed.");
-        }
-
-      } catch (error) {
-        alert("Google sign-in error.");
-      }
+    btn.addEventListener("click", () => {
+      // Nesorina ny Popup fa Redirect no ampiasaina eto
+      firebase.auth().signInWithRedirect(googleProvider);
     });
   });
 </script>
+
 </body>
   </html>
