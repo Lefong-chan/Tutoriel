@@ -20,64 +20,64 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: "Forbidden origin" });
   }
 
-  if (req.method !== "POST")
-    return res.status(405).end();
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   const { identifier, password } = req.body;
 
-  if (!identifier || !password)
-    return res.status(400).json({ error: "Missing fields" });
+  if (!identifier || !password) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  const snap = await db.ref("users").get();
+
+  if (!snap.exists()) {
+    return res.status(400).json({ error: "No users found" });
+  }
+
+  const users = snap.val();
 
   let user = null;
-  let userKey = null;
+  let uid = null;
 
-  // 1️⃣ Raha email
-  if (identifier.includes("@")) {
-
-    const emailKey = identifier
-      .toLowerCase()
-      .replace(/\./g, "_");
-
-    const snap = await db.ref("users/" + emailKey).get();
-
-    if (!snap.exists())
-      return res.status(400).json({ error: "User not found" });
-
-    user = snap.val();
-    userKey = emailKey;
-
-  } else {
-
-    // 2️⃣ Raha name ➜ mikaroka ao anaty users rehetra
-    const snap = await db.ref("users").get();
-
-    if (!snap.exists())
-      return res.status(400).json({ error: "No users found" });
-
-    const users = snap.val();
-
-    for (const key in users) {
-      if (users[key].name.toLowerCase() === identifier.toLowerCase()) {
+  for (const key in users) {
+    
+    if (identifier.includes("@")) {
+      if (users[key].email.toLowerCase() === identifier.toLowerCase()) {
         user = users[key];
-        userKey = key;
+        uid = key;
         break;
       }
     }
-
-    if (!user)
-      return res.status(400).json({ error: "User not found" });
+    
+    else {
+      if (users[key].username.toLowerCase() === identifier.toLowerCase()) {
+        user = users[key];
+        uid = key;
+        break;
+      }
+    }
   }
 
-  const valid = await bcrypt.compare(password, user.password);
+  if (!user) {
+    return res.status(400).json({ error: "User not found" });
+  }
 
-  if (!valid)
-    return res.status(400).json({ error: "Wrong password" });
+  const validPassword = await bcrypt.compare(password, user.password);
+
+  if (!validPassword) {
+    return res.status(400).json({ error: "Invalid password" });
+  }
 
   const token = jwt.sign(
-    { email: user.email },
+    {
+      uid: user.uid,
+      email: user.email
+    },
     SECRET,
     { expiresIn: "2h" }
   );
 
-  res.json({ token });
+  return res.json({ token });
 }
