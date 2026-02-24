@@ -39,22 +39,19 @@ export default async function handler(req, res) {
   const users = snap.val();
 
   let user = null;
-  let uid = null;
 
   for (const key in users) {
-    
+
     if (identifier.includes("@")) {
       if (users[key].email.toLowerCase() === identifier.toLowerCase()) {
         user = users[key];
-        uid = key;
         break;
       }
     }
-    
+
     else {
       if (users[key].username.toLowerCase() === identifier.toLowerCase()) {
         user = users[key];
-        uid = key;
         break;
       }
     }
@@ -72,8 +69,7 @@ export default async function handler(req, res) {
 
   const token = jwt.sign(
     {
-      uid: user.uid,
-      email: user.email
+      uid: user.uid
     },
     SECRET,
     { expiresIn: "2h" }
