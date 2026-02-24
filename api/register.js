@@ -6,7 +6,7 @@ const allowedOrigin = process.env.ALLOWED_ORIGIN;
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY)),
-    databaseURL: "https://tompon-daka-default-rtdb.firebaseio.com"
+    databaseURL: "https://tutoriel-ff487-default-rtdb.firebaseio.com/"
   });
 }
 
