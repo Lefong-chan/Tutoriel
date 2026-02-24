@@ -27,10 +27,12 @@ export default async function handler(req, res) {
   
   try {
     const decoded = await admin.auth().verifyIdToken(idToken);
-    
     const email = decoded.email;
-    const username = decoded.name || "Google User";
-    
+
+    if (!email) {
+      return res.status(400).json({ error: "No email found in Google account" });
+    }
+
     const snap = await db.ref("users").get();
     const users = snap.val();
     
@@ -56,7 +58,6 @@ export default async function handler(req, res) {
     
     await db.ref("users/" + uid).set({
       uid,
-      username,
       email,
       provider: "google",
       createdAt: Date.now()
@@ -70,4 +71,4 @@ export default async function handler(req, res) {
   } catch (error) {
     return res.status(401).json({ error: "Invalid Google token" });
   }
-    }
+            }
