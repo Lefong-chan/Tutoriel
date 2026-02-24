@@ -14,6 +14,11 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
+/* ===== Generate 9 digit UID ===== */
+function generateUID() {
+  return Math.floor(100000000 + Math.random() * 900000000).toString();
+}
+
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
@@ -29,8 +34,6 @@ export default async function handler(req, res) {
     }
 
     const decoded = await admin.auth().verifyIdToken(idToken);
-
-    const firebaseUid = decoded.uid;
     const email = decoded.email;
 
     if (!email) {
@@ -53,6 +56,7 @@ export default async function handler(req, res) {
 
     let uidToUse;
 
+    /* ===== IF USER EXISTS ===== */
     if (existingUser) {
 
       if (existingUser.provider !== "google") {
@@ -65,7 +69,14 @@ export default async function handler(req, res) {
 
     } else {
 
-      uidToUse = firebaseUid;
+      /* ===== CREATE NEW USER WITH 9 DIGIT UID ===== */
+      let exists = true;
+
+      while (exists) {
+        uidToUse = generateUID();
+        const check = await db.ref("users/" + uidToUse).get();
+        if (!check.exists()) exists = false;
+      }
 
       await db.ref("users/" + uidToUse).set({
         uid: uidToUse,
@@ -73,9 +84,9 @@ export default async function handler(req, res) {
         provider: "google",
         createdAt: Date.now()
       });
-
     }
 
+    /* ===== CREATE JWT ===== */
     const token = jwt.sign(
       { uid: uidToUse, email },
       SECRET,
@@ -95,4 +106,4 @@ export default async function handler(req, res) {
       error: "Invalid Google token"
     });
   }
-      }
+            }
