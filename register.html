@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inscription</title>
+  <title>Register</title>
 </head>
 <body>
 
-<h2>Inscription</h2>
+<h2>Register</h2>
 
-<input id="name" placeholder="Name"><br><br>
+<input id="username" placeholder="Username"><br><br>
 <input id="email" type="email" placeholder="Email"><br><br>
 <input id="password" type="password" placeholder="Password"><br><br>
 <input id="repeatPassword" type="password" placeholder="Repeat Password"><br><br>
@@ -17,23 +17,23 @@
 <script>
 async function register() {
   
-  const name = document.getElementById("name").value.trim();
+  const username = document.getElementById("username").value.trim();
   const email = document.getElementById("email").value.trim().toLowerCase();
   const password = document.getElementById("password").value;
   const repeatPassword = document.getElementById("repeatPassword").value;
   
-  if (!name || !email || !password || !repeatPassword) {
-    alert("Fenoy daholo ny saha rehetra");
+  if (!username || !email || !password || !repeatPassword) {
+    alert("Please fill in all fields.");
     return;
   }
   
   if (password !== repeatPassword) {
-    alert("Tsy mitovy ny password");
+    alert("Passwords do not match.");
     return;
   }
   
   if (password.length < 6) {
-    alert("Password tokony 6 caractères farafahakeliny");
+    alert("Password must be at least 6 characters.");
     return;
   }
   
@@ -43,7 +43,7 @@ async function register() {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      name,
+      username,
       email,
       password
     })
@@ -52,7 +52,7 @@ async function register() {
   const data = await res.json();
   
   if (data.success) {
-    alert("Inscription vita!");
+    alert("Registration successful! Your UID: " + data.uid);
     window.location.href = "login.html";
   } else {
     alert(data.error);
