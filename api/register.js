@@ -17,52 +17,46 @@ function generateUID() {
 }
 
 export default async function handler(req, res) {
-  
-  if (req.headers.origin !== allowedOrigin) {
+
+  if (req.headers.origin !== allowedOrigin)
     return res.status(403).json({ error: "Forbidden origin" });
-  }
-  
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-  
+
   const { username, email, password } = req.body;
-  
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-  
-  const snapshot = await db.ref("users").get();
-  const users = snapshot.val();
-  
+
+  const snap = await db.ref("users").get();
+  const users = snap.val();
+
   if (users) {
-    for (let uid in users) {
-      if (users[uid].email === email) {
-        return res.status(400).json({ error: "Email already in use" });
+    for (let key in users) {
+      if (users[key].email === email) {
+        return res.status(400).json({
+          error: users[key].provider === "google"
+            ? "This email is already registered with Google."
+            : "This email is already registered with password."
+        });
       }
     }
   }
-  
-  const hashedPassword = await bcrypt.hash(password, 10);
-  
+
+  const hashed = await bcrypt.hash(password, 10);
+
   let uid;
   let exists = true;
-  
+
   while (exists) {
     uid = generateUID();
     const check = await db.ref("users/" + uid).get();
-    if (!check.exists()) {
-      exists = false;
-    }
+    if (!check.exists()) exists = false;
   }
-  
+
   await db.ref("users/" + uid).set({
     uid,
     username,
     email,
-    password: hashedPassword,
+    password: hashed,
+    provider: "local",
     createdAt: Date.now()
   });
-  
-  return res.json({ success: true, uid });
-}
+
+  res.json({ success: true });
+            }
