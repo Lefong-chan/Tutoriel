@@ -2,6 +2,10 @@
 <html>
 <head>
   <title>Register</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"></script>
 </head>
 <body>
 
@@ -14,48 +18,82 @@
 
 <button onclick="register()">Register</button>
 
+<hr>
+
+<button onclick="continueWithGoogle()">Continue with Google</button>
+
 <script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+
 async function register() {
-  
+
   const username = document.getElementById("username").value.trim();
   const email = document.getElementById("email").value.trim().toLowerCase();
   const password = document.getElementById("password").value;
   const repeatPassword = document.getElementById("repeatPassword").value;
-  
+
   if (!username || !email || !password || !repeatPassword) {
     alert("Please fill in all fields.");
     return;
   }
-  
+
   if (password !== repeatPassword) {
     alert("Passwords do not match.");
     return;
   }
-  
+
   if (password.length < 6) {
     alert("Password must be at least 6 characters.");
     return;
   }
-  
+
   const res = await fetch("/api/register", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      username,
-      email,
-      password
-    })
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, email, password })
   });
-  
+
   const data = await res.json();
-  
+
   if (data.success) {
-    alert("Registration successful! Your UID: " + data.uid);
+    alert("Registration successful!");
     window.location.href = "login.html";
   } else {
     alert(data.error);
+  }
+}
+
+async function continueWithGoogle() {
+
+  const provider = new firebase.auth.GoogleAuthProvider();
+
+  try {
+    const result = await auth.signInWithPopup(provider);
+    const email = result.user.email;
+
+    const res = await fetch("/api/google-register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+
+    const data = await res.json();
+
+    if (data.needUsername) {
+      localStorage.setItem("googleEmail", email);
+      window.location.href = "google-username.html";
+    } else if (data.error) {
+      alert(data.error);
+    }
+
+  } catch (err) {
+    alert("Google sign-in failed.");
   }
 }
 </script>
