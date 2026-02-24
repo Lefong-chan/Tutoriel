@@ -179,7 +179,7 @@
 
       if (!terms) return alert("Accept Terms first.");
 
-      const res = await fetch("/api/register", {
+      const res = await fetch("/api/google-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
