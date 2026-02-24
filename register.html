@@ -235,36 +235,21 @@
   });
 
   /* ================= GOOGLE LOGIN / REGISTER ================= */
-  const googleProvider = new firebase.auth.GoogleAuthProvider();
+  /* 🔥 NOVAINA ITO AMBANY ITO FOTSINY 🔥 */
+
   const googleButtons = document.querySelectorAll(".social-icon.google");
 
   googleButtons.forEach(btn => {
-    btn.addEventListener("click", async () => {
-      try {
+    btn.addEventListener("click", () => {
 
-        const result = await firebase.auth().signInWithPopup(googleProvider);
-        const idToken = await result.user.getIdToken();
+      // SOLOINAO AMIN'NY DOMAIN-NAO MARINA
+      const googleURL = "https://tutoriel-theta.vercel.app/api/google-start";
 
-        const res = await fetch("/api/google-login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken })
-        });
+      window.location.href = googleURL;
 
-        const data = await res.json();
-
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          window.location.href = "dashboard.html";
-        } else {
-          alert(data.error || "Google authentication failed.");
-        }
-
-      } catch (error) {
-        alert("Google sign-in error.");
-      }
     });
   });
+
 </script>
 </body>
   </html>
