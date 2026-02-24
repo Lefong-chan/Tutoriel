@@ -1,11 +1,7 @@
 import admin from "firebase-admin";
 import jwt from "jsonwebtoken";
 
-/* ================= ENV ================= */
-
 const SECRET = process.env.JWT_SECRET;
-
-/* ================= FIREBASE ADMIN INIT ================= */
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -18,8 +14,6 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-/* ================= HANDLER ================= */
-
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
@@ -28,65 +22,64 @@ export default async function handler(req, res) {
 
   try {
 
-    /* ---------- FIX BODY PARSE ---------- */
-
-    let body = req.body;
-
-    if (typeof body === "string") {
-      body = JSON.parse(body);
-    }
-
-    const idToken = body?.idToken;
+    const { idToken } = req.body;
 
     if (!idToken) {
-      return res.status(400).json({ error: "Missing data" });
+      return res.status(400).json({ error: "Missing token" });
     }
-
-    /* ---------- VERIFY GOOGLE TOKEN ---------- */
 
     const decoded = await admin.auth().verifyIdToken(idToken);
 
-    const uid = decoded.uid;
+    const firebaseUid = decoded.uid;
     const email = decoded.email;
     const name = decoded.name || "Google User";
 
-    if (!uid || !email) {
-      return res.status(400).json({ error: "Invalid token data" });
+    if (!email) {
+      return res.status(400).json({ error: "No email found" });
     }
 
-    /* ---------- SAVE USER IF NOT EXISTS ---------- */
+    const usersSnap = await db.ref("users").get();
+    const users = usersSnap.val();
 
-    const userRef = db.ref("users/" + uid);
-    const snap = await userRef.get();
+    let uidToUse = null;
 
-    if (!snap.exists()) {
+    if (users) {
+      for (let key in users) {
+        if (users[key].email === email) {
+          uidToUse = key;
+          break;
+        }
+      }
+    }
 
-      await userRef.set({
-        uid,
+    if (!uidToUse) {
+
+      uidToUse = firebaseUid;
+
+      await db.ref("users/" + uidToUse).set({
+        uid: uidToUse,
         username: name,
-        email,
+        email: email,
         provider: "google",
         createdAt: Date.now()
       });
 
     }
 
-    /* ---------- CREATE JWT ---------- */
-
     const token = jwt.sign(
-      { uid },
+      { uid: uidToUse },
       SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "2h" }
     );
 
-    return res.status(200).json({ token });
+    return res.json({ token });
 
   } catch (error) {
 
-    console.error("Google Login Error:", error);
+    console.error(error);
 
     return res.status(401).json({
       error: "Invalid Google token"
     });
   }
-  }
+}
