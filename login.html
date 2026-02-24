@@ -12,8 +12,47 @@
 
 <button onclick="login()">Login</button>
 
-<script>
-async function login() {
+<br><br>
+<hr>
+<br>
+
+<button onclick="googleLogin()">Continue with Google</button>
+
+<script type="module">
+
+/* ================= FIREBASE IMPORT ================= */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
+import { 
+  getAuth, 
+  signInWithPopup, 
+  GoogleAuthProvider 
+} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+
+/* ================= FIREBASE CONFIG ================= */
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDMr3plGs8sF56pM_O3jYqfGdWTlJiePW0",
+  authDomain: "tutoriel-ff487.firebaseapp.com",
+  databaseURL: "https://tutoriel-ff487-default-rtdb.firebaseio.com",
+  projectId: "tutoriel-ff487",
+  storageBucket: "tutoriel-ff487.firebasestorage.app",
+  messagingSenderId: "128298277579",
+  appId: "1:128298277579:web:e0f7d2622612ed297f594e",
+  measurementId: "G-CRXJH8QL8V"
+};
+
+/* ================= INITIALIZE ================= */
+
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+
+/* ================= LOGIN NORMAL ================= */
+
+window.login = async function() {
 
   const identifier = document.getElementById("identifier").value.trim();
   const password = document.getElementById("password").value;
@@ -23,26 +62,62 @@ async function login() {
     return;
   }
 
-  const res = await fetch("/api/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      identifier,
-      password
-    })
-  });
+  try {
 
-  const data = await res.json();
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier, password })
+    });
 
-  if (data.token) {
-    localStorage.setItem("token", data.token);
-    window.location.href = "home.html";
-  } else {
-    alert(data.error);
+    const data = await res.json();
+
+    if (data.token) {
+      localStorage.setItem("token", data.token);
+      window.location.href = "home.html";
+    } else {
+      alert(data.error);
+    }
+
+  } catch (error) {
+    alert("Login failed.");
   }
-}
+};
+
+/* ================= GOOGLE LOGIN ================= */
+
+window.googleLogin = async function() {
+
+  try {
+
+    const result = await signInWithPopup(auth, provider);
+
+    const user = result.user;
+
+    const idToken = await user.getIdToken();
+
+    const res = await fetch("/api/google-login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ idToken })
+    });
+
+    const data = await res.json();
+
+    if (data.token) {
+      localStorage.setItem("token", data.token);
+      window.location.href = "home.html";
+    } else {
+      alert(data.error);
+    }
+
+  } catch (error) {
+    alert("Google login failed.");
+  }
+};
+
 </script>
 
 </body>
