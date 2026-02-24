@@ -1,25 +1,62 @@
 <!DOCTYPE html>
 <html>
+<head>
+  <title>Inscription</title>
+</head>
 <body>
+
 <h2>Inscription</h2>
 
-<input id="username" placeholder="Username">
-<input id="password" type="password" placeholder="Password">
+<input id="name" placeholder="Name"><br><br>
+<input id="email" type="email" placeholder="Email"><br><br>
+<input id="password" type="password" placeholder="Password"><br><br>
+<input id="repeatPassword" type="password" placeholder="Repeat Password"><br><br>
+
 <button onclick="register()">Register</button>
 
 <script>
 async function register() {
+  
+  const name = document.getElementById("name").value.trim();
+  const email = document.getElementById("email").value.trim().toLowerCase();
+  const password = document.getElementById("password").value;
+  const repeatPassword = document.getElementById("repeatPassword").value;
+  
+  if (!name || !email || !password || !repeatPassword) {
+    alert("Fenoy daholo ny saha rehetra");
+    return;
+  }
+  
+  if (password !== repeatPassword) {
+    alert("Tsy mitovy ny password");
+    return;
+  }
+  
+  if (password.length < 6) {
+    alert("Password tokony 6 caractères farafahakeliny");
+    return;
+  }
+  
   const res = await fetch("/api/register", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify({
-      username: username.value,
-      password: password.value
+      name,
+      email,
+      password
     })
   });
-
+  
   const data = await res.json();
-  alert(data.success ? "Inscription vita!" : data.error);
+  
+  if (data.success) {
+    alert("Inscription vita!");
+    window.location.href = "login.html";
+  } else {
+    alert(data.error);
+  }
 }
 </script>
 
