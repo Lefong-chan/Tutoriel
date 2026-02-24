@@ -2,12 +2,19 @@
 <html>
 <body>
 
-<h2>Bienvenue <span id="name"></span></h2>
+<h2>Welcome</h2>
+
+<p><strong>UID:</strong> <span id="uid"></span></p>
+<p><strong>Username:</strong> <span id="username"></span></p>
+<p><strong>Email:</strong> <span id="email"></span></p>
+
+<button onclick="logout()">Logout</button>
 
 <script>
 async function loadUser() {
 
   const token = localStorage.getItem("token");
+
   if (!token) {
     window.location.href = "login.html";
     return;
@@ -20,12 +27,21 @@ async function loadUser() {
   });
 
   if (res.status === 401) {
+    localStorage.removeItem("token");
     window.location.href = "login.html";
     return;
   }
 
   const data = await res.json();
-  document.getElementById("name").innerText = data.username;
+
+  document.getElementById("uid").innerText = data.uid;
+  document.getElementById("username").innerText = data.username;
+  document.getElementById("email").innerText = data.email;
+}
+
+function logout() {
+  localStorage.removeItem("token");
+  window.location.href = "login.html";
 }
 
 loadUser();
