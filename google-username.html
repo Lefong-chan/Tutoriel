@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h2>Choose a Username</h2>
+
+<input id="username" placeholder="Username"><br><br>
+<button onclick="saveUsername()">Continue</button>
+
+<script>
+async function saveUsername() {
+
+  const username = document.getElementById("username").value.trim();
+  const email = localStorage.getItem("googleEmail");
+
+  if (!username) {
+    alert("Please enter a username.");
+    return;
+  }
+
+  const res = await fetch("/api/google-username", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, email })
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    alert("Account created successfully!");
+    window.location.href = "login.html";
+  } else {
+    alert(data.error);
+  }
+}
+</script>
+
+</body>
+</html>
