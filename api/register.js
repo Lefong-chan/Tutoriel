@@ -21,7 +21,10 @@ export default async function handler(req, res) {
   if (req.headers.origin !== allowedOrigin)
     return res.status(403).json({ error: "Forbidden origin" });
 
-  const { username, email, password } = req.body;
+  const { email, password } = req.body;
+
+  if (!email || !password)
+    return res.status(400).json({ error: "Missing email or password" });
 
   const snap = await db.ref("users").get();
   const users = snap.val();
@@ -29,11 +32,7 @@ export default async function handler(req, res) {
   if (users) {
     for (let key in users) {
       if (users[key].email === email) {
-        return res.status(400).json({
-          error: users[key].provider === "google"
-            ? "This email is already registered with Google."
-            : "This email is already registered with password."
-        });
+        return res.status(400).json({ error: "Email already registered" });
       }
     }
   }
@@ -51,7 +50,6 @@ export default async function handler(req, res) {
 
   await db.ref("users/" + uid).set({
     uid,
-    username,
     email,
     password: hashed,
     provider: "local",
@@ -59,4 +57,4 @@ export default async function handler(req, res) {
   });
 
   res.json({ success: true });
-            }
+}
