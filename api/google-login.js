@@ -32,7 +32,6 @@ export default async function handler(req, res) {
 
     const firebaseUid = decoded.uid;
     const email = decoded.email;
-    const name = decoded.name || "Google User";
 
     if (!email) {
       return res.status(400).json({ error: "No email found" });
@@ -41,24 +40,35 @@ export default async function handler(req, res) {
     const usersSnap = await db.ref("users").get();
     const users = usersSnap.val();
 
-    let uidToUse = null;
+    let existingUser = null;
 
     if (users) {
       for (let key in users) {
         if (users[key].email === email) {
-          uidToUse = key;
+          existingUser = users[key];
           break;
         }
       }
     }
 
-    if (!uidToUse) {
+    let uidToUse;
+
+    if (existingUser) {
+
+      if (existingUser.provider !== "google") {
+        return res.status(400).json({
+          error: "This email is registered with password login."
+        });
+      }
+
+      uidToUse = existingUser.uid;
+
+    } else {
 
       uidToUse = firebaseUid;
 
       await db.ref("users/" + uidToUse).set({
         uid: uidToUse,
-        username: name,
         email: email,
         provider: "google",
         createdAt: Date.now()
@@ -67,12 +77,15 @@ export default async function handler(req, res) {
     }
 
     const token = jwt.sign(
-      { uid: uidToUse },
+      { uid: uidToUse, email },
       SECRET,
       { expiresIn: "2h" }
     );
 
-    return res.json({ token });
+    return res.json({
+      success: true,
+      token
+    });
 
   } catch (error) {
 
@@ -82,4 +95,4 @@ export default async function handler(req, res) {
       error: "Invalid Google token"
     });
   }
-}
+      }
