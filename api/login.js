@@ -15,6 +15,7 @@ if (!admin.apps.length) {
 const db = admin.database();
 
 export default async function handler(req, res) {
+
   if (req.headers.origin !== allowedOrigin) {
     return res.status(403).json({ error: "Forbidden origin" });
   }
@@ -22,19 +23,61 @@ export default async function handler(req, res) {
   if (req.method !== "POST")
     return res.status(405).end();
 
-  const { username, password } = req.body;
+  const { identifier, password } = req.body;
 
-  const snap = await db.ref("users/" + username).get();
-  if (!snap.exists())
-    return res.status(400).json({ error: "User not found" });
+  if (!identifier || !password)
+    return res.status(400).json({ error: "Missing fields" });
 
-  const user = snap.val();
+  let user = null;
+  let userKey = null;
+
+  // 1️⃣ Raha email
+  if (identifier.includes("@")) {
+
+    const emailKey = identifier
+      .toLowerCase()
+      .replace(/\./g, "_");
+
+    const snap = await db.ref("users/" + emailKey).get();
+
+    if (!snap.exists())
+      return res.status(400).json({ error: "User not found" });
+
+    user = snap.val();
+    userKey = emailKey;
+
+  } else {
+
+    // 2️⃣ Raha name ➜ mikaroka ao anaty users rehetra
+    const snap = await db.ref("users").get();
+
+    if (!snap.exists())
+      return res.status(400).json({ error: "No users found" });
+
+    const users = snap.val();
+
+    for (const key in users) {
+      if (users[key].name.toLowerCase() === identifier.toLowerCase()) {
+        user = users[key];
+        userKey = key;
+        break;
+      }
+    }
+
+    if (!user)
+      return res.status(400).json({ error: "User not found" });
+  }
 
   const valid = await bcrypt.compare(password, user.password);
+
   if (!valid)
     return res.status(400).json({ error: "Wrong password" });
 
-  const token = jwt.sign({ username }, SECRET, { expiresIn: "2h" });
+  const token = jwt.sign(
+    { email: user.email },
+    SECRET,
+    { expiresIn: "2h" }
+  );
 
   res.json({ token });
-                         }
+}
