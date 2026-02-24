@@ -5,7 +5,9 @@ const SECRET = process.env.JWT_SECRET;
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_KEY)),
+    credential: admin.credential.cert(
+      JSON.parse(process.env.FIREBASE_KEY)
+    ),
     databaseURL: "https://tutoriel-ff487-default-rtdb.firebaseio.com/"
   });
 }
@@ -14,11 +16,15 @@ const db = admin.database();
 
 export default async function handler(req, res) {
 
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
   try {
 
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader) {
       return res.status(401).json({ error: "No token provided" });
     }
 
@@ -26,26 +32,15 @@ export default async function handler(req, res) {
 
     const decoded = jwt.verify(token, SECRET);
 
-    const uid = decoded.uid;
-
-    const snap = await db.ref("users/" + uid).get();
+    const snap = await db.ref("users/" + decoded.uid).get();
 
     if (!snap.exists()) {
-      return res.status(404).json({ error: "User not found in database" });
+      return res.status(404).json({ error: "User not found" });
     }
 
-    const user = snap.val();
-
-    return res.status(200).json({
-      uid: user.uid,
-      username: user.username,
-      email: user.email
-    });
+    return res.json(snap.val());
 
   } catch (error) {
-
-    return res.status(401).json({
-      error: "Invalid or expired token"
-    });
+    return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
