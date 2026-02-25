@@ -3,10 +3,13 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const SECRET = process.env.JWT_SECRET;
-const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
 if (!SECRET) {
-  throw new Error("JWT_SECRET is not defined in environment variables");
+  throw new Error("JWT_SECRET not set");
+}
+
+if (!process.env.FIREBASE_KEY) {
+  throw new Error("FIREBASE_KEY not set");
 }
 
 if (!admin.apps.length) {
@@ -23,19 +26,14 @@ const db = admin.database();
 
 export default async function handler(req, res) {
 
-  // Allow only POST
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  if (allowedOrigin && req.headers.origin !== allowedOrigin) {
-    return res.status(403).json({ error: "Forbidden origin" });
   }
 
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ error: "Email and password required" });
+    return res.status(400).json({ error: "Invalid credentials" });
   }
 
   try {
@@ -48,46 +46,38 @@ export default async function handler(req, res) {
       .get();
 
     if (!snap.exists()) {
-      return res.status(400).json({ error: "User not found" });
+      return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    const users = snap.val();
-    const foundUser = Object.values(users)[0];
+    const userData = Object.values(snap.val())[0];
 
-    if (foundUser.provider !== "local") {
+    if (userData.provider !== "local") {
       return res.status(400).json({
-        error: "This account uses Google login."
+        error: "Use Google login"
       });
     }
 
     const isMatch = await bcrypt.compare(
       password,
-      foundUser.password
+      userData.password
     );
 
     if (!isMatch) {
-      return res.status(400).json({ error: "Invalid password" });
+      return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    // Create JWT
     const token = jwt.sign(
       {
-        uid: foundUser.uid,
-        email: foundUser.email
+        uid: userData.uid,
+        email: userData.email
       },
       SECRET,
       { expiresIn: "2h" }
     );
 
-    return res.status(200).json({
-      success: true,
-      token
-    });
+    return res.status(200).json({ token });
 
-  } catch (error) {
-    console.error("Login error:", error);
-    return res.status(500).json({
-      error: "Server error"
-    });
+  } catch (err) {
+    return res.status(500).json({ error: "Server error" });
   }
 }
