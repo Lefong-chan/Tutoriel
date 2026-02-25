@@ -140,109 +140,117 @@
     </div>
   </div>
   
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
 <script>
+  // 🔥 CONFIG FIREBASE-NAO
   const firebaseConfig = {
-    apiKey: "AIzaSyDMr3plGs8sF56pM_O3jYqfGdWTlJiePW0",
-    authDomain: "tutoriel-ff487.firebaseapp.com",
-    projectId: "tutoriel-ff487"
+    apiKey: "API_KEY_NAO",
+    authDomain: "PROJECT_ID.firebaseapp.com",
+    projectId: "PROJECT_ID"
   };
 
   firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
 
-  /* ================= UI TOGGLE ================= */
-  const container = document.getElementById('container');
-  const signupBtn = document.getElementById('inscriptionToggleBtn');
-  const signinBtn = document.getElementById('loginToggleBtn');
-  const toRegMobile = document.getElementById('toRegMobile');
-  const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+  // =========================
+  // LOGIN EMAIL/PASSWORD
+  // =========================
+  const loginForm = document.getElementById("loginForm");
 
-  signupBtn.addEventListener('click', () => container.classList.add('active'));
-  signinBtn.addEventListener('click', () => container.classList.remove('active'));
-  toRegMobile.addEventListener('click', (e) => { e.preventDefault(); container.classList.add('active'); });
-  mobileLoginBtn.addEventListener('click', (e) => { e.preventDefault(); container.classList.remove('active'); });
+  if (loginForm) {
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-  function togglePass(inputId, icon) {
-    const input = document.getElementById(inputId);
-    if (input.type === "password") {
-      input.type = "text";
-      icon.classList.replace('fa-eye-slash', 'fa-eye');
-    } else {
-      input.type = "password";
-      icon.classList.replace('fa-eye', 'fa-eye-slash');
-    }
+      const email = loginForm.querySelector("input[type='email']").value;
+      const password = loginForm.querySelector("input[type='password']").value;
+
+      try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const idToken = await userCredential.user.getIdToken();
+
+        const res = await fetch("/api/google-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken })
+        });
+
+        const data = await res.json();
+
+        if (data.token) {
+          localStorage.setItem("token", data.token);
+          window.location.href = "dashboard.html";
+        } else {
+          alert("Login failed.");
+        }
+
+      } catch (error) {
+        alert(error.message);
+      }
+    });
   }
 
-  /* ================= REGISTER (LOCAL) ================= */
-  document.getElementById("inscriptionForm").addEventListener("submit", async function(e) {
-    e.preventDefault();
+  // =========================
+  // REGISTER
+  // =========================
+  const registerForm = document.getElementById("registerForm");
 
-    const email = document.getElementById("regEmail").value.trim().toLowerCase();
-    const password = document.getElementById("regPass").value;
-    const terms = document.getElementById("termsCheck").checked;
+  if (registerForm) {
+    registerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
 
-    if (!terms) {
-      alert("Accept Terms first.");
-      return;
-    }
+      const email = registerForm.querySelector("input[type='email']").value;
+      const password = registerForm.querySelector("input[type='password']").value;
 
-    try {
-      const res = await fetch("/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
+      try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const idToken = await userCredential.user.getIdToken();
 
-      const data = await res.json();
+        const res = await fetch("/api/google-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken })
+        });
 
-      if (data.success) {
-        alert("Registration successful! Please login.");
-        container.classList.remove('active');
-      } else {
-        alert(data.error || "Registration failed.");
+        const data = await res.json();
+
+        if (data.token) {
+          localStorage.setItem("token", data.token);
+          window.location.href = "dashboard.html";
+        } else {
+          alert("Registration failed.");
+        }
+
+      } catch (error) {
+        alert(error.message);
       }
+    });
+  }
 
-    } catch (err) {
-      alert("Server error.");
-    }
-  });
-
-  /* ================= LOGIN (LOCAL) ================= */
-  document.getElementById("loginForm").addEventListener("submit", async function(e) {
-    e.preventDefault();
-
-    const email = document.getElementById("loginEmail").value.trim().toLowerCase();
-    const password = document.getElementById("loginPass").value;
-
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await res.json();
-
-      if (data.token) {
-        localStorage.setItem("token", data.token);
-        window.location.href = "dashboard.html";
-      } else {
-        alert(data.error || "Login failed.");
-      }
-
-    } catch (err) {
-      alert("Server error.");
-    }
-  });
-
-  /* ================= GOOGLE LOGIN / REGISTER ================= */
+  // =========================
+  // GOOGLE LOGIN (REDIRECT FIX)
+  // =========================
   const googleProvider = new firebase.auth.GoogleAuthProvider();
+
   const googleButtons = document.querySelectorAll(".social-icon.google");
 
   googleButtons.forEach(btn => {
     btn.addEventListener("click", async () => {
       try {
+        await auth.signInWithRedirect(googleProvider);
+      } catch (error) {
+        alert("Google sign-in error.");
+      }
+    });
+  });
 
-        const result = await firebase.auth().signInWithPopup(googleProvider);
+  // 🔥 HANDLE REDIRECT RESULT (VERY IMPORTANT)
+  auth.getRedirectResult()
+    .then(async (result) => {
+      if (result.user) {
+
         const idToken = await result.user.getIdToken();
 
         const res = await fetch("/api/google-login", {
@@ -257,14 +265,15 @@
           localStorage.setItem("token", data.token);
           window.location.href = "dashboard.html";
         } else {
-          alert(data.error || "Google authentication failed.");
+          alert("Google authentication failed.");
         }
-
-      } catch (error) {
-        alert("Google sign-in error.");
       }
+    })
+    .catch((error) => {
+      console.log(error);
     });
-  });
+
 </script>
 </body>
   </html>
+  
