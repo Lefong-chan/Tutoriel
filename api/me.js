@@ -3,12 +3,26 @@ import jwt from "jsonwebtoken";
 
 const SECRET = process.env.JWT_SECRET;
 
+if (!SECRET) {
+  throw new Error("JWT_SECRET not set");
+}
+
+if (!process.env.FIREBASE_KEY) {
+  throw new Error("FIREBASE_KEY not set");
+}
+
 if (!admin.apps.length) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+
+  if (serviceAccount.private_key) {
+    serviceAccount.private_key =
+      serviceAccount.private_key.replace(/\\n/g, "\n");
+  }
+
   admin.initializeApp({
-    credential: admin.credential.cert(
-      JSON.parse(process.env.FIREBASE_KEY)
-    ),
-    databaseURL: "https://tutoriel-ff487-default-rtdb.firebaseio.com/"
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL:
+      "https://tutoriel-ff487-default-rtdb.firebaseio.com/"
   });
 }
 
@@ -24,7 +38,7 @@ export default async function handler(req, res) {
 
     const authHeader = req.headers.authorization;
 
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ error: "No token provided" });
     }
 
@@ -38,9 +52,17 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    return res.json(snap.val());
+    const userData = snap.val();
+
+    return res.status(200).json({
+      uid: userData.uid,
+      email: userData.email || null,
+      phone: userData.phone || null
+    });
 
   } catch (error) {
-    return res.status(401).json({ error: "Invalid or expired token" });
+    return res.status(401).json({
+      error: "Invalid or expired token"
+    });
   }
-}
+        }
