@@ -14,7 +14,6 @@ if (!process.env.FIREBASE_KEY) {
 }
 
 if (!admin.apps.length) {
-
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
   if (serviceAccount.private_key) {
@@ -53,7 +52,7 @@ export default async function handler(req, res) {
     const value = identifier.trim();
 
     if (value.includes("@")) {
-      
+
       const emailLower = value.toLowerCase();
 
       snap = await db
@@ -64,7 +63,7 @@ export default async function handler(req, res) {
         .get();
 
     } else {
-      
+
       snap = await db
         .ref("users")
         .orderByChild("phone")
@@ -79,12 +78,6 @@ export default async function handler(req, res) {
 
     const userData = Object.values(snap.val())[0];
 
-    if (userData.provider !== "local") {
-      return res.status(400).json({
-        error: "Use Google login"
-      });
-    }
-
     const isMatch = await bcrypt.compare(
       password,
       userData.password
@@ -92,6 +85,13 @@ export default async function handler(req, res) {
 
     if (!isMatch) {
       return res.status(400).json({ error: "Invalid credentials" });
+    }
+
+    if (userData.email && !userData.emailVerified) {
+      return res.status(403).json({
+        error: "Email not verified",
+        emailNotVerified: true
+      });
     }
 
     const token = jwt.sign(
@@ -106,7 +106,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      token
+      token,
+      user: {
+        uid: userData.uid,
+        email: userData.email || null,
+        phone: userData.phone || null
+      }
     });
 
   } catch (err) {
