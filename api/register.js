@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
+if (!process.env.FIREBASE_KEY) {
+  throw new Error("FIREBASE_KEY not set");
+}
+
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
@@ -42,36 +46,60 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const { email, password } = req.body;
+  const { email, phone, password } = req.body;
 
-  if (!email || !password || password.length < 6) {
+  if ((!email && !phone) || !password || password.length < 6) {
     return res.status(400).json({
-      error: "Invalid email or password"
+      error: "Email or phone and valid password required"
     });
   }
 
   try {
 
-    const existing = await db
-      .ref("users")
-      .orderByChild("email")
-      .equalTo(email)
-      .limitToFirst(1)
-      .get();
+    let emailLower = null;
+    let phoneClean = null;
 
-    if (existing.exists()) {
-      return res.status(400).json({
-        error: "Email already registered"
-      });
+    if (email) {
+      emailLower = email.toLowerCase().trim();
+
+      const existingEmail = await db
+        .ref("users")
+        .orderByChild("email")
+        .equalTo(emailLower)
+        .limitToFirst(1)
+        .get();
+
+      if (existingEmail.exists()) {
+        return res.status(400).json({
+          error: "Email already registered"
+        });
+      }
+    }
+
+    if (phone) {
+      phoneClean = phone.trim();
+
+      const existingPhone = await db
+        .ref("users")
+        .orderByChild("phone")
+        .equalTo(phoneClean)
+        .limitToFirst(1)
+        .get();
+
+      if (existingPhone.exists()) {
+        return res.status(400).json({
+          error: "Phone already registered"
+        });
+      }
     }
 
     const hashed = await bcrypt.hash(password, 12);
-    
     const uid = await generateUID();
 
     await db.ref("users/" + uid).set({
       uid,
-      email,
+      email: emailLower,
+      phone: phoneClean,
       password: hashed,
       provider: "local",
       createdAt: Date.now()
@@ -79,7 +107,8 @@ export default async function handler(req, res) {
 
     return res.status(201).json({ success: true });
 
-  } catch {
+  } catch (err) {
+    console.error("REGISTER ERROR:", err);
     return res.status(500).json({ error: "Server error" });
   }
-      }
+    }
