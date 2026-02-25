@@ -140,236 +140,296 @@
     </div>
   </div>
   
+<!-- OTP MODAL -->
+<div id="otpModal" style="
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:rgba(0,0,0,0.6);
+display:none;
+justify-content:center;
+align-items:center;
+z-index:9999;">
+  
+  <div style="
+  background:#fff;
+  padding:30px;
+  border-radius:15px;
+  width:300px;
+  text-align:center;">
+    
+    <h3>Email Verification</h3>
+    <p>Enter OTP sent to your email</p>
+    
+    <input type="text" id="otpInput"
+      style="width:100%;padding:10px;margin:10px 0;border-radius:8px;border:1px solid #ddd;"
+      placeholder="6 digit code">
+    
+    <button onclick="verifyOTP()" class="btn">Verify</button>
+    
+    <p style="margin-top:10px;">
+      <a href="#" onclick="resendOTP()">Resend Code</a>
+    </p>
+    
+  </div>
+</div>
+  
 <script>
-  /* ================= UI TOGGLE PANEL ================= */
-  const container = document.getElementById('container');
-  const signupBtn = document.getElementById('inscriptionToggleBtn');
-  const signinBtn = document.getElementById('loginToggleBtn');
-  const toRegMobile = document.getElementById('toRegMobile');
-  const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-  
-  signupBtn.addEventListener('click', () =>
-    container.classList.add('active')
-  );
-  
-  signinBtn.addEventListener('click', () =>
-    container.classList.remove('active')
-  );
-  
-  toRegMobile.addEventListener('click', (e) => {
-    e.preventDefault();
-    container.classList.add('active');
-  });
-  
-  mobileLoginBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    container.classList.remove('active');
-  });
-  
-  function togglePass(inputId, icon) {
-    const input = document.getElementById(inputId);
-    if (input.type === "password") {
-      input.type = "text";
-      icon.classList.replace('fa-eye-slash', 'fa-eye');
-    } else {
-      input.type = "password";
-      icon.classList.replace('fa-eye', 'fa-eye-slash');
-    }
-  }
-  
-  /* =====================================================
-     LOGIN & REGISTER MODE (PHONE / EMAIL SWITCH)
-  ===================================================== */
-  
-  let loginMode = "phone";
-  let registerMode = "phone";
-  
-  const loginInput = document.getElementById("loginEmail");
-  const loginLabel = loginInput.nextElementSibling;
-  
-  const regInput = document.getElementById("regEmail");
-  const regLabel = regInput.nextElementSibling;
-  
-  const loginIcons = document
-    .querySelector("#loginForm .social-login")
-    .children;
-  
-  const registerIcons = document
-    .querySelector("#inscriptionForm .social-login")
-    .children;
-  
-  function setPhoneMode(input, label) {
-    input.value = "";
+
+/* ================= GLOBAL ================= */
+let currentVerificationEmail = null;
+
+/* ================= UI TOGGLE PANEL ================= */
+const container = document.getElementById('container');
+const signupBtn = document.getElementById('inscriptionToggleBtn');
+const signinBtn = document.getElementById('loginToggleBtn');
+const toRegMobile = document.getElementById('toRegMobile');
+const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+
+signupBtn.addEventListener('click', () =>
+  container.classList.add('active')
+);
+
+signinBtn.addEventListener('click', () =>
+  container.classList.remove('active')
+);
+
+toRegMobile.addEventListener('click', (e) => {
+  e.preventDefault();
+  container.classList.add('active');
+});
+
+mobileLoginBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  container.classList.remove('active');
+});
+
+/* ================= PASSWORD TOGGLE ================= */
+function togglePass(inputId, icon) {
+  const input = document.getElementById(inputId);
+  if (input.type === "password") {
     input.type = "text";
-    input.placeholder = "";
-    input.setAttribute("inputmode", "numeric");
-    label.textContent = "Number";
-    
-    // Soloina mivantana ny oninput
-    input.oninput = function() {
-      input.value = input.value.replace(/[^0-9]/g, "");
-    };
+    icon.classList.replace('fa-eye-slash', 'fa-eye');
+  } else {
+    input.type = "password";
+    icon.classList.replace('fa-eye', 'fa-eye-slash');
   }
-  
-  function setEmailMode(input, label) {
-    input.value = "";
-    input.type = "email";
-    input.removeAttribute("inputmode");
-    label.textContent = "Email";
-    
-    // Esorina tanteraka ny restriction
-    input.oninput = null;
-  }
-  
-  // LOGIN ICON EVENTS
-  loginIcons[0].addEventListener("click", () => {
-    loginMode = "phone";
-    setPhoneMode(loginInput, loginLabel);
-  });
-  
-  loginIcons[1].addEventListener("click", () => {
-    loginMode = "email";
-    setEmailMode(loginInput, loginLabel);
-  });
-  
-  // REGISTER ICON EVENTS
-  registerIcons[0].addEventListener("click", () => {
-    registerMode = "phone";
-    setPhoneMode(regInput, regLabel);
-  });
-  
-  registerIcons[1].addEventListener("click", () => {
-    registerMode = "email";
-    setEmailMode(regInput, regLabel);
-  });
-  
-  // Default mode
+}
+
+/* =====================================================
+   LOGIN & REGISTER MODE (PHONE / EMAIL SWITCH)
+===================================================== */
+
+let loginMode = "phone";
+let registerMode = "phone";
+
+const loginInput = document.getElementById("loginEmail");
+const loginLabel = loginInput.nextElementSibling;
+
+const regInput = document.getElementById("regEmail");
+const regLabel = regInput.nextElementSibling;
+
+const loginIcons = document
+  .querySelector("#loginForm .social-login")
+  .children;
+
+const registerIcons = document
+  .querySelector("#inscriptionForm .social-login")
+  .children;
+
+function setPhoneMode(input, label) {
+  input.value = "";
+  input.type = "text";
+  input.setAttribute("inputmode", "numeric");
+  label.textContent = "Number";
+  input.oninput = function() {
+    input.value = input.value.replace(/[^0-9]/g, "");
+  };
+}
+
+function setEmailMode(input, label) {
+  input.value = "";
+  input.type = "email";
+  input.removeAttribute("inputmode");
+  label.textContent = "Email";
+  input.oninput = null;
+}
+
+loginIcons[0].addEventListener("click", () => {
+  loginMode = "phone";
   setPhoneMode(loginInput, loginLabel);
+});
+
+loginIcons[1].addEventListener("click", () => {
+  loginMode = "email";
+  setEmailMode(loginInput, loginLabel);
+});
+
+registerIcons[0].addEventListener("click", () => {
+  registerMode = "phone";
   setPhoneMode(regInput, regLabel);
-  
-  /* ================= REGISTER ================= */
-  document.getElementById("inscriptionForm")
-    .addEventListener("submit", async function(e) {
-      
-      e.preventDefault();
-      
-      const rawValue = regInput.value.trim();
-      const password = document.getElementById("regPass").value;
-      const terms = document.getElementById("termsCheck").checked;
-      
-      if (!terms) {
-        alert("Accept Terms first.");
-        return;
-      }
-      
-      if (password.length < 6) {
-        alert("Password must be at least 6 characters.");
-        return;
-      }
-      
-      let email = null;
-      let phone = null;
-      
-      if (registerMode === "email") {
-        if (!rawValue.includes("@")) {
-          alert("Invalid email format.");
-          return;
-        }
-        email = rawValue.toLowerCase();
-      } else {
-        if (rawValue.length < 8) {
-          alert("Invalid phone number.");
-          return;
-        }
-        phone = rawValue;
-      }
-      
-      try {
-        
-        const res = await fetch("/api/register", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ email, phone, password })
-        });
-        
-        const data = await res.json();
-        
-        if (res.ok && data.success) {
-          
-          alert("Registration successful! Please login.");
-          
-          regInput.value = "";
-          document.getElementById("regPass").value = "";
-          document.getElementById("termsCheck").checked = false;
-          
-          container.classList.remove('active');
-          
-        } else {
-          alert(data.error || "Registration failed.");
-        }
-        
-      } catch (err) {
-        alert("Server error.");
-      }
+});
+
+registerIcons[1].addEventListener("click", () => {
+  registerMode = "email";
+  setEmailMode(regInput, regLabel);
+});
+
+setPhoneMode(loginInput, loginLabel);
+setPhoneMode(regInput, regLabel);
+
+/* ================= REGISTER ================= */
+document.getElementById("inscriptionForm")
+.addEventListener("submit", async function(e) {
+
+  e.preventDefault();
+
+  const rawValue = regInput.value.trim();
+  const password = document.getElementById("regPass").value;
+  const terms = document.getElementById("termsCheck").checked;
+
+  if (!terms) return alert("Accept Terms first.");
+  if (password.length < 6) return alert("Password too short.");
+
+  let email = null;
+  let phone = null;
+
+  if (registerMode === "email") {
+    if (!rawValue.includes("@")) return alert("Invalid email.");
+    email = rawValue.toLowerCase();
+  } else {
+    if (rawValue.length < 8) return alert("Invalid phone.");
+    phone = rawValue;
+  }
+
+  try {
+
+    const res = await fetch("/api/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, phone, password })
     });
-  
-  /* ================= LOGIN ================= */
-  document.getElementById("loginForm")
-    .addEventListener("submit", async function(e) {
-      
-      e.preventDefault();
-      
-      const rawValue = loginInput.value.trim();
-      const password = document.getElementById("loginPass").value;
-      
-      if (!rawValue || !password) {
-        alert("Fill all fields.");
-        return;
-      }
-      
-      let identifier;
-      
-      if (loginMode === "email") {
-        if (!rawValue.includes("@")) {
-          alert("Invalid email format.");
-          return;
-        }
-        identifier = rawValue.toLowerCase();
+
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+
+      if (data.emailVerificationRequired) {
+        currentVerificationEmail = email;
+        document.getElementById("otpModal").style.display = "flex";
       } else {
-        if (rawValue.length < 8) {
-          alert("Invalid phone number.");
-          return;
-        }
-        identifier = rawValue;
+        alert("Registration successful!");
+        container.classList.remove('active');
       }
-      
-      try {
-        
-        const res = await fetch("/api/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ identifier, password })
-        });
-        
-        const data = await res.json();
-        
-        if (res.ok && data.token) {
-          
-          localStorage.setItem("token", data.token);
-          window.location.href = "dashboard.html";
-          
-        } else {
-          alert(data.error || "Invalid credentials.");
-        }
-        
-      } catch (err) {
-        alert("Server error.");
-      }
+
+    } else {
+      alert(data.error || "Registration failed.");
+    }
+
+  } catch {
+    alert("Server error.");
+  }
+
+});
+
+/* ================= LOGIN ================= */
+document.getElementById("loginForm")
+.addEventListener("submit", async function(e) {
+
+  e.preventDefault();
+
+  const rawValue = loginInput.value.trim();
+  const password = document.getElementById("loginPass").value;
+
+  if (!rawValue || !password) return alert("Fill all fields.");
+
+  let identifier = rawValue;
+
+  try {
+
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier, password })
     });
+
+    const data = await res.json();
+
+    if (res.ok && data.token) {
+
+      localStorage.setItem("token", data.token);
+      window.location.href = "dashboard.html";
+
+    } else {
+
+      if (data.emailNotVerified) {
+        currentVerificationEmail = identifier;
+        document.getElementById("otpModal").style.display = "flex";
+      } else {
+        alert(data.error || "Invalid credentials.");
+      }
+
+    }
+
+  } catch {
+    alert("Server error.");
+  }
+
+});
+
+/* ================= VERIFY OTP ================= */
+async function verifyOTP() {
+
+  const otp = document.getElementById("otpInput").value.trim();
+  if (!otp) return alert("Enter OTP.");
+
+  const res = await fetch("/api/verify-otp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: currentVerificationEmail,
+      otp
+    })
+  });
+
+  const data = await res.json();
+
+  if (res.ok && data.success) {
+    alert("Email verified! Now login.");
+    document.getElementById("otpModal").style.display = "none";
+    container.classList.remove('active');
+  } else {
+    alert(data.error || "Verification failed.");
+  }
+
+}
+
+/* ================= RESEND OTP ================= */
+async function resendOTP() {
+
+  if (!currentVerificationEmail) return;
+
+  const res = await fetch("/api/resend-otp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: currentVerificationEmail
+    })
+  });
+
+  const data = await res.json();
+
+  if (res.ok) {
+    alert("OTP resent!");
+  } else {
+    alert(data.error || "Error resending OTP.");
+  }
+
+}
+
 </script>
 </body>
-  </html>
+</html>
+  
