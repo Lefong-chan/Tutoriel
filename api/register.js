@@ -36,6 +36,10 @@ async function generateUID() {
   return uid;
 }
 
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
@@ -96,19 +100,31 @@ export default async function handler(req, res) {
     const hashed = await bcrypt.hash(password, 12);
     const uid = await generateUID();
 
+    // ✅ Generate OTP for email verification
+    const otp = emailLower ? generateOTP() : null;
+    const otpExpires = emailLower
+      ? Date.now() + (10 * 60 * 1000)
+      : null;
+
     await db.ref("users/" + uid).set({
       uid,
       email: emailLower,
       phone: phoneClean,
       password: hashed,
       provider: "local",
+      emailVerified: emailLower ? false : true,
+      otp: otp,
+      otpExpires: otpExpires,
       createdAt: Date.now()
     });
 
-    return res.status(201).json({ success: true });
+    return res.status(201).json({
+      success: true,
+      emailVerificationRequired: !!emailLower
+    });
 
   } catch (err) {
     console.error("REGISTER ERROR:", err);
     return res.status(500).json({ error: "Server error" });
   }
-    }
+}
