@@ -41,22 +41,37 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const { email, password } = req.body;
+  const { identifier, password } = req.body;
 
-  if (!email || !password) {
+  if (!identifier || !password) {
     return res.status(400).json({ error: "Invalid credentials" });
   }
 
   try {
 
-    const emailLower = email.toLowerCase();
+    let snap;
+    const value = identifier.trim();
 
-    const snap = await db
-      .ref("users")
-      .orderByChild("email")
-      .equalTo(emailLower)
-      .limitToFirst(1)
-      .get();
+    if (value.includes("@")) {
+      
+      const emailLower = value.toLowerCase();
+
+      snap = await db
+        .ref("users")
+        .orderByChild("email")
+        .equalTo(emailLower)
+        .limitToFirst(1)
+        .get();
+
+    } else {
+      
+      snap = await db
+        .ref("users")
+        .orderByChild("phone")
+        .equalTo(value)
+        .limitToFirst(1)
+        .get();
+    }
 
     if (!snap.exists()) {
       return res.status(400).json({ error: "Invalid credentials" });
@@ -82,7 +97,8 @@ export default async function handler(req, res) {
     const token = jwt.sign(
       {
         uid: userData.uid,
-        email: userData.email
+        email: userData.email || null,
+        phone: userData.phone || null
       },
       SECRET,
       { expiresIn: "2h" }
@@ -101,4 +117,4 @@ export default async function handler(req, res) {
       error: "Server error"
     });
   }
-  }
+}
