@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const SECRET = process.env.JWT_SECRET;
+const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
 if (!SECRET) {
   throw new Error("JWT_SECRET not set");
@@ -13,10 +14,16 @@ if (!process.env.FIREBASE_KEY) {
 }
 
 if (!admin.apps.length) {
+
+  const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+
+  if (serviceAccount.private_key) {
+    serviceAccount.private_key =
+      serviceAccount.private_key.replace(/\\n/g, "\n");
+  }
+
   admin.initializeApp({
-    credential: admin.credential.cert(
-      JSON.parse(process.env.FIREBASE_KEY)
-    ),
+    credential: admin.credential.cert(serviceAccount),
     databaseURL:
       "https://tutoriel-ff487-default-rtdb.firebaseio.com/"
   });
@@ -30,6 +37,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  if (allowedOrigin && req.headers.origin !== allowedOrigin) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -38,10 +49,12 @@ export default async function handler(req, res) {
 
   try {
 
+    const emailLower = email.toLowerCase();
+
     const snap = await db
       .ref("users")
       .orderByChild("email")
-      .equalTo(email)
+      .equalTo(emailLower)
       .limitToFirst(1)
       .get();
 
@@ -75,9 +88,17 @@ export default async function handler(req, res) {
       { expiresIn: "2h" }
     );
 
-    return res.status(200).json({ token });
+    return res.status(200).json({
+      success: true,
+      token
+    });
 
   } catch (err) {
-    return res.status(500).json({ error: "Server error" });
+
+    console.error("LOGIN ERROR:", err);
+
+    return res.status(500).json({
+      error: "Server error"
+    });
   }
-}
+  }
