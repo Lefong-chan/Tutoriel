@@ -181,8 +181,8 @@
      LOGIN & REGISTER MODE (PHONE / EMAIL SWITCH)
   ===================================================== */
   
-  let loginMode = "phone"; // default
-  let registerMode = "phone"; // default
+  let loginMode = "phone";
+  let registerMode = "phone";
   
   const loginInput = document.getElementById("loginEmail");
   const loginLabel = loginInput.nextElementSibling;
@@ -205,9 +205,10 @@
     input.setAttribute("inputmode", "numeric");
     label.textContent = "Number";
     
-    input.addEventListener("input", function onlyNumbers() {
+    // Soloina mivantana ny oninput
+    input.oninput = function() {
       input.value = input.value.replace(/[^0-9]/g, "");
-    });
+    };
   }
   
   function setEmailMode(input, label) {
@@ -215,6 +216,9 @@
     input.type = "email";
     input.removeAttribute("inputmode");
     label.textContent = "Email";
+    
+    // Esorina tanteraka ny restriction
+    input.oninput = null;
   }
   
   // LOGIN ICON EVENTS
@@ -356,7 +360,6 @@
         if (res.ok && data.token) {
           
           localStorage.setItem("token", data.token);
-          
           window.location.href = "dashboard.html";
           
         } else {
