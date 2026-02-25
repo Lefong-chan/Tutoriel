@@ -59,6 +59,114 @@
 </head>
 <body>
   
+<style>
+
+/* Overlay */
+.otp-overlay{
+  position:fixed;
+  inset:0;
+  background:linear-gradient(135deg, rgba(0,0,0,0.65), rgba(0,0,0,0.55));
+  backdrop-filter: blur(4px);
+  display:none;
+  justify-content:center;
+  align-items:center;
+  z-index:9999;
+  font-family: 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Card */
+.otp-card{
+  background:#ffffff;
+  padding:35px 30px;
+  width:380px;
+  max-width:90%;
+  border-radius:18px;
+  box-shadow:0 20px 45px rgba(0,0,0,0.15);
+  text-align:center;
+  animation:fadeIn .3s ease;
+}
+
+/* Title */
+.otp-title{
+  margin:0;
+  font-size:22px;
+  font-weight:600;
+  color:#111;
+}
+
+/* Subtitle */
+.otp-subtitle{
+  font-size:14px;
+  color:#666;
+  margin:8px 0 25px 0;
+}
+
+/* Input + Resend group */
+.otp-input-group{
+  display:flex;
+  gap:10px;
+  margin-bottom:20px;
+}
+
+.otp-input-group input{
+  flex:1;
+  padding:12px;
+  border-radius:10px;
+  border:1px solid #ddd;
+  font-size:15px;
+  outline:none;
+  transition:all .2s ease;
+}
+
+.otp-input-group input:focus{
+  border-color:#4f46e5;
+  box-shadow:0 0 0 3px rgba(79,70,229,0.15);
+}
+
+/* Resend button */
+.resend-btn{
+  padding:0 16px;
+  border-radius:10px;
+  border:1px solid #e5e5e5;
+  background:#f9fafb;
+  cursor:pointer;
+  font-size:13px;
+  font-weight:500;
+  transition:all .2s ease;
+}
+
+.resend-btn:hover{
+  background:#eef2ff;
+  border-color:#c7d2fe;
+  color:#4f46e5;
+}
+
+/* Verify button */
+.verify-btn{
+  width:100%;
+  padding:13px;
+  border:none;
+  border-radius:12px;
+  background:linear-gradient(135deg, #4f46e5, #6366f1);
+  color:white;
+  font-size:15px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all .2s ease;
+}
+
+.verify-btn:hover{
+  opacity:0.9;
+  transform:translateY(-1px);
+}
+
+@keyframes fadeIn{
+  from{opacity:0; transform:translateY(10px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
+</style>
+  
   <div class="container" id="container">
     <div class="forms-container">
       
@@ -141,41 +249,28 @@
   </div>
   
 <!-- OTP MODAL -->
-<div id="otpModal" style="
-position:fixed;
-top:0;
-left:0;
-width:100%;
-height:100%;
-background:rgba(0,0,0,0.6);
-display:none;
-justify-content:center;
-align-items:center;
-z-index:9999;">
+<div id="otpModal" class="otp-overlay">
   
-  <div style="
-  background:#fff;
-  padding:30px;
-  border-radius:15px;
-  width:300px;
-  text-align:center;">
+  <div class="otp-card">
     
-    <h3>Email Verification</h3>
-    <p>Enter OTP sent to your email</p>
+    <h2 class="otp-title">Email Verification</h2>
+    <p class="otp-subtitle">Enter the 6-digit verification sent to your email</p>
     
-    <input type="text" id="otpInput"
-      style="width:100%;padding:10px;margin:10px 0;border-radius:8px;border:1px solid #ddd;"
-      placeholder="6 digit code">
+    <div class="otp-input-group">
+      <input type="text" id="otpInput" maxlength="6" placeholder="Enter 6-digit code">
+      
+      <button type="button" class="resend-btn" onclick="resendOTP()">
+        Resend
+      </button>
+    </div>
     
-    <button onclick="verifyOTP()" class="btn">Verify</button>
-    
-    <p style="margin-top:10px;">
-      <a href="#" onclick="resendOTP()">Resend Code</a>
-    </p>
+    <button onclick="verifyOTP()" class="verify-btn">
+      Verify
+    </button>
     
   </div>
 </div>
-  
+
 <script>
 
 /* ================= GLOBAL ================= */
@@ -432,4 +527,4 @@ async function resendOTP() {
 </script>
 </body>
 </html>
-  
+          
