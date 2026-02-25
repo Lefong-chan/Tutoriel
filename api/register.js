@@ -1,5 +1,6 @@
 import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
+import { sendOTPEmail } from "./mailer.js";
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
@@ -100,7 +101,7 @@ export default async function handler(req, res) {
     const hashed = await bcrypt.hash(password, 12);
     const uid = await generateUID();
 
-    // ✅ Generate OTP for email verification
+    // Generate OTP only if email exists
     const otp = emailLower ? generateOTP() : null;
     const otpExpires = emailLower
       ? Date.now() + (10 * 60 * 1000)
@@ -117,6 +118,11 @@ export default async function handler(req, res) {
       otpExpires: otpExpires,
       createdAt: Date.now()
     });
+
+    // Send verification email automatically
+    if (emailLower) {
+      await sendOTPEmail(emailLower, otp);
+    }
 
     return res.status(201).json({
       success: true,
