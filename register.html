@@ -36,8 +36,8 @@
     .btn:hover { transform: translateY(-3px); }
     .social-login { display: flex; justify-content: center; gap: 15px; margin-top: 10px; }
     .social-icon { width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; cursor: pointer; transition: all 0.3s ease; }
-    .facebook { background-color: #3b5998; }
-    .google { background-color: #dd4b39; }
+    .number { background-color: #25D366; }
+    .email { background-color: #EA4335; }
     .toggle-container { position: absolute; top: 0; left: 50%; width: 50%; height: 100%; overflow: hidden; transition: transform 0.8s ease-in-out; z-index: 10; }
     .container.active .toggle-container { transform: translateX(-100%); }
     .toggle { background: linear-gradient(to right, #6e8efb, #a777e3); height: 100%; color: white; position: relative; left: -100%; width: 200%; transform: translateX(0); transition: transform 0.8s ease-in-out; }
@@ -85,8 +85,8 @@
         <button type="submit" class="btn">Sign In</button>
         
         <div class="social-login">
-          <div class="social-icon facebook"><i class="fab fa-facebook-f"></i></div>
-          <div class="social-icon google"><i class="fab fa-google"></i></div>
+          <div class="social-icon number"><i class="fa-solid fa-phone"></i></div>
+          <div class="social-icon email"><i class="fa-solid fa-envelope"></i></div>
         </div>
         
         <div class="footer-text">Don't have an account? <a href="#" id="toRegMobile">Sign up</a></div>
@@ -116,8 +116,8 @@
         <button type="submit" class="btn">Sign up</button>
         
         <div class="social-login">
-          <div class="social-icon facebook"><i class="fab fa-facebook-f"></i></div>
-          <div class="social-icon google"><i class="fab fa-google"></i></div>
+          <div class="social-icon number"><i class="fa-solid fa-phone"></i></div>
+          <div class="social-icon email"><i class="fa-solid fa-envelope"></i></div>
         </div>
         
         <p class="footer-text">Already have an account? <a href="#" id="mobileLoginBtn">Login</a></p>
@@ -141,26 +141,31 @@
   </div>
   
 <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyDMr3plGs8sF56pM_O3jYqfGdWTlJiePW0",
-    authDomain: "tutoriel-ff487.firebaseapp.com",
-    projectId: "tutoriel-ff487"
-  };
-
-  firebase.initializeApp(firebaseConfig);
-
   /* ================= UI TOGGLE ================= */
   const container = document.getElementById('container');
   const signupBtn = document.getElementById('inscriptionToggleBtn');
   const signinBtn = document.getElementById('loginToggleBtn');
   const toRegMobile = document.getElementById('toRegMobile');
   const mobileLoginBtn = document.getElementById('mobileLoginBtn');
-
-  signupBtn.addEventListener('click', () => container.classList.add('active'));
-  signinBtn.addEventListener('click', () => container.classList.remove('active'));
-  toRegMobile.addEventListener('click', (e) => { e.preventDefault(); container.classList.add('active'); });
-  mobileLoginBtn.addEventListener('click', (e) => { e.preventDefault(); container.classList.remove('active'); });
-
+  
+  signupBtn.addEventListener('click', () =>
+    container.classList.add('active')
+  );
+  
+  signinBtn.addEventListener('click', () =>
+    container.classList.remove('active')
+  );
+  
+  toRegMobile.addEventListener('click', (e) => {
+    e.preventDefault();
+    container.classList.add('active');
+  });
+  
+  mobileLoginBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    container.classList.remove('active');
+  });
+  
   function togglePass(inputId, icon) {
     const input = document.getElementById(inputId);
     if (input.type === "password") {
@@ -171,100 +176,111 @@
       icon.classList.replace('fa-eye', 'fa-eye-slash');
     }
   }
-
-  /* ================= REGISTER (LOCAL) ================= */
-  document.getElementById("inscriptionForm").addEventListener("submit", async function(e) {
-    e.preventDefault();
-
-    const email = document.getElementById("regEmail").value.trim().toLowerCase();
-    const password = document.getElementById("regPass").value;
-    const terms = document.getElementById("termsCheck").checked;
-
-    if (!terms) {
-      alert("Accept Terms first.");
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        alert("Registration successful! Please login.");
-        container.classList.remove('active');
-      } else {
-        alert(data.error || "Registration failed.");
+  
+  /* ================= REGISTER (LOCAL ONLY) ================= */
+  document.getElementById("inscriptionForm")
+    .addEventListener("submit", async function(e) {
+      
+      e.preventDefault();
+      
+      const email = document
+        .getElementById("regEmail")
+        .value
+        .trim()
+        .toLowerCase();
+      
+      const password = document
+        .getElementById("regPass")
+        .value;
+      
+      const terms = document
+        .getElementById("termsCheck")
+        .checked;
+      
+      if (!terms) {
+        alert("Accept Terms first.");
+        return;
       }
-
-    } catch (err) {
-      alert("Server error.");
-    }
-  });
-
-  /* ================= LOGIN (LOCAL) ================= */
-  document.getElementById("loginForm").addEventListener("submit", async function(e) {
-    e.preventDefault();
-
-    const email = document.getElementById("loginEmail").value.trim().toLowerCase();
-    const password = document.getElementById("loginPass").value;
-
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await res.json();
-
-      if (data.token) {
-        localStorage.setItem("token", data.token);
-        window.location.href = "dashboard.html";
-      } else {
-        alert(data.error || "Login failed.");
+      
+      if (password.length < 6) {
+        alert("Password must be at least 6 characters.");
+        return;
       }
-
-    } catch (err) {
-      alert("Server error.");
-    }
-  });
-
-  /* ================= GOOGLE LOGIN / REGISTER ================= */
-  const googleProvider = new firebase.auth.GoogleAuthProvider();
-  const googleButtons = document.querySelectorAll(".social-icon.google");
-
-  googleButtons.forEach(btn => {
-    btn.addEventListener("click", async () => {
+      
       try {
-
-        const result = await firebase.auth().signInWithPopup(googleProvider);
-        const idToken = await result.user.getIdToken();
-
-        const res = await fetch("/api/google-login", {
+        
+        const res = await fetch("/api/register", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken })
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ email, password })
         });
-
+        
         const data = await res.json();
-
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          window.location.href = "dashboard.html";
+        
+        if (res.ok && data.success) {
+          
+          alert("Registration successful! Please login.");
+          
+          document.getElementById("regEmail").value = "";
+          document.getElementById("regPass").value = "";
+          document.getElementById("termsCheck").checked = false;
+          
+          container.classList.remove('active');
+          
         } else {
-          alert(data.error || "Google authentication failed.");
+          alert(data.error || "Registration failed.");
         }
-
-      } catch (error) {
-        alert("Google sign-in error.");
+        
+      } catch (err) {
+        alert("Server error.");
       }
     });
-  });
+  
+  /* ================= LOGIN (LOCAL ONLY) ================= */
+  document.getElementById("loginForm")
+    .addEventListener("submit", async function(e) {
+      
+      e.preventDefault();
+      
+      const email = document
+        .getElementById("loginEmail")
+        .value
+        .trim()
+        .toLowerCase();
+      
+      const password = document
+        .getElementById("loginPass")
+        .value;
+      
+      try {
+        
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ email, password })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok && data.token) {
+          
+          localStorage.setItem("token", data.token);
+          
+          window.location.href = "dashboard.html";
+          
+        } else {
+          alert(data.error || "Invalid credentials.");
+        }
+        
+      } catch (err) {
+        alert("Server error.");
+      }
+    });
 </script>
 </body>
-  </html>
+                                                 </html>
+      
