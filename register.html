@@ -67,7 +67,7 @@
         
         <div class="input-group">
           <input type="email" id="loginEmail" class="form-input" placeholder=" " required>
-          <label class="form-label">Email</label>
+          <label class="form-label">Number</label>
         </div>
         
         <div class="input-group" style="margin-bottom: 13px;">
@@ -97,7 +97,7 @@
         
         <div class="input-group">
           <input type="email" id="regEmail" class="form-input" placeholder=" " required>
-          <label class="form-label">Email</label>
+          <label class="form-label">Number</label>
         </div>
         
         <div class="input-group" style="margin-bottom: 11px;">
@@ -141,7 +141,7 @@
   </div>
   
 <script>
-  /* ================= UI TOGGLE ================= */
+  /* ================= UI TOGGLE PANEL ================= */
   const container = document.getElementById('container');
   const signupBtn = document.getElementById('inscriptionToggleBtn');
   const signinBtn = document.getElementById('loginToggleBtn');
@@ -177,25 +177,81 @@
     }
   }
   
-  /* ================= REGISTER (LOCAL ONLY) ================= */
+  /* =====================================================
+     LOGIN & REGISTER MODE (PHONE / EMAIL SWITCH)
+  ===================================================== */
+  
+  let loginMode = "phone"; // default
+  let registerMode = "phone"; // default
+  
+  const loginInput = document.getElementById("loginEmail");
+  const loginLabel = loginInput.nextElementSibling;
+  
+  const regInput = document.getElementById("regEmail");
+  const regLabel = regInput.nextElementSibling;
+  
+  const loginIcons = document
+    .querySelector("#loginForm .social-login")
+    .children;
+  
+  const registerIcons = document
+    .querySelector("#inscriptionForm .social-login")
+    .children;
+  
+  function setPhoneMode(input, label) {
+    input.value = "";
+    input.type = "text";
+    input.placeholder = "";
+    input.setAttribute("inputmode", "numeric");
+    label.textContent = "Number";
+    
+    input.addEventListener("input", function onlyNumbers() {
+      input.value = input.value.replace(/[^0-9]/g, "");
+    });
+  }
+  
+  function setEmailMode(input, label) {
+    input.value = "";
+    input.type = "email";
+    input.removeAttribute("inputmode");
+    label.textContent = "Email";
+  }
+  
+  // LOGIN ICON EVENTS
+  loginIcons[0].addEventListener("click", () => {
+    loginMode = "phone";
+    setPhoneMode(loginInput, loginLabel);
+  });
+  
+  loginIcons[1].addEventListener("click", () => {
+    loginMode = "email";
+    setEmailMode(loginInput, loginLabel);
+  });
+  
+  // REGISTER ICON EVENTS
+  registerIcons[0].addEventListener("click", () => {
+    registerMode = "phone";
+    setPhoneMode(regInput, regLabel);
+  });
+  
+  registerIcons[1].addEventListener("click", () => {
+    registerMode = "email";
+    setEmailMode(regInput, regLabel);
+  });
+  
+  // Default mode
+  setPhoneMode(loginInput, loginLabel);
+  setPhoneMode(regInput, regLabel);
+  
+  /* ================= REGISTER ================= */
   document.getElementById("inscriptionForm")
     .addEventListener("submit", async function(e) {
       
       e.preventDefault();
       
-      const email = document
-        .getElementById("regEmail")
-        .value
-        .trim()
-        .toLowerCase();
-      
-      const password = document
-        .getElementById("regPass")
-        .value;
-      
-      const terms = document
-        .getElementById("termsCheck")
-        .checked;
+      const rawValue = regInput.value.trim();
+      const password = document.getElementById("regPass").value;
+      const terms = document.getElementById("termsCheck").checked;
       
       if (!terms) {
         alert("Accept Terms first.");
@@ -207,6 +263,23 @@
         return;
       }
       
+      let email = null;
+      let phone = null;
+      
+      if (registerMode === "email") {
+        if (!rawValue.includes("@")) {
+          alert("Invalid email format.");
+          return;
+        }
+        email = rawValue.toLowerCase();
+      } else {
+        if (rawValue.length < 8) {
+          alert("Invalid phone number.");
+          return;
+        }
+        phone = rawValue;
+      }
+      
       try {
         
         const res = await fetch("/api/register", {
@@ -214,7 +287,7 @@
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email, phone, password })
         });
         
         const data = await res.json();
@@ -223,7 +296,7 @@
           
           alert("Registration successful! Please login.");
           
-          document.getElementById("regEmail").value = "";
+          regInput.value = "";
           document.getElementById("regPass").value = "";
           document.getElementById("termsCheck").checked = false;
           
@@ -238,21 +311,35 @@
       }
     });
   
-  /* ================= LOGIN (LOCAL ONLY) ================= */
+  /* ================= LOGIN ================= */
   document.getElementById("loginForm")
     .addEventListener("submit", async function(e) {
       
       e.preventDefault();
       
-      const email = document
-        .getElementById("loginEmail")
-        .value
-        .trim()
-        .toLowerCase();
+      const rawValue = loginInput.value.trim();
+      const password = document.getElementById("loginPass").value;
       
-      const password = document
-        .getElementById("loginPass")
-        .value;
+      if (!rawValue || !password) {
+        alert("Fill all fields.");
+        return;
+      }
+      
+      let identifier;
+      
+      if (loginMode === "email") {
+        if (!rawValue.includes("@")) {
+          alert("Invalid email format.");
+          return;
+        }
+        identifier = rawValue.toLowerCase();
+      } else {
+        if (rawValue.length < 8) {
+          alert("Invalid phone number.");
+          return;
+        }
+        identifier = rawValue;
+      }
       
       try {
         
@@ -261,7 +348,7 @@
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ identifier, password })
         });
         
         const data = await res.json();
@@ -282,5 +369,4 @@
     });
 </script>
 </body>
-                                                 </html>
-      
+  </html>
