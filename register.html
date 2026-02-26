@@ -204,6 +204,19 @@
   to{opacity:1; transform:translateY(0);}
 }
 
+.otp-error {
+  min-height: 20px;
+  font-size: 13px;
+  color: #dc2626;
+  margin-bottom: 12px;
+  text-align: left;
+}
+
+.resend-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 </style>
   
   <div class="container" id="container">
@@ -213,7 +226,7 @@
         <h1 class="form-title">Login <span>Now</span></h1>
         
         <div class="input-group">
-          <input type="email" id="loginEmail" class="form-input" placeholder=" " required>
+          <input type="text" id="loginEmail" class="form-input" inputmode="numeric" placeholder=" " required>
           <label class="form-label">Number</label>
         </div>
         
@@ -221,7 +234,7 @@
           <div class="password-wrapper">
             <input type="password" id="loginPass" class="form-input" placeholder=" " required>
             <label class="form-label">Password</label>
-            <i class="fa-solid fa-eye-slash toggle-password" onclick="togglePass('loginPass', this)"></i>
+            <i class="fa-solid fa-eye-slash toggle-password"></i>
           </div>
         </div>
         
@@ -243,7 +256,7 @@
         <h1 class="form-title">Create <span>Account</span></h1>
         
         <div class="input-group">
-          <input type="email" id="regEmail" class="form-input" placeholder=" " required>
+          <input type="text" id="regEmail" class="form-input" inputmode="numeric" placeholder=" " required>
           <label class="form-label">Number</label>
         </div>
         
@@ -251,7 +264,7 @@
           <div class="password-wrapper">
             <input type="password" id="regPass" class="form-input" placeholder=" " required>
             <label class="form-label">Password</label>
-            <i class="fa-solid fa-eye-slash toggle-password" onclick="togglePass('regPass', this)"></i>
+            <i class="fa-solid fa-eye-slash toggle-password"></i>
           </div>
         </div>
         
@@ -304,13 +317,16 @@
              placeholder="Enter 6-digit code">
       
       <button type="button"
-              class="resend-btn"
-              onclick="resendOTP()">
-        Resend
+        id="resendBtn"
+        class="resend-btn">
+          Resend
       </button>
     </div>
     
-    <button onclick="verifyOTP()" class="verify-btn">
+    <div id="otpError" class="otp-error"></div>
+    
+    <button id="verifyBtn"
+        class="verify-btn">
       Verify
     </button>
     
@@ -319,37 +335,66 @@
 
 <script>
 
-/* ================= GLOBAL ================= */
-let currentVerificationEmail = null;
+/* =====================================================
+   GLOBAL STATE
+===================================================== */
 
-/* ================= UI TOGGLE PANEL ================= */
-const container = document.getElementById('container');
-const signupBtn = document.getElementById('inscriptionToggleBtn');
-const signinBtn = document.getElementById('loginToggleBtn');
-const toRegMobile = document.getElementById('toRegMobile');
-const mobileLoginBtn = document.getElementById('mobileLoginBtn');
+let currentVerificationIdentifier = null; // email OR phone
+let otpCountdownInterval = null;
+let hourCountdownInterval = null;
 
-signupBtn.addEventListener('click', () =>
-  container.classList.add('active')
-);
+let otpRemainingSeconds = 0;
+let hourRemainingSeconds = 0;
 
-signinBtn.addEventListener('click', () =>
-  container.classList.remove('active')
-);
+let resendBtn = null;
+let verifyBtn = null;
+let otpError = null;
 
-toRegMobile.addEventListener('click', (e) => {
-  e.preventDefault();
-  container.classList.add('active');
+
+/* =====================================================
+   DOM READY
+===================================================== */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  resendBtn = document.getElementById("resendBtn");
+  verifyBtn = document.getElementById("verifyBtn");
+  otpError = document.getElementById("otpError");
+
+  resendBtn?.addEventListener("click", resendOTP);
+  verifyBtn?.addEventListener("click", verifyOTP);
+
+  /* ENTER KEY OTP */
+  document.getElementById("otpInput")
+  ?.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") verifyOTP();
+  });
+
+  /* OTP numeric only */
+  document.getElementById("otpInput")
+  ?.addEventListener("input", function(){
+    this.value = this.value.replace(/[^0-9]/g, "");
+  });
+
+  /* PASSWORD TOGGLE */
+  document.querySelectorAll(".toggle-password").forEach(icon => {
+    icon.addEventListener("click", function () {
+      const input = this.parentElement.querySelector("input");
+      if (input) togglePass(input.id, this);
+    });
+  });
+
 });
 
-mobileLoginBtn.addEventListener('click', (e) => {
-  e.preventDefault();
-  container.classList.remove('active');
-});
 
-/* ================= PASSWORD TOGGLE ================= */
+/* =====================================================
+   PASSWORD TOGGLE
+===================================================== */
+
 function togglePass(inputId, icon) {
   const input = document.getElementById(inputId);
+  if (!input) return;
+
   if (input.type === "password") {
     input.type = "text";
     icon.classList.replace('fa-eye-slash', 'fa-eye');
@@ -359,38 +404,33 @@ function togglePass(inputId, icon) {
   }
 }
 
+
 /* =====================================================
-   LOGIN & REGISTER MODE (PHONE / EMAIL SWITCH)
+   LOGIN & REGISTER MODE SWITCH
 ===================================================== */
 
 let loginMode = "phone";
 let registerMode = "phone";
 
 const loginInput = document.getElementById("loginEmail");
-const loginLabel = loginInput.nextElementSibling;
+const loginLabel = loginInput?.nextElementSibling;
 
 const regInput = document.getElementById("regEmail");
-const regLabel = regInput.nextElementSibling;
-
-const loginIcons = document
-  .querySelector("#loginForm .social-login")
-  .children;
-
-const registerIcons = document
-  .querySelector("#inscriptionForm .social-login")
-  .children;
+const regLabel = regInput?.nextElementSibling;
 
 function setPhoneMode(input, label) {
+  if (!input || !label) return;
   input.value = "";
   input.type = "text";
   input.setAttribute("inputmode", "numeric");
   label.textContent = "Number";
-  input.oninput = function() {
+  input.oninput = () => {
     input.value = input.value.replace(/[^0-9]/g, "");
   };
 }
 
 function setEmailMode(input, label) {
+  if (!input || !label) return;
   input.value = "";
   input.type = "email";
   input.removeAttribute("inputmode");
@@ -398,32 +438,16 @@ function setEmailMode(input, label) {
   input.oninput = null;
 }
 
-loginIcons[0].addEventListener("click", () => {
-  loginMode = "phone";
-  setPhoneMode(loginInput, loginLabel);
-});
-
-loginIcons[1].addEventListener("click", () => {
-  loginMode = "email";
-  setEmailMode(loginInput, loginLabel);
-});
-
-registerIcons[0].addEventListener("click", () => {
-  registerMode = "phone";
-  setPhoneMode(regInput, regLabel);
-});
-
-registerIcons[1].addEventListener("click", () => {
-  registerMode = "email";
-  setEmailMode(regInput, regLabel);
-});
-
 setPhoneMode(loginInput, loginLabel);
 setPhoneMode(regInput, regLabel);
 
-/* ================= REGISTER ================= */
+
+/* =====================================================
+   REGISTER
+===================================================== */
+
 document.getElementById("inscriptionForm")
-.addEventListener("submit", async function(e) {
+?.addEventListener("submit", async function (e) {
 
   e.preventDefault();
 
@@ -434,15 +458,14 @@ document.getElementById("inscriptionForm")
   if (!terms) return alert("Accept Terms first.");
   if (password.length < 6) return alert("Password too short.");
 
-  let email = null;
-  let phone = null;
+  let identifier = null;
 
   if (registerMode === "email") {
     if (!rawValue.includes("@")) return alert("Invalid email.");
-    email = rawValue.toLowerCase();
+    identifier = rawValue.toLowerCase();
   } else {
     if (rawValue.length < 8) return alert("Invalid phone.");
-    phone = rawValue;
+    identifier = rawValue;
   }
 
   try {
@@ -450,7 +473,10 @@ document.getElementById("inscriptionForm")
     const res = await fetch("/api/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, phone, password })
+      body: JSON.stringify({
+        identifier,
+        password
+      })
     });
 
     const data = await res.json();
@@ -458,11 +484,9 @@ document.getElementById("inscriptionForm")
     if (res.ok && data.success) {
 
       if (data.emailVerificationRequired) {
-        currentVerificationEmail = email;
-        document.getElementById("otpModal").style.display = "flex";
+        openOtpModal(identifier);
       } else {
         alert("Registration successful!");
-        container.classList.remove('active');
       }
 
     } else {
@@ -475,9 +499,13 @@ document.getElementById("inscriptionForm")
 
 });
 
-/* ================= LOGIN ================= */
+
+/* =====================================================
+   LOGIN
+===================================================== */
+
 document.getElementById("loginForm")
-.addEventListener("submit", async function(e) {
+?.addEventListener("submit", async function (e) {
 
   e.preventDefault();
 
@@ -486,32 +514,28 @@ document.getElementById("loginForm")
 
   if (!rawValue || !password) return alert("Fill all fields.");
 
-  let identifier = rawValue;
-
   try {
 
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier, password })
+      body: JSON.stringify({
+        identifier: rawValue,
+        password
+      })
     });
 
     const data = await res.json();
 
     if (res.ok && data.token) {
-
       localStorage.setItem("token", data.token);
       window.location.href = "dashboard.html";
-
     } else {
-
       if (data.emailNotVerified) {
-        currentVerificationEmail = identifier;
-        document.getElementById("otpModal").style.display = "flex";
+        openOtpModal(rawValue);
       } else {
         alert(data.error || "Invalid credentials.");
       }
-
     }
 
   } catch {
@@ -520,57 +544,184 @@ document.getElementById("loginForm")
 
 });
 
-/* ================= VERIFY OTP ================= */
+
+/* =====================================================
+   OTP COUNTDOWN (1 MIN)
+===================================================== */
+
+function startOtpCountdown(seconds = 59) {
+
+  clearInterval(otpCountdownInterval);
+  otpRemainingSeconds = seconds;
+
+  resendBtn.disabled = true;
+  resendBtn.textContent = otpRemainingSeconds;
+
+  otpCountdownInterval = setInterval(() => {
+
+    otpRemainingSeconds--;
+
+    if (otpRemainingSeconds <= 0) {
+      clearInterval(otpCountdownInterval);
+      resendBtn.disabled = false;
+      resendBtn.textContent = "Resend";
+    } else {
+      resendBtn.textContent = otpRemainingSeconds;
+    }
+
+  }, 1000);
+}
+
+
+/* =====================================================
+   HOUR LIMIT COUNTDOWN
+===================================================== */
+
+function startHourCountdown(seconds) {
+
+  clearInterval(hourCountdownInterval);
+  hourRemainingSeconds = seconds;
+
+  resendBtn.disabled = true;
+  resendBtn.textContent = "Wait";
+
+  function updateDisplay() {
+
+    if (hourRemainingSeconds <= 0) {
+      clearInterval(hourCountdownInterval);
+      otpError.textContent = "";
+      resendBtn.disabled = false;
+      resendBtn.textContent = "Resend";
+      return;
+    }
+
+    const minutes = Math.floor(hourRemainingSeconds / 60);
+    const secondsLeft = hourRemainingSeconds % 60;
+
+    otpError.textContent =
+      minutes > 0
+        ? `Try again in ${minutes}m`
+        : `Try again in ${secondsLeft}s`;
+
+    hourRemainingSeconds--;
+
+  }
+
+  updateDisplay();
+  hourCountdownInterval = setInterval(updateDisplay, 1000);
+}
+
+
+/* =====================================================
+   VERIFY OTP
+===================================================== */
+
 async function verifyOTP() {
 
+  otpError.textContent = "";
   const otp = document.getElementById("otpInput").value.trim();
-  if (!otp) return alert("Enter OTP.");
 
-  const res = await fetch("/api/verify-otp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: currentVerificationEmail,
-      otp
-    })
-  });
+  if (!otp || otp.length !== 6) {
+    otpError.textContent = "Invalid 6-digit code.";
+    return;
+  }
 
-  const data = await res.json();
+  verifyBtn.disabled = true;
+  verifyBtn.textContent = "Verifying...";
 
-  if (res.ok && data.success) {
-    alert("Email verified! Now login.");
-    document.getElementById("otpModal").style.display = "none";
-    container.classList.remove('active');
-  } else {
-    alert(data.error || "Verification failed.");
+  try {
+
+    const res = await fetch("/api/verify-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identifier: currentVerificationIdentifier,
+        otp
+      })
+    });
+
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      closeOtpModal();
+      alert("Verified successfully! You can now login.");
+    } else {
+      otpError.textContent = data.error || "Verification failed.";
+    }
+
+  } catch {
+    otpError.textContent = "Server error.";
+  }
+
+  verifyBtn.disabled = false;
+  verifyBtn.textContent = "Verify";
+}
+
+
+/* =====================================================
+   RESEND OTP
+===================================================== */
+
+async function resendOTP() {
+
+  if (!currentVerificationIdentifier) return;
+
+  resendBtn.disabled = true;
+  resendBtn.textContent = "Sending...";
+  otpError.textContent = "";
+
+  try {
+
+    const res = await fetch("/api/resend-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        identifier: currentVerificationIdentifier
+      })
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      startOtpCountdown(59);
+    } else if (data.retryAfter) {
+      startHourCountdown(data.retryAfter);
+    } else {
+      otpError.textContent = data.error || "Error resending OTP.";
+      resendBtn.disabled = false;
+      resendBtn.textContent = "Resend";
+    }
+
+  } catch {
+    otpError.textContent = "Server error.";
+    resendBtn.disabled = false;
+    resendBtn.textContent = "Resend";
   }
 
 }
 
-/* ================= RESEND OTP ================= */
-async function resendOTP() {
 
-  if (!currentVerificationEmail) return;
+/* =====================================================
+   MODAL CONTROL
+===================================================== */
 
-  const res = await fetch("/api/resend-otp", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: currentVerificationEmail
-    })
-  });
+function openOtpModal(identifier) {
+  currentVerificationIdentifier = identifier;
 
-  const data = await res.json();
+  document.getElementById("otpModal").style.display = "flex";
+  document.getElementById("otpInput").value = "";
+  document.getElementById("otpInput").focus();
 
-  if (res.ok) {
-    alert("OTP resent!");
-  } else {
-    alert(data.error || "Error resending OTP.");
-  }
+  otpError.textContent = "";
+  startOtpCountdown(59);
+}
 
+function closeOtpModal() {
+  document.getElementById("otpModal").style.display = "none";
+  clearInterval(otpCountdownInterval);
+  clearInterval(hourCountdownInterval);
 }
 
 </script>
 </body>
 </html>
-          
