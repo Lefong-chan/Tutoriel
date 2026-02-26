@@ -49,23 +49,16 @@
     
   <script>
 
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      window.location.href = "index.html";
-    }
-
     async function loadUser() {
       try {
 
         const res = await fetch("/api/me", {
-          headers: {
-            "Authorization": "Bearer " + token
-          }
+          credentials: "include"
         });
 
         if (!res.ok) {
-          throw new Error("Unauthorized");
+          window.location.href = "index.html";
+          return;
         }
 
         const data = await res.json();
@@ -80,15 +73,16 @@
           data.email || "No email address provided";
 
       } catch (error) {
-
-        localStorage.removeItem("token");
         window.location.href = "index.html";
-
       }
     }
 
-    function logout() {
-      localStorage.removeItem("token");
+    async function logout() {
+      await fetch("/api/logout", {
+        method: "POST",
+        credentials: "include"
+      });
+
       window.location.href = "index.html";
     }
 
