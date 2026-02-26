@@ -1,16 +1,20 @@
-// resend-otp.js
-
 import admin from "firebase-admin";
 import { sendOTPEmail } from "./mailer.js";
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
-// ===== CONFIG =====
+/* =====================================================
+   CONFIG
+===================================================== */
+
 const MAX_RESEND_PER_HOUR = 5;
-const ONE_MINUTE = 1 * 60 * 1000;
+const ONE_MINUTE = 60 * 1000;
 const ONE_HOUR = 60 * 60 * 1000;
 
-// ===== FIREBASE INIT =====
+/* =====================================================
+   FIREBASE INIT
+===================================================== */
+
 if (!process.env.FIREBASE_KEY) {
   throw new Error("FIREBASE_KEY not set");
 }
@@ -32,12 +36,18 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-// ===== HELPERS =====
+/* =====================================================
+   HELPERS
+===================================================== */
+
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// ===== HANDLER =====
+/* =====================================================
+   HANDLER
+===================================================== */
+
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
@@ -48,20 +58,21 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const { email } = req.body;
+  const { identifier } = req.body;
 
-  if (!email) {
-    return res.status(400).json({ error: "Email required" });
+  if (!identifier) {
+    return res.status(400).json({ error: "Identifier required" });
   }
 
   try {
 
-    const emailLower = email.toLowerCase().trim();
+    const cleanIdentifier = identifier.toLowerCase().trim();
 
+    // ===== FIND USER BY EMAIL =====
     const snap = await db
       .ref("users")
       .orderByChild("email")
-      .equalTo(emailLower)
+      .equalTo(cleanIdentifier)
       .limitToFirst(1)
       .get();
 
@@ -73,56 +84,68 @@ export default async function handler(req, res) {
     const userData = snap.val()[userKey];
     const now = Date.now();
 
+    // ===== IF ALREADY VERIFIED =====
     if (userData.emailVerified) {
       return res.status(400).json({
         error: "Email already verified"
       });
     }
 
+    // ===== PROVIDER CHECK (EMAIL ONLY) =====
+    if (userData.provider !== "email") {
+      return res.status(400).json({
+        error: "OTP not required for this account"
+      });
+    }
+
     /* =====================================================
-      COOLDOWN 1 MINUTE
+       1 MINUTE COOLDOWN
     ===================================================== */
+
     if (
-      userData.otp &&
       userData.otpExpires &&
       now < userData.otpExpires
     ) {
-      const remainingSeconds = Math.ceil(
+      const remaining = Math.ceil(
         (userData.otpExpires - now) / 1000
       );
 
       return res.status(429).json({
         error: "Please wait before requesting a new OTP",
-        remainingTime: remainingSeconds
+        remainingTime: remaining
       });
     }
 
     /* =====================================================
-      RATE LIMIT: 5 / HOUR
+       RATE LIMIT 5 / HOUR
     ===================================================== */
-    let resendCount = userData.resendCount || 0;
-    let resendWindowStart = userData.resendWindowStart || now;
 
-    // Reset window if 1 hour passed
+    let resendCount = userData.resendCount || 0;
+    let resendWindowStart =
+      userData.resendWindowStart || now;
+
+    // Reset if window expired
     if (now - resendWindowStart >= ONE_HOUR) {
       resendCount = 0;
       resendWindowStart = now;
     }
 
     if (resendCount >= MAX_RESEND_PER_HOUR) {
+
       const retryAfter = Math.ceil(
         (ONE_HOUR - (now - resendWindowStart)) / 1000
       );
 
       return res.status(429).json({
         error: "Too many OTP requests. Try again later.",
-        retryAfter // seconds
+        retryAfter
       });
     }
 
     /* =====================================================
-      GENERATE & SEND NEW OTP
+       GENERATE NEW OTP
     ===================================================== */
+
     const newOTP = generateOTP();
     const newExpiry = now + ONE_MINUTE;
 
@@ -133,16 +156,21 @@ export default async function handler(req, res) {
       resendWindowStart
     });
 
-    await sendOTPEmail(emailLower, newOTP);
+    await sendOTPEmail(cleanIdentifier, newOTP);
 
     return res.status(200).json({
       success: true,
       message: "New OTP sent",
-      remainingResends: MAX_RESEND_PER_HOUR - (resendCount + 1)
+      remainingResends:
+        MAX_RESEND_PER_HOUR - (resendCount + 1)
     });
 
   } catch (err) {
+
     console.error("RESEND OTP ERROR:", err);
-    return res.status(500).json({ error: "Server error" });
+
+    return res.status(500).json({
+      error: "Server error"
+    });
   }
 }
