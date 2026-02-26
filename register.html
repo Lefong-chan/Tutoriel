@@ -245,8 +245,12 @@
         <button type="submit" class="btn">Sign In</button>
         
         <div class="social-login">
-          <div class="social-icon number"><i class="fa-solid fa-phone"></i></div>
-          <div class="social-icon email"><i class="fa-solid fa-envelope"></i></div>
+          <div class="social-icon number" id="loginPhoneIcon">
+            <i class="fa-solid fa-phone"></i>
+          </div>
+          <div class="social-icon email" id="loginEmailIcon">
+            <i class="fa-solid fa-envelope"></i>
+          </div>
         </div>
         
         <div class="footer-text">Don't have an account? <a href="#" id="toRegMobile">Sign up</a></div>
@@ -276,8 +280,12 @@
         <button type="submit" class="btn">Sign up</button>
         
         <div class="social-login">
-          <div class="social-icon number"><i class="fa-solid fa-phone"></i></div>
-          <div class="social-icon email"><i class="fa-solid fa-envelope"></i></div>
+          <div class="social-icon number" id="regPhoneIcon">
+            <i class="fa-solid fa-phone"></i>
+          </div>
+          <div class="social-icon email" id="regEmailIcon">
+            <i class="fa-solid fa-envelope"></i>
+          </div>
         </div>
         
         <p class="footer-text">Already have an account? <a href="#" id="mobileLoginBtn">Login</a></p>
@@ -339,7 +347,7 @@
    GLOBAL STATE
 ===================================================== */
 
-let currentVerificationIdentifier = null; // email OR phone
+let currentVerificationIdentifier = null;
 let otpCountdownInterval = null;
 let hourCountdownInterval = null;
 
@@ -349,6 +357,9 @@ let hourRemainingSeconds = 0;
 let resendBtn = null;
 let verifyBtn = null;
 let otpError = null;
+
+let loginMode = "phone";
+let registerMode = "phone";
 
 
 /* =====================================================
@@ -364,15 +375,13 @@ document.addEventListener("DOMContentLoaded", () => {
   resendBtn?.addEventListener("click", resendOTP);
   verifyBtn?.addEventListener("click", verifyOTP);
 
-  /* ENTER KEY OTP */
-  document.getElementById("otpInput")
-  ?.addEventListener("keypress", (e) => {
+  const otpInput = document.getElementById("otpInput");
+
+  otpInput?.addEventListener("keypress", (e) => {
     if (e.key === "Enter") verifyOTP();
   });
 
-  /* OTP numeric only */
-  document.getElementById("otpInput")
-  ?.addEventListener("input", function(){
+  otpInput?.addEventListener("input", function () {
     this.value = this.value.replace(/[^0-9]/g, "");
   });
 
@@ -380,66 +389,90 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".toggle-password").forEach(icon => {
     icon.addEventListener("click", function () {
       const input = this.parentElement.querySelector("input");
-      if (input) togglePass(input.id, this);
+      if (!input) return;
+
+      if (input.type === "password") {
+        input.type = "text";
+        this.classList.replace('fa-eye-slash', 'fa-eye');
+      } else {
+        input.type = "password";
+        this.classList.replace('fa-eye', 'fa-eye-slash');
+      }
     });
   });
+
+  /* MODE TOGGLE ICONS */
+  setupModeToggle("login");
+  setupModeToggle("register");
 
 });
 
 
 /* =====================================================
-   PASSWORD TOGGLE
+   MODE TOGGLE (PHONE / EMAIL)
 ===================================================== */
 
-function togglePass(inputId, icon) {
-  const input = document.getElementById(inputId);
-  if (!input) return;
+function setupModeToggle(type) {
 
-  if (input.type === "password") {
-    input.type = "text";
-    icon.classList.replace('fa-eye-slash', 'fa-eye');
-  } else {
-    input.type = "password";
-    icon.classList.replace('fa-eye', 'fa-eye-slash');
-  }
+  const input = document.getElementById(
+    type === "login" ? "loginEmail" : "regEmail"
+  );
+
+  const label = input?.nextElementSibling;
+
+  const phoneIcon = document.getElementById(
+    type === "login" ? "loginPhoneIcon" : "regPhoneIcon"
+  );
+
+  const emailIcon = document.getElementById(
+    type === "login" ? "loginEmailIcon" : "regEmailIcon"
+  );
+
+  if (!input || !label) return;
+
+  // Default = PHONE
+  setPhoneMode(input, label, type);
+
+  phoneIcon?.addEventListener("click", () => {
+    setPhoneMode(input, label, type);
+  });
+
+  emailIcon?.addEventListener("click", () => {
+    setEmailMode(input, label, type);
+  });
 }
 
 
-/* =====================================================
-   LOGIN & REGISTER MODE SWITCH
-===================================================== */
+function setPhoneMode(input, label, type) {
 
-let loginMode = "phone";
-let registerMode = "phone";
-
-const loginInput = document.getElementById("loginEmail");
-const loginLabel = loginInput?.nextElementSibling;
-
-const regInput = document.getElementById("regEmail");
-const regLabel = regInput?.nextElementSibling;
-
-function setPhoneMode(input, label) {
-  if (!input || !label) return;
   input.value = "";
   input.type = "text";
   input.setAttribute("inputmode", "numeric");
+  input.setAttribute("pattern", "[0-9]*");
   label.textContent = "Number";
+
   input.oninput = () => {
     input.value = input.value.replace(/[^0-9]/g, "");
   };
+
+  if (type === "login") loginMode = "phone";
+  if (type === "register") registerMode = "phone";
 }
 
-function setEmailMode(input, label) {
-  if (!input || !label) return;
+
+function setEmailMode(input, label, type) {
+
   input.value = "";
   input.type = "email";
   input.removeAttribute("inputmode");
+  input.removeAttribute("pattern");
   label.textContent = "Email";
-  input.oninput = null;
-}
 
-setPhoneMode(loginInput, loginLabel);
-setPhoneMode(regInput, regLabel);
+  input.oninput = null;
+
+  if (type === "login") loginMode = "email";
+  if (type === "register") registerMode = "email";
+}
 
 
 /* =====================================================
@@ -451,6 +484,7 @@ document.getElementById("inscriptionForm")
 
   e.preventDefault();
 
+  const regInput = document.getElementById("regEmail");
   const rawValue = regInput.value.trim();
   const password = document.getElementById("regPass").value;
   const terms = document.getElementById("termsCheck").checked;
@@ -473,10 +507,7 @@ document.getElementById("inscriptionForm")
     const res = await fetch("/api/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        identifier,
-        password
-      })
+      body: JSON.stringify({ identifier, password })
     });
 
     const data = await res.json();
@@ -509,6 +540,7 @@ document.getElementById("loginForm")
 
   e.preventDefault();
 
+  const loginInput = document.getElementById("loginEmail");
   const rawValue = loginInput.value.trim();
   const password = document.getElementById("loginPass").value;
 
@@ -519,10 +551,7 @@ document.getElementById("loginForm")
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        identifier: rawValue,
-        password
-      })
+      body: JSON.stringify({ identifier: rawValue, password })
     });
 
     const data = await res.json();
@@ -546,21 +575,17 @@ document.getElementById("loginForm")
 
 
 /* =====================================================
-   OTP COUNTDOWN (1 MIN)
+   OTP + MODAL (MITOVY TAMIN’NY ANAO)
 ===================================================== */
 
 function startOtpCountdown(seconds = 59) {
-
   clearInterval(otpCountdownInterval);
   otpRemainingSeconds = seconds;
-
   resendBtn.disabled = true;
   resendBtn.textContent = otpRemainingSeconds;
 
   otpCountdownInterval = setInterval(() => {
-
     otpRemainingSeconds--;
-
     if (otpRemainingSeconds <= 0) {
       clearInterval(otpCountdownInterval);
       resendBtn.disabled = false;
@@ -568,60 +593,42 @@ function startOtpCountdown(seconds = 59) {
     } else {
       resendBtn.textContent = otpRemainingSeconds;
     }
-
   }, 1000);
 }
 
-
-/* =====================================================
-   HOUR LIMIT COUNTDOWN
-===================================================== */
-
 function startHourCountdown(seconds) {
-
   clearInterval(hourCountdownInterval);
   hourRemainingSeconds = seconds;
-
   resendBtn.disabled = true;
-  resendBtn.textContent = "Wait";
 
-  function updateDisplay() {
-
+  function update() {
     if (hourRemainingSeconds <= 0) {
       clearInterval(hourCountdownInterval);
-      otpError.textContent = "";
       resendBtn.disabled = false;
       resendBtn.textContent = "Resend";
+      otpError.textContent = "";
       return;
     }
 
-    const minutes = Math.floor(hourRemainingSeconds / 60);
-    const secondsLeft = hourRemainingSeconds % 60;
+    const m = Math.floor(hourRemainingSeconds / 60);
+    const s = hourRemainingSeconds % 60;
 
     otpError.textContent =
-      minutes > 0
-        ? `Try again in ${minutes}m`
-        : `Try again in ${secondsLeft}s`;
+      m > 0 ? `Try again in ${m}m` : `Try again in ${s}s`;
 
     hourRemainingSeconds--;
-
   }
 
-  updateDisplay();
-  hourCountdownInterval = setInterval(updateDisplay, 1000);
+  update();
+  hourCountdownInterval = setInterval(update, 1000);
 }
-
-
-/* =====================================================
-   VERIFY OTP
-===================================================== */
 
 async function verifyOTP() {
 
   otpError.textContent = "";
   const otp = document.getElementById("otpInput").value.trim();
 
-  if (!otp || otp.length !== 6) {
+  if (otp.length !== 6) {
     otpError.textContent = "Invalid 6-digit code.";
     return;
   }
@@ -644,7 +651,7 @@ async function verifyOTP() {
 
     if (res.ok && data.success) {
       closeOtpModal();
-      alert("Verified successfully! You can now login.");
+      alert("Verified successfully!");
     } else {
       otpError.textContent = data.error || "Verification failed.";
     }
@@ -657,18 +664,12 @@ async function verifyOTP() {
   verifyBtn.textContent = "Verify";
 }
 
-
-/* =====================================================
-   RESEND OTP
-===================================================== */
-
 async function resendOTP() {
 
   if (!currentVerificationIdentifier) return;
 
   resendBtn.disabled = true;
   resendBtn.textContent = "Sending...";
-  otpError.textContent = "";
 
   try {
 
@@ -687,31 +688,23 @@ async function resendOTP() {
     } else if (data.retryAfter) {
       startHourCountdown(data.retryAfter);
     } else {
-      otpError.textContent = data.error || "Error resending OTP.";
+      otpError.textContent = data.error;
       resendBtn.disabled = false;
       resendBtn.textContent = "Resend";
     }
 
   } catch {
-    otpError.textContent = "Server error.";
     resendBtn.disabled = false;
     resendBtn.textContent = "Resend";
+    otpError.textContent = "Server error.";
   }
-
 }
-
-
-/* =====================================================
-   MODAL CONTROL
-===================================================== */
 
 function openOtpModal(identifier) {
   currentVerificationIdentifier = identifier;
-
   document.getElementById("otpModal").style.display = "flex";
   document.getElementById("otpInput").value = "";
   document.getElementById("otpInput").focus();
-
   otpError.textContent = "";
   startOtpCountdown(59);
 }
