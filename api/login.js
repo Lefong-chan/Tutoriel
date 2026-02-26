@@ -108,20 +108,20 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    /* ================= EMAIL VERIFIED ================= */
-
-    if (userData.email && !userData.emailVerified)
-      return res.status(403).json({
-        error: "Email not verified",
-        emailNotVerified: true
-      });
-      
-    /* ================= PHONE VERIFIED ================= */
+    // ================= EMAIL VERIFIED =================
     
-    if (userData.phone && !userData.phoneVerified)
-      return res.status(403).json({
-        error: "Phone not verified",
-        phoneNotVerified: true
+    if (value.includes("@") && !userData.emailVerified)
+    return res.status(403).json({
+      error: "Email not verified",
+      emailNotVerified: true
+    });
+    
+    // ================= PHONE VERIFIED =================
+    
+    if (!value.includes("@") && !userData.phoneVerified)
+    return res.status(403).json({
+      error: "Phone not verified",
+      phoneNotVerified: true
     });
 
     /* ================= SUCCESS ================= */
