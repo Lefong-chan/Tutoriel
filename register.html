@@ -72,8 +72,9 @@
 
 /* Card */
 .otp-card{
+  position: relative;
   background:#ffffff;
-  padding:30px 25px;
+  padding:30px 25px 55px 25px;
   width:380px;
   max-width:100%;
   border-radius:18px;
@@ -100,6 +101,7 @@
 /* Input + Resend group */
 .otp-input-group{
   display:flex;
+  align-items:center;
   gap:10px;
   margin-bottom:20px;
   width:100%;
@@ -124,7 +126,7 @@
 /* Resend button */
 .resend-btn{
   width: 80px;
-  height: 38px;
+  height: 36px;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -202,12 +204,21 @@
   to{opacity:1; transform:translateY(0);}
 }
 
-.otp-error {
-  min-height: 20px;
-  font-size: 13px;
-  color: #dc2626;
-  margin-bottom: 12px;
-  text-align: left;
+.otp-error{
+  position:absolute;
+  left:25px;
+  right:25px;
+  bottom:20px;
+  min-height:18px;
+  font-size:13px;
+  color:#dc2626;
+  text-align:left;
+  opacity:0;
+  transition:opacity .2s ease;
+}
+
+.otp-error:not(:empty){
+  opacity:1;
 }
 
 .resend-btn:disabled {
