@@ -10,16 +10,15 @@ if (!process.env.FIREBASE_KEY) {
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
-
+  
   if (serviceAccount.private_key) {
     serviceAccount.private_key =
       serviceAccount.private_key.replace(/\\n/g, "\n");
   }
-
+  
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL:
-      "https://tutoriel-ff487-default-rtdb.firebaseio.com/"
+    databaseURL: "https://tutoriel-ff487-default-rtdb.firebaseio.com/"
   });
 }
 
@@ -28,12 +27,12 @@ const db = admin.database();
 async function generateUID() {
   let uid;
   let snapshot;
-
+  
   do {
     uid = Math.floor(100000000 + Math.random() * 900000000).toString();
     snapshot = await db.ref("users/" + uid).get();
   } while (snapshot.exists());
-
+  
   return uid;
 }
 
@@ -42,71 +41,72 @@ function generateOTP() {
 }
 
 export default async function handler(req, res) {
-
+  
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
+  
   if (allowedOrigin && req.headers.origin !== allowedOrigin) {
     return res.status(403).json({ error: "Forbidden" });
   }
-
+  
   const { email, phone, password } = req.body;
-
+  
   if ((!email && !phone) || !password || password.length < 6) {
     return res.status(400).json({
       error: "Email or phone and valid password required"
     });
   }
-
+  
   try {
-
+    
     let emailLower = null;
     let phoneClean = null;
-
+    
     if (email) {
       emailLower = email.toLowerCase().trim();
-
+      
       const existingEmail = await db
         .ref("users")
         .orderByChild("email")
         .equalTo(emailLower)
         .limitToFirst(1)
         .get();
-
+      
       if (existingEmail.exists()) {
         return res.status(400).json({
           error: "Email already registered"
         });
       }
     }
-
+    
     if (phone) {
       phoneClean = phone.trim();
-
+      
       const existingPhone = await db
         .ref("users")
         .orderByChild("phone")
         .equalTo(phoneClean)
         .limitToFirst(1)
         .get();
-
+      
       if (existingPhone.exists()) {
         return res.status(400).json({
           error: "Phone already registered"
         });
       }
     }
-
+    
     const hashed = await bcrypt.hash(password, 12);
     const uid = await generateUID();
-
-    // Generate OTP only if email exists
+    
+    // === OTP 1 MINUTE EXPIRATION ===
     const otp = emailLower ? generateOTP() : null;
-    const otpExpires = emailLower
-      ? Date.now() + (10 * 60 * 1000)
-      : null;
-
+    const otpExpires = emailLower ?
+      Date.now() + (1 * 60 * 1000)
+      :
+      null;
+    
     await db.ref("users/" + uid).set({
       uid,
       email: emailLower,
@@ -118,17 +118,16 @@ export default async function handler(req, res) {
       otpExpires: otpExpires,
       createdAt: Date.now()
     });
-
-    // Send verification email automatically
+    
     if (emailLower) {
       await sendOTPEmail(emailLower, otp);
     }
-
+    
     return res.status(201).json({
       success: true,
       emailVerificationRequired: !!emailLower
     });
-
+    
   } catch (err) {
     console.error("REGISTER ERROR:", err);
     return res.status(500).json({ error: "Server error" });
