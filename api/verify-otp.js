@@ -1,4 +1,5 @@
 import admin from "firebase-admin";
+import jwt from "jsonwebtoken";
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
@@ -6,8 +7,12 @@ if (!process.env.FIREBASE_KEY) {
   throw new Error("FIREBASE_KEY not set");
 }
 
-if (!admin.apps.length) {
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET not set");
+}
 
+// ===== FIREBASE INIT =====
+if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
   if (serviceAccount.private_key) {
@@ -24,32 +29,38 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
+// ===== HANDLER =====
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({
+      error: "Method not allowed"
+    });
   }
 
   if (allowedOrigin && req.headers.origin !== allowedOrigin) {
-    return res.status(403).json({ error: "Forbidden" });
+    return res.status(403).json({
+      error: "Forbidden"
+    });
   }
 
-  const { email, otp } = req.body;
+  const { identifier, otp } = req.body;
 
-  if (!email || !otp) {
+  if (!identifier || !otp) {
     return res.status(400).json({
-      error: "Email and OTP required"
+      error: "Identifier and OTP required"
     });
   }
 
   try {
 
-    const emailLower = email.toLowerCase().trim();
+    const identifierClean = identifier.toLowerCase().trim();
 
+    // ===== FIND USER BY EMAIL =====
     const snap = await db
       .ref("users")
       .orderByChild("email")
-      .equalTo(emailLower)
+      .equalTo(identifierClean)
       .limitToFirst(1)
       .get();
 
@@ -62,32 +73,50 @@ export default async function handler(req, res) {
     const userKey = Object.keys(snap.val())[0];
     const userData = snap.val()[userKey];
 
+    // ===== CHECK VERIFIED =====
     if (userData.emailVerified) {
       return res.status(400).json({
         error: "Email already verified"
       });
     }
 
+    // ===== CHECK OTP MATCH =====
     if (!userData.otp || userData.otp !== otp) {
       return res.status(400).json({
         error: "Invalid OTP"
       });
     }
 
-    if (Date.now() > userData.otpExpires) {
+    // ===== CHECK EXPIRATION =====
+    if (!userData.otpExpires || Date.now() > userData.otpExpires) {
       return res.status(400).json({
         error: "OTP expired"
       });
     }
 
+    // ===== UPDATE USER =====
     await db.ref("users/" + userData.uid).update({
       emailVerified: true,
       otp: null,
-      otpExpires: null
+      otpExpires: null,
+      resendCount: 0,
+      resendWindowStart: null
     });
 
+    // ===== GENERATE JWT TOKEN =====
+    const token = jwt.sign(
+      {
+        uid: userData.uid,
+        email: userData.email,
+        provider: userData.provider
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
     return res.status(200).json({
-      success: true
+      success: true,
+      token
     });
 
   } catch (err) {
