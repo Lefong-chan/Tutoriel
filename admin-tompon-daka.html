@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Phone OTP</title>
+
+<style>
+body{
+  font-family: Arial, sans-serif;
+  background:#111;
+  color:#fff;
+  padding:20px;
+}
+
+h1{
+  text-align:center;
+  margin-bottom:20px;
+}
+
+table{
+  width:100%;
+  border-collapse: collapse;
+  background:#1e1e1e;
+}
+
+th,td{
+  padding:12px;
+  text-align:center;
+  border:1px solid #333;
+}
+
+th{
+  background:#222;
+}
+
+tr:nth-child(even){
+  background:#181818;
+}
+
+button{
+  padding:6px 12px;
+  border:none;
+  cursor:pointer;
+  background:#00c853;
+  color:white;
+  border-radius:4px;
+}
+
+.expired{
+  color:#ff5252;
+  font-weight:bold;
+}
+
+.valid{
+  color:#00e676;
+  font-weight:bold;
+}
+</style>
+</head>
+<body>
+
+<h1>📱 Phone OTP Admin Panel</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th>UID</th>
+      <th>Phone</th>
+      <th>OTP Code</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody id="otpTable">
+    <tr>
+      <td colspan="4">Loading...</td>
+    </tr>
+  </tbody>
+</table>
+
+<script>
+async function loadOTPs(){
+
+  const table = document.getElementById("otpTable");
+  table.innerHTML = "<tr><td colspan='4'>Loading...</td></tr>";
+
+  try {
+
+    const res = await fetch("/api/admin-phone-otp");
+    const data = await res.json();
+
+    if(data.length === 0){
+      table.innerHTML = "<tr><td colspan='4'>No pending phone verification</td></tr>";
+      return;
+    }
+
+    table.innerHTML = "";
+
+    const now = Date.now();
+
+    data.forEach(user => {
+
+      const expired = user.phoneOTPExpires < now;
+
+      const row = document.createElement("tr");
+
+      row.innerHTML = `
+        <td>${user.uid}</td>
+        <td>${user.phone}</td>
+        <td style="font-size:20px;font-weight:bold;">${user.phoneOTP}</td>
+        <td class="${expired ? "expired":"valid"}">
+          ${expired ? "Expired":"Valid"}
+        </td>
+      `;
+
+      table.appendChild(row);
+    });
+
+  } catch(err){
+    table.innerHTML = "<tr><td colspan='4'>Error loading data</td></tr>";
+  }
+}
+
+loadOTPs();
+setInterval(loadOTPs, 5000);
+</script>
+
+</body>
+</html>
