@@ -4,6 +4,7 @@ import { sendOTPEmail } from "./mailer.js";
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
+// ===== FIREBASE INIT =====
 if (!process.env.FIREBASE_KEY) {
   throw new Error("FIREBASE_KEY not set");
 }
@@ -24,30 +25,42 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
+// ===== HELPERS =====
 async function generateUID() {
   let uid;
   let snapshot;
   
   do {
-    uid = Math.floor(100000000 + Math.random() * 900000000).toString();
+    uid = Math.floor(
+      100000000 + Math.random() * 900000000
+    ).toString();
+    
     snapshot = await db.ref("users/" + uid).get();
+    
   } while (snapshot.exists());
   
   return uid;
 }
 
 function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(
+    100000 + Math.random() * 900000
+  ).toString();
 }
 
+// ===== HANDLER =====
 export default async function handler(req, res) {
   
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({
+      error: "Method not allowed"
+    });
   }
   
   if (allowedOrigin && req.headers.origin !== allowedOrigin) {
-    return res.status(403).json({ error: "Forbidden" });
+    return res.status(403).json({
+      error: "Forbidden"
+    });
   }
   
   const { email, phone, password } = req.body;
@@ -63,7 +76,9 @@ export default async function handler(req, res) {
     let emailLower = null;
     let phoneClean = null;
     
+    // ===== CHECK EMAIL =====
     if (email) {
+      
       emailLower = email.toLowerCase().trim();
       
       const existingEmail = await db
@@ -80,7 +95,9 @@ export default async function handler(req, res) {
       }
     }
     
+    // ===== CHECK PHONE =====
     if (phone) {
+      
       phoneClean = phone.trim();
       
       const existingPhone = await db
@@ -97,28 +114,41 @@ export default async function handler(req, res) {
       }
     }
     
+    // ===== HASH PASSWORD =====
     const hashed = await bcrypt.hash(password, 12);
+    
     const uid = await generateUID();
     
-    // === OTP 1 MINUTE EXPIRATION ===
+    const now = Date.now();
+    
+    // ===== OTP CONFIG =====
     const otp = emailLower ? generateOTP() : null;
     const otpExpires = emailLower ?
-      Date.now() + (1 * 60 * 1000)
+      now + (1 * 60 * 1000) // 1 minute
       :
       null;
     
+    // ===== SAVE USER =====
     await db.ref("users/" + uid).set({
       uid,
       email: emailLower,
       phone: phoneClean,
       password: hashed,
       provider: "local",
+      
       emailVerified: emailLower ? false : true,
+      
       otp: otp,
       otpExpires: otpExpires,
-      createdAt: Date.now()
+      
+      // IMPORTANT FOR RESEND RATE LIMIT
+      resendCount: 0,
+      resendWindowStart: now,
+      
+      createdAt: now
     });
     
+    // ===== SEND OTP EMAIL =====
     if (emailLower) {
       await sendOTPEmail(emailLower, otp);
     }
@@ -129,7 +159,11 @@ export default async function handler(req, res) {
     });
     
   } catch (err) {
+    
     console.error("REGISTER ERROR:", err);
-    return res.status(500).json({ error: "Server error" });
+    
+    return res.status(500).json({
+      error: "Server error"
+    });
   }
 }
