@@ -1,11 +1,15 @@
 import admin from "firebase-admin";
 import jwt from "jsonwebtoken";
 
-const allowedOrigin = process.env.ALLOWED_ORIGIN;
 const SECRET = process.env.JWT_SECRET;
 
-if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
-if (!SECRET) throw new Error("JWT_SECRET not set");
+if (!process.env.FIREBASE_KEY) {
+  throw new Error("FIREBASE_KEY not set");
+}
+
+if (!SECRET) {
+  throw new Error("JWT_SECRET not set");
+}
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -29,79 +33,50 @@ export default async function handler(req, res) {
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
-  if (allowedOrigin && req.headers.origin !== allowedOrigin)
-    return res.status(403).json({ error: "Forbidden" });
+  const { phone, otp } = req.body;
 
-  const { identifier, otp } = req.body;
-
-  if (!identifier || !otp)
-    return res.status(400).json({ error: "Identifier and OTP required" });
+  if (!phone || !otp)
+    return res.status(400).json({ error: "Phone and OTP required" });
 
   try {
 
-    const idClean = identifier.toLowerCase().trim();
-
     const snap = await db
       .ref("users")
-      .orderByChild("email")
-      .equalTo(idClean)
+      .orderByChild("phone")
+      .equalTo(phone)
       .limitToFirst(1)
       .get();
 
     if (!snap.exists())
       return res.status(400).json({ error: "User not found" });
 
-    const userKey = Object.keys(snap.val())[0];
-    const userData = snap.val()[userKey];
+    const userData = Object.values(snap.val())[0];
 
-    if (userData.emailVerified)
-      return res.status(400).json({ error: "Email already verified" });
+    if (userData.phoneVerified)
+      return res.status(400).json({ error: "Phone already verified" });
 
-    /* ================= OTP ATTEMPT LIMIT ================= */
+    if (!userData.phoneOTP || userData.phoneOTP !== otp)
+      return res.status(400).json({ error: "Invalid code" });
 
-    const maxAttempts = 5;
-    const attempts = userData.otpAttempts || 0;
+    if (Date.now() > userData.phoneOTPExpires)
+      return res.status(400).json({ error: "Code expired" });
 
-    if (attempts >= maxAttempts) {
-      return res.status(429).json({
-        error: "Too many incorrect attempts"
-      });
-    }
-
-    if (!userData.otp || userData.otp !== otp) {
-
-      await db.ref("users/" + userData.uid).update({
-        otpAttempts: attempts + 1
-      });
-
-      return res.status(400).json({ error: "Invalid OTP" });
-    }
-
-    if (!userData.otpExpires || Date.now() > userData.otpExpires)
-      return res.status(400).json({ error: "OTP expired" });
-
-    /* ================= SUCCESS ================= */
-
+    // SUCCESS
     await db.ref("users/" + userData.uid).update({
-      emailVerified: true,
-      otp: null,
-      otpExpires: null,
-      otpAttempts: 0,
-      resendCount: 0,
-      resendWindowStart: null
+      phoneVerified: true,
+      phoneOTP: null,
+      phoneOTPExpires: null
     });
 
     const token = jwt.sign(
       {
         uid: userData.uid,
-        email: userData.email,
+        phone: userData.phone,
         provider: userData.provider
       },
       SECRET,
       { expiresIn: "7d" }
     );
-
-    /* ================= HTTP ONLY COOKIE ================= */
 
     res.setHeader("Set-Cookie", `
       token=${token};
@@ -112,13 +87,10 @@ export default async function handler(req, res) {
       Max-Age=${7 * 24 * 60 * 60}
     `.replace(/\s+/g, " ").trim());
 
-    return res.status(200).json({
-      success: true
-    });
+    return res.json({ success: true });
 
   } catch (err) {
-
-    console.error("VERIFY OTP ERROR:", err);
+    console.error(err);
     return res.status(500).json({ error: "Server error" });
   }
 }
