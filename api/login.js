@@ -1,9 +1,15 @@
+// login.js
+
 import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const SECRET = process.env.JWT_SECRET;
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
+
+/* =====================================================
+   ENV CHECK
+===================================================== */
 
 if (!SECRET) {
   throw new Error("JWT_SECRET not set");
@@ -12,6 +18,10 @@ if (!SECRET) {
 if (!process.env.FIREBASE_KEY) {
   throw new Error("FIREBASE_KEY not set");
 }
+
+/* =====================================================
+   FIREBASE INIT
+===================================================== */
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -30,26 +40,40 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
+/* =====================================================
+   HANDLER
+===================================================== */
+
 export default async function handler(req, res) {
 
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({
+      error: "Method not allowed"
+    });
   }
 
   if (allowedOrigin && req.headers.origin !== allowedOrigin) {
-    return res.status(403).json({ error: "Forbidden" });
+    return res.status(403).json({
+      error: "Forbidden"
+    });
   }
 
   const { identifier, password } = req.body;
 
   if (!identifier || !password) {
-    return res.status(400).json({ error: "Invalid credentials" });
+    return res.status(400).json({
+      error: "Invalid credentials"
+    });
   }
 
   try {
 
-    let snap;
     const value = identifier.trim();
+    let snap;
+
+    /* =====================================================
+       FIND USER (EMAIL OR PHONE)
+    ===================================================== */
 
     if (value.includes("@")) {
 
@@ -73,10 +97,26 @@ export default async function handler(req, res) {
     }
 
     if (!snap.exists()) {
-      return res.status(400).json({ error: "Invalid credentials" });
+      return res.status(400).json({
+        error: "Invalid credentials"
+      });
     }
 
     const userData = Object.values(snap.val())[0];
+
+    /* =====================================================
+       PROVIDER CHECK
+    ===================================================== */
+
+    if (userData.provider !== "local") {
+      return res.status(400).json({
+        error: "Use correct login method"
+      });
+    }
+
+    /* =====================================================
+       PASSWORD CHECK
+    ===================================================== */
 
     const isMatch = await bcrypt.compare(
       password,
@@ -84,8 +124,14 @@ export default async function handler(req, res) {
     );
 
     if (!isMatch) {
-      return res.status(400).json({ error: "Invalid credentials" });
+      return res.status(400).json({
+        error: "Invalid credentials"
+      });
     }
+
+    /* =====================================================
+       EMAIL VERIFICATION CHECK
+    ===================================================== */
 
     if (userData.email && !userData.emailVerified) {
       return res.status(403).json({
@@ -94,14 +140,19 @@ export default async function handler(req, res) {
       });
     }
 
+    /* =====================================================
+       GENERATE JWT
+    ===================================================== */
+
     const token = jwt.sign(
       {
         uid: userData.uid,
         email: userData.email || null,
-        phone: userData.phone || null
+        phone: userData.phone || null,
+        provider: userData.provider
       },
       SECRET,
-      { expiresIn: "2h" }
+      { expiresIn: "7d" } // match verify-otp
     );
 
     return res.status(200).json({
@@ -110,7 +161,8 @@ export default async function handler(req, res) {
       user: {
         uid: userData.uid,
         email: userData.email || null,
-        phone: userData.phone || null
+        phone: userData.phone || null,
+        provider: userData.provider
       }
     });
 
