@@ -1,9 +1,13 @@
-// admin-phone-otp.js
-
 import admin from "firebase-admin";
+
+const PANEL_PASSWORD = process.env.ADMIN_PANEL_PASSWORD;
 
 if (!process.env.FIREBASE_KEY) {
   throw new Error("FIREBASE_KEY not set");
+}
+
+if (!PANEL_PASSWORD) {
+  throw new Error("ADMIN_PANEL_PASSWORD not set");
 }
 
 if (!admin.apps.length) {
@@ -25,8 +29,16 @@ const db = admin.database();
 
 export default async function handler(req, res) {
 
-  if (req.method !== "GET") {
+  // Method check
+  if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // Password check
+  const { password } = req.body;
+
+  if (!password || password !== PANEL_PASSWORD) {
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
   try {
@@ -51,7 +63,7 @@ export default async function handler(req, res) {
     return res.json(result);
 
   } catch (err) {
-    console.error(err);
+    console.error("Admin OTP error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 }
