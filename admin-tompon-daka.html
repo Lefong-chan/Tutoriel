@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Phone OTP</title>
+<title>🔐 Admin Phone OTP</title>
 
 <style>
 body{
@@ -49,7 +49,7 @@ button:hover{
 
 table{
   width:100%;
-  margin-top:30px;
+  margin-top:20px;
   border-collapse:collapse;
   background:#1e1e1e;
 }
@@ -82,6 +82,18 @@ tr:nth-child(even){
   background:#ff1744;
   margin-bottom:15px;
 }
+
+.refresh{
+  background:#2962ff;
+  margin-bottom:15px;
+  margin-left:10px;
+}
+
+.top-bar{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+}
 </style>
 </head>
 <body>
@@ -98,7 +110,10 @@ tr:nth-child(even){
 
 <div id="panel" style="display:none;">
 
-  <button class="logout" onclick="logout()">Logout</button>
+  <div class="top-bar">
+    <button class="logout" onclick="logout()">Logout</button>
+    <button class="refresh" onclick="loadOTPs()">🔄 Refresh</button>
+  </div>
 
   <table>
     <thead>
@@ -111,7 +126,7 @@ tr:nth-child(even){
     </thead>
     <tbody id="otpTable">
       <tr>
-        <td colspan="4">Loading...</td>
+        <td colspan="4">Click Refresh to load data</td>
       </tr>
     </tbody>
   </table>
@@ -121,7 +136,6 @@ tr:nth-child(even){
 <script>
 
 let savedPassword = "";
-let interval = null;
 
 async function login(){
 
@@ -147,14 +161,10 @@ async function login(){
 
   document.getElementById("loginBox").style.display="none";
   document.getElementById("panel").style.display="block";
-
-  loadOTPs();
-  interval = setInterval(loadOTPs, 5000);
 }
 
 function logout(){
   savedPassword="";
-  clearInterval(interval);
   document.getElementById("panel").style.display="none";
   document.getElementById("loginBox").style.display="block";
 }
