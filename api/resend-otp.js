@@ -73,8 +73,9 @@ export default async function handler(req, res) {
       });
     }
 
+    // === NEW OTP WITH 1 MINUTE EXPIRATION ===
     const newOTP = generateOTP();
-    const newExpiry = Date.now() + (10 * 60 * 1000);
+    const newExpiry = Date.now() + (1 * 60 * 1000); // 1 minute
 
     await db.ref("users/" + userData.uid).update({
       otp: newOTP,
