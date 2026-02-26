@@ -2,13 +2,11 @@ import admin from "firebase-admin";
 
 const PANEL_PASSWORD = process.env.ADMIN_PANEL_PASSWORD;
 
-if (!process.env.FIREBASE_KEY) {
+if (!process.env.FIREBASE_KEY)
   throw new Error("FIREBASE_KEY not set");
-}
 
-if (!PANEL_PASSWORD) {
+if (!PANEL_PASSWORD)
   throw new Error("ADMIN_PANEL_PASSWORD not set");
-}
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -29,36 +27,47 @@ const db = admin.database();
 
 export default async function handler(req, res) {
 
-  // Method check
-  if (req.method !== "POST") {
+  if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
-  }
 
-  // Password check
-  const { password } = req.body;
+  const { password, type } = req.body;
 
-  if (!password || password !== PANEL_PASSWORD) {
+  if (!password || password !== PANEL_PASSWORD)
     return res.status(401).json({ error: "Unauthorized" });
-  }
 
   try {
 
     const snap = await db.ref("users").get();
 
-    if (!snap.exists()) {
+    if (!snap.exists())
       return res.json([]);
-    }
 
     const users = snap.val();
+    const result = [];
 
-    const result = Object.values(users)
-      .filter(u => u.phone && u.phoneOTP && !u.phoneVerified)
-      .map(u => ({
-        uid: u.uid,
-        phone: u.phone,
-        phoneOTP: u.phoneOTP,
-        phoneOTPExpires: u.phoneOTPExpires
-      }));
+    Object.values(users).forEach(u => {
+
+      // PHONE TAB
+      if (type === "phone" && u.phone && u.phoneOTP && !u.phoneVerified) {
+        result.push({
+          uid: u.uid,
+          identifier: u.phone,
+          otp: u.phoneOTP,
+          expires: u.phoneOTPExpires
+        });
+      }
+
+      // EMAIL TAB
+      if (type === "email" && u.email && u.otp && !u.emailVerified) {
+        result.push({
+          uid: u.uid,
+          identifier: u.email,
+          otp: u.otp,
+          expires: u.otpExpires
+        });
+      }
+
+    });
 
     return res.json(result);
 
