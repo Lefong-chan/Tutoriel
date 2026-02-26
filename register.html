@@ -355,36 +355,39 @@ let registerMode = "phone";
    DOM READY
 ===================================================== */
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
 
-  /* ===== AUTO REDIRECT IF LOGGED ===== */
-  const token = localStorage.getItem("token");
-  if (token) {
-    window.location.href = "dashboard.html";
-    return;
-  }
-
-  const container = document.getElementById('container');
-
-  document.getElementById('inscriptionToggleBtn')
-    ?.addEventListener('click', () => container?.classList.add('active'));
-
-  document.getElementById('loginToggleBtn')
-    ?.addEventListener('click', () => container?.classList.remove('active'));
-
-  document.getElementById('toRegMobile')
-    ?.addEventListener('click', e => {
-      e.preventDefault();
-      container?.classList.add('active');
+  // Check session using cookie
+  try {
+    const res = await fetch("/api/me", {
+      credentials: "include"
     });
 
-  document.getElementById('mobileLoginBtn')
-    ?.addEventListener('click', e => {
+    if (res.ok) {
+      window.location.href = "dashboard.html";
+      return;
+    }
+  } catch (e) {}
+
+  const container = document.getElementById("container");
+
+  document.getElementById("inscriptionToggleBtn")
+    ?.addEventListener("click", () => container?.classList.add("active"));
+
+  document.getElementById("loginToggleBtn")
+    ?.addEventListener("click", () => container?.classList.remove("active"));
+
+  document.getElementById("toRegMobile")
+    ?.addEventListener("click", e => {
       e.preventDefault();
-      container?.classList.remove('active');
+      container?.classList.add("active");
     });
 
-  /* ===== OTP ELEMENTS ===== */
+  document.getElementById("mobileLoginBtn")
+    ?.addEventListener("click", e => {
+      e.preventDefault();
+      container?.classList.remove("active");
+    });
 
   resendBtn = document.getElementById("resendBtn");
   verifyBtn = document.getElementById("verifyBtn");
@@ -393,30 +396,10 @@ document.addEventListener("DOMContentLoaded", () => {
   resendBtn?.addEventListener("click", resendOTP);
   verifyBtn?.addEventListener("click", verifyOTP);
 
-  const otpInput = document.getElementById("otpInput");
-
-  otpInput?.addEventListener("keypress", e => {
-    if (e.key === "Enter") verifyOTP();
-  });
-
-  otpInput?.addEventListener("input", function () {
-    this.value = this.value.replace(/[^0-9]/g, "");
-  });
-
-  /* ===== PASSWORD TOGGLE ===== */
-
-  document.querySelectorAll(".toggle-password").forEach(icon => {
-    icon.addEventListener("click", function () {
-      const input = this.parentElement.querySelector("input");
-      if (!input) return;
-
-      const isPassword = input.type === "password";
-      input.type = isPassword ? "text" : "password";
-
-      this.classList.toggle('fa-eye', isPassword);
-      this.classList.toggle('fa-eye-slash', !isPassword);
+  document.getElementById("otpInput")
+    ?.addEventListener("input", function () {
+      this.value = this.value.replace(/[^0-9]/g, "");
     });
-  });
 
   setupModeToggle("login");
   setupModeToggle("register");
@@ -449,26 +432,19 @@ function setupModeToggle(type) {
   setPhoneMode(input, label, type);
 
   phoneIcon?.addEventListener("click", () => {
-    if (type === "login" && loginMode === "phone") return;
-    if (type === "register" && registerMode === "phone") return;
     setPhoneMode(input, label, type);
   });
 
   emailIcon?.addEventListener("click", () => {
-    if (type === "login" && loginMode === "email") return;
-    if (type === "register" && registerMode === "email") return;
     setEmailMode(input, label, type);
   });
 }
 
 function setPhoneMode(input, label, type) {
-
   input.value = "";
   input.type = "text";
   input.setAttribute("inputmode", "numeric");
-  input.setAttribute("pattern", "[0-9]*");
   label.textContent = "Number";
-
   input.oninput = () => {
     input.value = input.value.replace(/[^0-9]/g, "");
   };
@@ -478,13 +454,10 @@ function setPhoneMode(input, label, type) {
 }
 
 function setEmailMode(input, label, type) {
-
   input.value = "";
   input.type = "email";
   input.removeAttribute("inputmode");
-  input.removeAttribute("pattern");
   label.textContent = "Email";
-
   input.oninput = null;
 
   if (type === "login") loginMode = "email";
@@ -508,14 +481,25 @@ document.getElementById("inscriptionForm")
   if (!terms) return alert("Accept Terms first.");
   if (password.length < 6) return alert("Password too short.");
 
-  let identifier;
+  let bodyData = {};
+  let identifierForOTP = null;
 
   if (registerMode === "email") {
-    if (!rawValue.includes("@")) return alert("Invalid email.");
-    identifier = rawValue.toLowerCase();
+
+    if (!rawValue.includes("@"))
+      return alert("Invalid email.");
+
+    const emailLower = rawValue.toLowerCase();
+
+    bodyData = { email: emailLower, password };
+    identifierForOTP = emailLower;
+
   } else {
-    if (rawValue.length < 8) return alert("Invalid phone.");
-    identifier = rawValue;
+
+    if (rawValue.length < 8)
+      return alert("Invalid phone.");
+
+    bodyData = { phone: rawValue, password };
   }
 
   try {
@@ -523,16 +507,16 @@ document.getElementById("inscriptionForm")
     const res = await fetch("/api/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier, password })
+      credentials: "include",
+      body: JSON.stringify(bodyData)
     });
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
-    if (data.emailVerificationRequired) {
-      openOtpModal(identifier);
-    } else if (data.token) {
-      localStorage.setItem("token", data.token);
+    if (data.emailVerificationRequired && identifierForOTP) {
+      openOtpModal(identifierForOTP);
+    } else {
       window.location.href = "dashboard.html";
     }
 
@@ -568,18 +552,22 @@ document.getElementById("loginForm")
     const res = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ identifier, password })
     });
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
 
-    if (data.token) {
-      localStorage.setItem("token", data.token);
-      window.location.href = "dashboard.html";
-    } else if (data.emailNotVerified) {
-      openOtpModal(identifier);
-    }
+    if (res.status === 429)
+      return alert(data.error);
+
+    if (res.status === 403 && data.emailNotVerified)
+      return openOtpModal(identifier);
+
+    if (!res.ok)
+      throw new Error(data.error);
+
+    window.location.href = "dashboard.html";
 
   } catch (err) {
     alert(err.message || "Login failed.");
@@ -617,7 +605,6 @@ function startOtpCountdown(seconds = 59) {
 function startHourCountdown(seconds) {
 
   clearInterval(hourCountdownInterval);
-
   resendBtn.disabled = true;
 
   function update() {
@@ -661,6 +648,7 @@ async function verifyOTP() {
     const res = await fetch("/api/verify-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         identifier: currentVerificationIdentifier,
         otp
@@ -668,17 +656,18 @@ async function verifyOTP() {
     });
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
 
-    clearInterval(otpCountdownInterval);
-    clearInterval(hourCountdownInterval);
+    if (res.status === 429)
+      throw new Error(data.error);
 
-    if (data.token)
-      localStorage.setItem("token", data.token);
+    if (!res.ok)
+      throw new Error(data.error);
 
+    closeOtpModal();
     window.location.href = "dashboard.html";
 
   } catch (err) {
+
     otpError.textContent = err.message || "Verification failed.";
     verifyBtn.disabled = false;
     verifyBtn.textContent = "Verify";
@@ -697,6 +686,7 @@ async function resendOTP() {
     const res = await fetch("/api/resend-otp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         identifier: currentVerificationIdentifier
       })
@@ -713,6 +703,7 @@ async function resendOTP() {
     startOtpCountdown(59);
 
   } catch (err) {
+
     otpError.textContent = err.message || "Server error.";
     resendBtn.disabled = false;
     resendBtn.textContent = "Resend";
@@ -737,13 +728,6 @@ function closeOtpModal() {
 
   clearInterval(otpCountdownInterval);
   clearInterval(hourCountdownInterval);
-
-  resendBtn.disabled = false;
-  resendBtn.textContent = "Resend";
-  verifyBtn.disabled = false;
-  verifyBtn.textContent = "Verify";
-
-  currentVerificationIdentifier = null;
 }
 
 </script>
