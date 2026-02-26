@@ -5,21 +5,8 @@ import jwt from "jsonwebtoken";
 const SECRET = process.env.JWT_SECRET;
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
-/* =====================================================
-   ENV CHECK
-===================================================== */
-
-if (!SECRET) {
-  throw new Error("JWT_SECRET not set");
-}
-
-if (!process.env.FIREBASE_KEY) {
-  throw new Error("FIREBASE_KEY not set");
-}
-
-/* =====================================================
-   FIREBASE INIT
-===================================================== */
+if (!SECRET) throw new Error("JWT_SECRET not set");
+if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -38,54 +25,32 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-/* =====================================================
-   HANDLER
-===================================================== */
-
 export default async function handler(req, res) {
 
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "Method not allowed"
-    });
-  }
+  if (req.method !== "POST")
+    return res.status(405).json({ error: "Method not allowed" });
 
-  if (allowedOrigin && req.headers.origin !== allowedOrigin) {
-    return res.status(403).json({
-      error: "Forbidden"
-    });
-  }
+  if (allowedOrigin && req.headers.origin !== allowedOrigin)
+    return res.status(403).json({ error: "Forbidden" });
 
   const { identifier, password } = req.body;
 
-  if (!identifier || !password) {
-    return res.status(400).json({
-      error: "Invalid credentials"
-    });
-  }
+  if (!identifier || !password)
+    return res.status(400).json({ error: "Invalid credentials" });
 
   try {
 
     const value = identifier.trim();
     let snap;
 
-    /* =====================================================
-       FIND USER (EMAIL OR PHONE)
-    ===================================================== */
-
     if (value.includes("@")) {
-
-      const emailLower = value.toLowerCase();
-
       snap = await db
         .ref("users")
         .orderByChild("email")
-        .equalTo(emailLower)
+        .equalTo(value.toLowerCase())
         .limitToFirst(1)
         .get();
-
     } else {
-
       snap = await db
         .ref("users")
         .orderByChild("phone")
@@ -94,27 +59,39 @@ export default async function handler(req, res) {
         .get();
     }
 
-    if (!snap.exists()) {
-      return res.status(400).json({
-        error: "Invalid credentials"
-      });
-    }
+    if (!snap.exists())
+      return res.status(400).json({ error: "Invalid credentials" });
 
     const userData = Object.values(snap.val())[0];
 
-    /* =====================================================
-       PROVIDER CHECK
-    ===================================================== */
+    /* ================= LOGIN RATE LIMIT ================= */
 
-    if (userData.provider !== "local") {
-      return res.status(400).json({
-        error: "Use correct login method"
+    const maxAttempts = 10;
+    const windowMs = 10 * 60 * 1000; // 10 min
+
+    const now = Date.now();
+    let attempts = userData.loginAttempts || 0;
+    let windowStart = userData.loginWindowStart || now;
+
+    if (now - windowStart > windowMs) {
+      attempts = 0;
+      windowStart = now;
+    }
+
+    if (attempts >= maxAttempts) {
+      return res.status(429).json({
+        error: "Too many login attempts. Try later."
       });
     }
 
-    /* =====================================================
-       PASSWORD CHECK
-    ===================================================== */
+    /* ================= PROVIDER CHECK ================= */
+
+    if (userData.provider !== "local")
+      return res.status(400).json({
+        error: "Use correct login method"
+      });
+
+    /* ================= PASSWORD CHECK ================= */
 
     const isMatch = await bcrypt.compare(
       password,
@@ -122,25 +99,29 @@ export default async function handler(req, res) {
     );
 
     if (!isMatch) {
-      return res.status(400).json({
-        error: "Invalid credentials"
+
+      await db.ref("users/" + userData.uid).update({
+        loginAttempts: attempts + 1,
+        loginWindowStart: windowStart
       });
+
+      return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    /* =====================================================
-       EMAIL VERIFICATION CHECK
-    ===================================================== */
+    /* ================= EMAIL VERIFIED ================= */
 
-    if (userData.email && !userData.emailVerified) {
+    if (userData.email && !userData.emailVerified)
       return res.status(403).json({
         error: "Email not verified",
         emailNotVerified: true
       });
-    }
 
-    /* =====================================================
-       GENERATE JWT
-    ===================================================== */
+    /* ================= SUCCESS ================= */
+
+    await db.ref("users/" + userData.uid).update({
+      loginAttempts: 0,
+      loginWindowStart: null
+    });
 
     const token = jwt.sign(
       {
@@ -150,12 +131,20 @@ export default async function handler(req, res) {
         provider: userData.provider
       },
       SECRET,
-      { expiresIn: "7d" } // match verify-otp
+      { expiresIn: "7d" }
     );
+
+    res.setHeader("Set-Cookie", `
+      token=${token};
+      HttpOnly;
+      Secure;
+      SameSite=Strict;
+      Path=/;
+      Max-Age=${7 * 24 * 60 * 60}
+    `.replace(/\s+/g, " ").trim());
 
     return res.status(200).json({
       success: true,
-      token,
       user: {
         uid: userData.uid,
         email: userData.email || null,
@@ -167,9 +156,6 @@ export default async function handler(req, res) {
   } catch (err) {
 
     console.error("LOGIN ERROR:", err);
-
-    return res.status(500).json({
-      error: "Server error"
-    });
+    return res.status(500).json({ error: "Server error" });
   }
 }
