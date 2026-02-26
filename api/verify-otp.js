@@ -33,17 +33,17 @@ export default async function handler(req, res) {
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
-  const { phone, otp } = req.body;
+  const { identifier, otp } = req.body;
 
-  if (!phone || !otp)
-    return res.status(400).json({ error: "Phone and OTP required" });
+  if (!identifier || !otp)
+    return res.status(400).json({ error: "Email and OTP required" });
 
   try {
 
     const snap = await db
       .ref("users")
-      .orderByChild("phone")
-      .equalTo(phone)
+      .orderByChild("email")
+      .equalTo(identifier.toLowerCase())
       .limitToFirst(1)
       .get();
 
@@ -52,26 +52,26 @@ export default async function handler(req, res) {
 
     const userData = Object.values(snap.val())[0];
 
-    if (userData.phoneVerified)
-      return res.status(400).json({ error: "Phone already verified" });
+    if (userData.emailVerified)
+      return res.status(400).json({ error: "Email already verified" });
 
-    if (!userData.phoneOTP || userData.phoneOTP !== otp)
+    if (!userData.otp || userData.otp !== otp)
       return res.status(400).json({ error: "Invalid code" });
 
-    if (Date.now() > userData.phoneOTPExpires)
+    if (Date.now() > userData.otpExpires)
       return res.status(400).json({ error: "Code expired" });
 
     // SUCCESS
     await db.ref("users/" + userData.uid).update({
-      phoneVerified: true,
-      phoneOTP: null,
-      phoneOTPExpires: null
+      emailVerified: true,
+      otp: null,
+      otpExpires: null
     });
 
     const token = jwt.sign(
       {
         uid: userData.uid,
-        phone: userData.phone,
+        email: userData.email,
         provider: userData.provider
       },
       SECRET,
