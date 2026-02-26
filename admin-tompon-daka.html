@@ -7,27 +7,57 @@
 
 <style>
 body{
-  font-family: Arial, sans-serif;
   background:#111;
   color:#fff;
+  font-family:Arial, sans-serif;
   padding:20px;
 }
 
-h1{
+h1,h2{
   text-align:center;
-  margin-bottom:20px;
+}
+
+#loginBox{
+  text-align:center;
+  margin-top:60px;
+}
+
+input{
+  padding:10px;
+  width:250px;
+  border:none;
+  border-radius:5px;
+}
+
+button{
+  padding:10px 15px;
+  border:none;
+  background:#00c853;
+  color:white;
+  cursor:pointer;
+  border-radius:5px;
+}
+
+button:hover{
+  background:#00e676;
+}
+
+#error{
+  color:#ff5252;
+  margin-top:10px;
 }
 
 table{
   width:100%;
-  border-collapse: collapse;
+  margin-top:30px;
+  border-collapse:collapse;
   background:#1e1e1e;
 }
 
 th,td{
   padding:12px;
-  text-align:center;
   border:1px solid #333;
+  text-align:center;
 }
 
 th{
@@ -36,15 +66,6 @@ th{
 
 tr:nth-child(even){
   background:#181818;
-}
-
-button{
-  padding:6px 12px;
-  border:none;
-  cursor:pointer;
-  background:#00c853;
-  color:white;
-  border-radius:4px;
 }
 
 .expired{
@@ -56,49 +77,118 @@ button{
   color:#00e676;
   font-weight:bold;
 }
+
+.logout{
+  background:#ff1744;
+  margin-bottom:15px;
+}
 </style>
 </head>
 <body>
 
 <h1>📱 Phone OTP Admin Panel</h1>
 
-<table>
-  <thead>
-    <tr>
-      <th>UID</th>
-      <th>Phone</th>
-      <th>OTP Code</th>
-      <th>Status</th>
-    </tr>
-  </thead>
-  <tbody id="otpTable">
-    <tr>
-      <td colspan="4">Loading...</td>
-    </tr>
-  </tbody>
-</table>
+<div id="loginBox">
+  <h2>🔐 Admin Login</h2>
+  <input type="password" id="pass" placeholder="Enter password">
+  <br><br>
+  <button onclick="login()">Login</button>
+  <p id="error"></p>
+</div>
+
+<div id="panel" style="display:none;">
+
+  <button class="logout" onclick="logout()">Logout</button>
+
+  <table>
+    <thead>
+      <tr>
+        <th>UID</th>
+        <th>Phone</th>
+        <th>OTP Code</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="otpTable">
+      <tr>
+        <td colspan="4">Loading...</td>
+      </tr>
+    </tbody>
+  </table>
+
+</div>
 
 <script>
+
+let savedPassword = "";
+let interval = null;
+
+async function login(){
+
+  const pass = document.getElementById("pass").value;
+
+  if(!pass){
+    document.getElementById("error").innerText="Enter password";
+    return;
+  }
+
+  savedPassword = pass;
+
+  const res = await fetch("/api/admin-phone-otp",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ password: pass })
+  });
+
+  if(res.status !== 200){
+    document.getElementById("error").innerText="Wrong password";
+    return;
+  }
+
+  document.getElementById("loginBox").style.display="none";
+  document.getElementById("panel").style.display="block";
+
+  loadOTPs();
+  interval = setInterval(loadOTPs, 5000);
+}
+
+function logout(){
+  savedPassword="";
+  clearInterval(interval);
+  document.getElementById("panel").style.display="none";
+  document.getElementById("loginBox").style.display="block";
+}
+
 async function loadOTPs(){
 
   const table = document.getElementById("otpTable");
   table.innerHTML = "<tr><td colspan='4'>Loading...</td></tr>";
 
-  try {
+  try{
 
-    const res = await fetch("/api/admin-phone-otp");
-    const data = await res.json();
+    const res = await fetch("/api/admin-phone-otp",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ password: savedPassword })
+    });
 
-    if(data.length === 0){
-      table.innerHTML = "<tr><td colspan='4'>No pending phone verification</td></tr>";
+    if(res.status !== 200){
+      logout();
       return;
     }
 
-    table.innerHTML = "";
+    const data = await res.json();
+
+    if(data.length === 0){
+      table.innerHTML = "<tr><td colspan='4'>No pending verification</td></tr>";
+      return;
+    }
+
+    table.innerHTML="";
 
     const now = Date.now();
 
-    data.forEach(user => {
+    data.forEach(user=>{
 
       const expired = user.phoneOTPExpires < now;
 
@@ -107,7 +197,9 @@ async function loadOTPs(){
       row.innerHTML = `
         <td>${user.uid}</td>
         <td>${user.phone}</td>
-        <td style="font-size:20px;font-weight:bold;">${user.phoneOTP}</td>
+        <td style="font-size:20px;font-weight:bold;">
+          ${user.phoneOTP}
+        </td>
         <td class="${expired ? "expired":"valid"}">
           ${expired ? "Expired":"Valid"}
         </td>
@@ -116,13 +208,11 @@ async function loadOTPs(){
       table.appendChild(row);
     });
 
-  } catch(err){
-    table.innerHTML = "<tr><td colspan='4'>Error loading data</td></tr>";
+  }catch(err){
+    table.innerHTML="<tr><td colspan='4'>Error loading data</td></tr>";
   }
 }
 
-loadOTPs();
-setInterval(loadOTPs, 5000);
 </script>
 
 </body>
