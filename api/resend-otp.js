@@ -3,17 +3,9 @@ import { sendOTPEmail } from "./mailer.js";
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
-/* =====================================================
-   CONFIG
-===================================================== */
-
 const MAX_RESEND_PER_HOUR = 5;
 const ONE_MINUTE = 60 * 1000;
 const ONE_HOUR = 60 * 60 * 1000;
-
-/* =====================================================
-   FIREBASE INIT
-===================================================== */
 
 if (!process.env.FIREBASE_KEY) {
   throw new Error("FIREBASE_KEY not set");
@@ -36,17 +28,11 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-/* =====================================================
-   HELPERS
-===================================================== */
-
 function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return Math.floor(
+    100000 + Math.random() * 900000
+  ).toString();
 }
-
-/* =====================================================
-   HANDLER
-===================================================== */
 
 export default async function handler(req, res) {
 
@@ -61,14 +47,16 @@ export default async function handler(req, res) {
   const { identifier } = req.body;
 
   if (!identifier) {
-    return res.status(400).json({ error: "Identifier required" });
+    return res.status(400).json({
+      error: "Identifier required"
+    });
   }
 
   try {
 
-    const cleanIdentifier = identifier.toLowerCase().trim();
+    const cleanIdentifier =
+      identifier.toLowerCase().trim();
 
-    // ===== FIND USER BY EMAIL =====
     const snap = await db
       .ref("users")
       .orderByChild("email")
@@ -77,54 +65,47 @@ export default async function handler(req, res) {
       .get();
 
     if (!snap.exists()) {
-      return res.status(400).json({ error: "User not found" });
+      return res.status(400).json({
+        error: "User not found"
+      });
     }
 
     const userKey = Object.keys(snap.val())[0];
     const userData = snap.val()[userKey];
     const now = Date.now();
 
-    // ===== IF ALREADY VERIFIED =====
     if (userData.emailVerified) {
       return res.status(400).json({
         error: "Email already verified"
       });
     }
 
-    // ===== PROVIDER CHECK (EMAIL ONLY) =====
-    if (userData.provider !== "email") {
+    if (userData.provider !== "local") {
       return res.status(400).json({
         error: "OTP not required for this account"
       });
     }
 
-    /* =====================================================
-       1 MINUTE COOLDOWN
-    ===================================================== */
+    /* ================= 1 MINUTE COOLDOWN ================= */
 
-    if (
-      userData.otpExpires &&
-      now < userData.otpExpires
-    ) {
-      const remaining = Math.ceil(
+    if (userData.otpExpires && now < userData.otpExpires) {
+
+      const retryAfter = Math.ceil(
         (userData.otpExpires - now) / 1000
       );
 
       return res.status(429).json({
         error: "Please wait before requesting a new OTP",
-        remainingTime: remaining
+        retryAfter
       });
     }
 
-    /* =====================================================
-       RATE LIMIT 5 / HOUR
-    ===================================================== */
+    /* ================= 5 PER HOUR ================= */
 
     let resendCount = userData.resendCount || 0;
     let resendWindowStart =
       userData.resendWindowStart || now;
 
-    // Reset if window expired
     if (now - resendWindowStart >= ONE_HOUR) {
       resendCount = 0;
       resendWindowStart = now;
@@ -142,9 +123,7 @@ export default async function handler(req, res) {
       });
     }
 
-    /* =====================================================
-       GENERATE NEW OTP
-    ===================================================== */
+    /* ================= GENERATE NEW OTP ================= */
 
     const newOTP = generateOTP();
     const newExpiry = now + ONE_MINUTE;
