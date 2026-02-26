@@ -567,9 +567,15 @@ document.getElementById("inscriptionForm")
       
       if (data.emailVerificationRequired && identifierForOTP) {
         openOtpModal(identifierForOTP);
-      } else {
-        window.location.href = "dashboard.html";
+        return;
       }
+      
+      if (data.phoneVerificationRequired && rawValue) {
+        openPhoneOtpModal(rawValue);
+        return;
+      }
+      
+      window.location.href = "dashboard.html";
       
     } catch (err) {
       alert(err.message || "Registration failed.");
