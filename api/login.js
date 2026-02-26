@@ -115,6 +115,14 @@ export default async function handler(req, res) {
         error: "Email not verified",
         emailNotVerified: true
       });
+      
+    /* ================= PHONE VERIFIED ================= */
+    
+    if (userData.phone && !userData.phoneVerified)
+      return res.status(403).json({
+        error: "Phone not verified",
+        phoneNotVerified: true
+    });
 
     /* ================= SUCCESS ================= */
 
