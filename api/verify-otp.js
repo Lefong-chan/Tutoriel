@@ -28,6 +28,10 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
+// CONFIG
+const MAX_ATTEMPTS = 5;
+const LOCK_TIME = 60 * 60 * 1000; // 1 hour
+
 export default async function handler(req, res) {
 
   if (req.method !== "POST")
@@ -48,24 +52,55 @@ export default async function handler(req, res) {
       .get();
 
     if (!snap.exists())
-      return res.status(400).json({ error: "User not found" });
+      return res.status(400).json({ error: "Invalid code" });
 
     const userData = Object.values(snap.val())[0];
+    const userRef = db.ref("users/" + userData.uid);
 
     if (userData.emailVerified)
       return res.status(400).json({ error: "Email already verified" });
 
-    if (!userData.otp || userData.otp !== otp)
-      return res.status(400).json({ error: "Invalid code" });
+    // CHECK LOCK
+    if (userData.otpLockUntil && Date.now() < userData.otpLockUntil) {
+      return res.status(429).json({
+        error: "Too many attempts. Try again later."
+      });
+    }
 
+    // WRONG OTP
+    if (!userData.otp || userData.otp !== otp) {
+
+      const attempts = (userData.otpAttempts || 0) + 1;
+
+      if (attempts >= MAX_ATTEMPTS) {
+        await userRef.update({
+          otpAttempts: attempts,
+          otpLockUntil: Date.now() + LOCK_TIME
+        });
+
+        return res.status(429).json({
+          error: "Too many attempts. Account locked for 1 hour."
+        });
+      }
+
+      await userRef.update({
+        otpAttempts: attempts
+      });
+
+      return res.status(400).json({ error: "Invalid code" });
+    }
+
+    // EXPIRED
     if (Date.now() > userData.otpExpires)
       return res.status(400).json({ error: "Code expired" });
 
     // SUCCESS
-    await db.ref("users/" + userData.uid).update({
+    await userRef.update({
       emailVerified: true,
       otp: null,
-      otpExpires: null
+      otpExpires: null,
+      otpAttempts: 0,
+      otpLockUntil: null
     });
 
     const token = jwt.sign(
@@ -90,7 +125,7 @@ export default async function handler(req, res) {
     return res.json({ success: true });
 
   } catch (err) {
-    console.error(err);
+    console.error("Verify OTP error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 }
