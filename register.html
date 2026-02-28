@@ -230,16 +230,85 @@
   cursor: not-allowed;
 }
 
+/* ================= BLOCKED LOGIN CARD ================= */
+
 .blocked-message {
-  color: #ff4d4f;
-  font-size: 14px;
-  margin-bottom: 10px;
-  text-align: center;
-  display: none;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 320px;
+  max-width: 90%;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+  padding: 18px 18px 15px 18px;
+  z-index: 9999;
+  transform: translateY(20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: all .3s ease;
+  border-left: 5px solid #ff4d4f;
 }
+
 .blocked-message.show {
-  display: block;
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
+
+.blocked-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.blocked-title {
+  font-weight: 600;
+  color: #ff4d4f;
+  font-size: 15px;
+}
+
+.blocked-close {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  color: #999;
+}
+
+.blocked-close:hover {
+  color: #111;
+}
+
+.blocked-text {
+  font-size: 14px;
+  color: #555;
+  margin-bottom: 12px;
+}
+
+.blocked-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.support-link {
+  font-size: 13px;
+  text-decoration: none;
+  color: #6e8efb;
+  font-weight: 600;
+}
+
+.support-link:hover {
+  text-decoration: underline;
+}
+
+.blocked-timer {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ff4d4f;
+}
+
 </style>
   
   <div class="container" id="container">
@@ -393,7 +462,25 @@
   </div>
 </div>
 
-<div id="loginBlockedMessage" class="blocked-message"></div>
+<div id="loginBlockedMessage" class="blocked-message">
+  
+  <div class="blocked-header">
+    <div class="blocked-title">Login Blocked</div>
+    <div class="blocked-close" id="blockedCloseBtn">×</div>
+  </div>
+  
+  <div class="blocked-text" id="blockedText">
+    Too many attempts.
+  </div>
+  
+  <div class="blocked-footer">
+    <a href="support.html" class="support-link">
+      Contact Support
+    </a>
+    <div class="blocked-timer" id="blockedTimer"></div>
+  </div>
+  
+</div>
 
 <script>
 
@@ -414,7 +501,8 @@ let registerMode = "phone";
 
 const loginBlockedMessage =
   document.getElementById("loginBlockedMessage");
-
+  
+let blockedInterval = null;
 
 /* =====================================================
    DOM READY
@@ -614,7 +702,8 @@ document.getElementById("loginForm")
     e.preventDefault();
     
     loginBlockedMessage.classList.remove("show");
-    loginBlockedMessage.textContent = "";
+    blockedText.textContent = "";
+    blockedTimer.textContent = "";
     
     const rawValue = document.getElementById("loginEmail").value.trim();
     const password = document.getElementById("loginPass").value;
@@ -640,8 +729,8 @@ document.getElementById("loginForm")
       
       if (res.status === 429) {
         
-        loginBlockedMessage.textContent = data.error;
-        loginBlockedMessage.classList.add("show");
+        blockedText.textContent = data.error;
+        startLoginBlockCountdown(data.retryAfter);
         
         if (data.emailBlocked) {
           startHourCountdown(data.retryAfter);
@@ -1142,6 +1231,41 @@ function showPhoneError(msg) {
 function clearPhoneError() {
   phoneOtpError.textContent = "";
   phoneOtpError.classList.remove("show");
+}
+
+// blocke //
+const blockedTimer = document.getElementById("blockedTimer");
+const blockedText = document.getElementById("blockedText");
+const blockedCloseBtn = document.getElementById("blockedCloseBtn");
+
+blockedCloseBtn?.addEventListener("click", () => {
+  loginBlockedMessage.classList.remove("show");
+  clearInterval(blockedInterval);
+});
+
+function startLoginBlockCountdown(seconds) {
+  
+  clearInterval(blockedInterval);
+  
+  loginBlockedMessage.classList.add("show");
+  
+  function update() {
+    
+    if (seconds <= 0) {
+      clearInterval(blockedInterval);
+      blockedTimer.textContent = "";
+      loginBlockedMessage.classList.remove("show");
+      return;
+    }
+    
+    const minutes = Math.ceil(seconds / 60);
+    blockedTimer.textContent = minutes + " min";
+    
+    seconds -= 60; // ↓ only decrease per minute
+  }
+  
+  update();
+  blockedInterval = setInterval(update, 60000);
 }
 
 </script>
