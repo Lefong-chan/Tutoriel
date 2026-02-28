@@ -230,6 +230,16 @@
   cursor: not-allowed;
 }
 
+.blocked-message {
+  color: #ff4d4f;
+  font-size: 14px;
+  margin-bottom: 10px;
+  text-align: center;
+  display: none;
+}
+.blocked-message.show {
+  display: block;
+}
 </style>
   
   <div class="container" id="container">
@@ -383,6 +393,8 @@
   </div>
 </div>
 
+<div id="loginBlockedMessage" class="blocked-message"></div>
+
 <script>
 
 /* =====================================================
@@ -399,6 +411,9 @@ let otpError = null;
 
 let loginMode = "phone";
 let registerMode = "phone";
+
+const loginBlockedMessage =
+  document.getElementById("loginBlockedMessage");
 
 
 /* =====================================================
@@ -598,6 +613,9 @@ document.getElementById("loginForm")
     
     e.preventDefault();
     
+    loginBlockedMessage.classList.remove("show");
+    loginBlockedMessage.textContent = "";
+    
     const rawValue = document.getElementById("loginEmail").value.trim();
     const password = document.getElementById("loginPass").value;
     
@@ -620,8 +638,23 @@ document.getElementById("loginForm")
       
       const data = await res.json();
       
-      if (res.status === 429)
-        return alert(data.error);
+      if (res.status === 429) {
+        
+        loginBlockedMessage.textContent = data.error;
+        loginBlockedMessage.classList.add("show");
+        
+        if (data.emailBlocked) {
+          startHourCountdown(data.retryAfter);
+          return;
+        }
+        
+        if (data.phoneBlocked) {
+          startPhoneHourCountdown(data.retryAfter);
+          return;
+        }
+        
+        return;
+      }
       
       if (res.status === 403) {
         if (data.emailNotVerified)
