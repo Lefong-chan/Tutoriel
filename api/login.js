@@ -64,12 +64,53 @@ export default async function handler(req, res) {
 
     const userData = Object.values(snap.val())[0];
 
-    /* ================= LOGIN RATE LIMIT ================= */
+    const now = Date.now();
+
+    /* =====================================================
+      OTP BLOCK CHECK (IMPORTANT FIX)
+    ===================================================== */
+
+    // EMAIL BLOCK
+    if (
+      value.includes("@") &&
+      userData.otpLockUntil &&
+      now < userData.otpLockUntil
+    ) {
+      const retryAfter = Math.ceil(
+        (userData.otpLockUntil - now) / 1000
+      );
+
+      return res.status(429).json({
+        error: "Too many verification attempts. Try again later.",
+        emailBlocked: true,
+        retryAfter
+      });
+    }
+
+    // PHONE BLOCK
+    if (
+      !value.includes("@") &&
+      userData.phoneOtpBlockUntil &&
+      now < userData.phoneOtpBlockUntil
+    ) {
+      const retryAfter = Math.ceil(
+        (userData.phoneOtpBlockUntil - now) / 1000
+      );
+
+      return res.status(429).json({
+        error: "Too many verification attempts. Try again later.",
+        phoneBlocked: true,
+        retryAfter
+      });
+    }
+
+    /* =====================================================
+       LOGIN RATE LIMIT
+    ===================================================== */
 
     const maxAttempts = 10;
-    const windowMs = 10 * 60 * 1000; // 10 min
+    const windowMs = 10 * 60 * 1000;
 
-    const now = Date.now();
     let attempts = userData.loginAttempts || 0;
     let windowStart = userData.loginWindowStart || now;
 
@@ -84,14 +125,18 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ================= PROVIDER CHECK ================= */
+    /* =====================================================
+       PROVIDER CHECK
+    ===================================================== */
 
     if (userData.provider !== "local")
       return res.status(400).json({
         error: "Use correct login method"
       });
 
-    /* ================= PASSWORD CHECK ================= */
+    /* =====================================================
+       PASSWORD CHECK
+    ===================================================== */
 
     const isMatch = await bcrypt.compare(
       password,
@@ -108,23 +153,25 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
-    // ================= EMAIL VERIFIED =================
-    
-    if (value.includes("@") && !userData.emailVerified)
-    return res.status(403).json({
-      error: "Email not verified",
-      emailNotVerified: true
-    });
-    
-    // ================= PHONE VERIFIED =================
-    
-    if (!value.includes("@") && !userData.phoneVerified)
-    return res.status(403).json({
-      error: "Phone not verified",
-      phoneNotVerified: true
-    });
+    /* =====================================================
+       VERIFIED CHECK
+    ===================================================== */
 
-    /* ================= SUCCESS ================= */
+    if (value.includes("@") && !userData.emailVerified)
+      return res.status(403).json({
+        error: "Email not verified",
+        emailNotVerified: true
+      });
+
+    if (!value.includes("@") && !userData.phoneVerified)
+      return res.status(403).json({
+        error: "Phone not verified",
+        phoneNotVerified: true
+      });
+
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
 
     await db.ref("users/" + userData.uid).update({
       loginAttempts: 0,
