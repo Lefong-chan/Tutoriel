@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="mg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login & Register</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: linear-gradient(135deg, #6e8efb, #a777e3); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+    .container { position: relative; width: 800px; max-width: 100%; min-height: 350px; background-color: #fff; border-radius: 20px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2); overflow: hidden; transition: all 0.5s ease; }
+    .container.active { box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3); }
+    .forms-container { position: absolute; width: 100%; height: 100%; display: flex; transition: transform 0.8s ease-in-out; }
+    .login-form, .inscription-form { position: absolute; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 40px; transition: all 0.8s ease-in-out; }
+    .login-form { transform: translateX(0); }
+    .container.active .login-form { transform: translateX(-100%); opacity: 0; }
+    .inscription-form { right: 0; transform: translateX(100%); opacity: 0; }
+    .container.active .inscription-form { transform: translateX(0); opacity: 1; }
+    .form-title { font-size: 25px; color: #333; margin: 0 0 12px 0; text-align: center; }
+    .form-title span { color: #a777e3; }
+    .input-group { position: relative; width: 100%; margin-bottom: 15px; }
+    .form-input { width: 100%; padding: 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; background: none; transition: all 0.3s ease; }
+    .form-label { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); background-color: #fff; padding: 0 5px; color: #999; font-size: 16px; pointer-events: none; transition: all 0.5s ease; }
+    .form-input:focus, .form-input:not(:placeholder-shown) { border-color: #6e8efb; }
+    .form-input:focus + .form-label,
+    .form-input:not(:placeholder-shown) + .form-label { top: 0; font-size: 12px; color: #6e8efb; font-weight: bold; }
+    .password-wrapper { position: relative; width: 100%; }
+    .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #666; z-index: 2; }
+    .btn { width: 100%; padding: 14px; margin-top: 10px; background: linear-gradient(to right, #6e8efb, #a777e3); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+    .btn:hover { transform: translateY(-3px); }
+    .social-login { display: flex; justify-content: center; gap: 15px; margin-top: 10px; }
+    .social-icon { width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; cursor: pointer; transition: all 0.3s ease; }
+    .number { background-color: #25D366; }
+    .email { background-color: #EA4335; }
+    .toggle-container { position: absolute; top: 0; left: 50%; width: 50%; height: 100%; overflow: hidden; transition: transform 0.8s ease-in-out; z-index: 10; }
+    .container.active .toggle-container { transform: translateX(-100%); }
+    .toggle { background: linear-gradient(to right, #6e8efb, #a777e3); height: 100%; color: white; position: relative; left: -100%; width: 200%; transform: translateX(0); transition: transform 0.8s ease-in-out; }
+    .container.active .toggle { transform: translateX(50%); }
+    .toggle-panel { position: absolute; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 40px; text-align: center; top: 0; transition: transform 0.8s ease-in-out; }
+    .toggle-panel h2 { font-size: 32px; margin-bottom: 20px; }
+    .toggle-panel p { margin-bottom: 30px; line-height: 1.5; }
+    .toggle-left { transform: translateX(-200%); }
+    .container.active .toggle-left { transform: translateX(0); }
+    .toggle-right { right: 0; }
+    .container.active .toggle-right { transform: translateX(200%); }
+    .toggle-btn { padding: 12px 45px; background-color: transparent; border: 2px solid white; color: white; border-radius: 25px; cursor: pointer; }
+    .footer-text { margin-top: 10px; color: #666; font-size: 14px; text-align: center; }
+    .footer-text a { color: #a777e3; text-decoration: none; font-weight: 600; }
+    .terms-wrapper { display: flex; align-items: center; gap: 8px; width: 100%; margin: 2px 0; font-size: 13px; color: #666; }
+    .terms-wrapper input { cursor: pointer; }
+    @media (max-width: 768px) { .toggle-container { display: none; } .login-form, .inscription-form { width: 100%; } }
+  </style>
+</head>
+<body>
+  
+<style>
+
+/* Overlay */
+.otp-overlay{
+  position:fixed;
+  inset:0;
+  background:linear-gradient(135deg, rgba(0,0,0,0.65), rgba(0,0,0,0.55));
+  backdrop-filter: blur(4px);
+  display:none;
+  justify-content:center;
+  align-items:center;
+  z-index:9999;
+  font-family: 'Segoe UI', Roboto, sans-serif;
+  padding:15px; /* prevent overflow on small screens */
+}
+
+/* Card */
+.otp-card{
+  position: relative;
+  background:#ffffff;
+  padding:30px 25px 35px 25px;
+  width:360px;
+  max-width:100%;
+  border-radius:18px;
+  box-shadow:0 20px 45px rgba(0,0,0,0.15);
+  text-align:center;
+  animation:fadeIn .3s ease;
+}
+
+/* Title */
+.otp-title{
+  margin:0;
+  font-size:22px;
+  font-weight:600;
+  color:#111;
+}
+
+/* Subtitle */
+.otp-subtitle{
+  font-size:14px;
+  color:#666;
+  margin:8px 0 25px 0;
+}
+
+/* Input + Resend group */
+.otp-input-group{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:20px;
+  width:100%;
+}
+
+.otp-input-group input{
+  flex:1;
+  min-width:0; /* important: prevents overflow */
+  padding:12px;
+  border-radius:10px;
+  border:1px solid #ddd;
+  font-size:15px;
+  outline:none;
+  transition:all .2s ease;
+}
+
+.otp-input-group input:focus{
+  border-color:#4f46e5;
+  box-shadow:0 0 0 3px rgba(79,70,229,0.15);
+}
+
+/* Resend button */
+.resend-btn{
+  width: 80px;
+  height: 36px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 10px;
+  border: 1px solid #e5e5e5;
+  background: #f9fafb;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.resend-btn:hover{
+  background:#eef2ff;
+  border-color:#c7d2fe;
+  color:#4f46e5;
+}
+
+/* Verify button */
+.verify-btn{
+  width:100%;
+  padding:13px;
+  border:none;
+  border-radius:12px;
+  background:linear-gradient(135deg, #4f46e5, #6366f1);
+  color:white;
+  font-size:15px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all .2s ease;
+}
+
+.verify-btn:hover{
+  opacity:0.9;
+  transform:translateY(-1px);
+}
+
+/* ===== RESPONSIVE FIX ===== */
+@media (max-width: 420px){
+
+  .otp-card{
+    padding:25px 18px;
+  }
+
+  .otp-input-group{
+    gap:8px;
+  }
+
+  .otp-input-group input{
+    font-size:14px;
+    padding:10px;
+  }
+
+  .resend-btn{
+    font-size:12px;
+    padding:0 10px;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 350px){
+
+  .otp-input-group{
+    flex-direction:column;
+  }
+
+  .resend-btn{
+    width:100%;
+    height:40px;
+  }
+}
+
+@keyframes fadeIn{
+  from{opacity:0; transform:translateY(10px);}
+  to{opacity:1; transform:translateY(0);}
+}
+
+.otp-error {
+  margin: 0 0 10px 0px;
+  font-size: 13px;
+  color: #dc2626;
+  text-align: left;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: 
+    max-height 0.4s ease,
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.otp-error.show {
+  max-height: 60px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.resend-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ================= BLOCKED LOGIN CARD ================= */
+
+.blocked-message {
+  position: fixed;
+  top: 30px;
+  right: 20px;
+  width: 320px;
+  max-width: 90%;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+  padding: 15px 18px 15px 18px;
+  z-index: 9999;
+  transform: translateY(20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: all .3s ease;
+  border-left: 5px solid #ff4d4f;
+}
+
+.blocked-message.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.blocked-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.blocked-title {
+  font-weight: 600;
+  color: #ff4d4f;
+  font-size: 15px;
+}
+
+.blocked-close {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  color: #999;
+}
+
+.blocked-close:hover {
+  color: #111;
+}
+
+.blocked-text {
+  font-size: 14px;
+  color: #555;
+}
+
+.blocked-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.support-link {
+  font-size: 13px;
+  text-decoration: none;
+  color: #6e8efb;
+  font-weight: 600;
+}
+
+.support-link:hover {
+  text-decoration: underline;
+}
+
+.blocked-timer {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ff4d4f;
+}
+
+/* ===============================
+   GLOBAL ERROR STYLE
+================================ */
+
+.error-message {
+  position: fixed;
+  top: 30px;
+  right: 20px;
+  width: 280px;
+  max-width: 90%;
+  padding: 14px;
+  border-radius: 14px;
+  height: auto;
+  max-height: fit-content;
+  display: none;
+  z-index: 9999;
+}
+
+.error-message.show {
+  display: block;
+}
+
+/* Left side version */
+.error-message.left {
+  left: 20px;
+  right: auto;
+  animation: slideLeft 0.25s ease;
+}
+
+/* Right side version */
+.error-message.right {
+  right: 20px;
+  left: auto;
+  animation: slideRight 0.25s ease;
+}
+
+@keyframes slideLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+</style>
+  
+  <div class="container" id="container">
+    <div class="forms-container">
+      
+      <form class="login-form" id="loginForm">
+        <h1 class="form-title">Login <span>Now</span></h1>
+        
+        <div class="input-group">
+          <input type="text" id="loginEmail" class="form-input" inputmode="numeric" placeholder=" " required>
+          <label class="form-label">Number</label>
+        </div>
+        
+        <div class="input-group" style="margin-bottom: 13px;">
+          <div class="password-wrapper">
+            <input type="password" id="loginPass" class="form-input" placeholder=" " required>
+            <label class="form-label">Password</label>
+            <i class="fa-solid fa-eye-slash toggle-password"></i>
+          </div>
+        </div>
+        
+        <div style="width: 100%; text-align: center; margin-bottom: 2px;">
+          <a href="#" style="text-decoration: none; font-weight: bold; color: #a777e3; font-size: 14px;">Forgot password?</a>
+        </div>
+        
+        <button type="submit" class="btn">Sign In</button>
+        
+        <div class="social-login">
+          <div class="social-icon number" id="loginPhoneIcon">
+            <i class="fa-solid fa-phone"></i>
+          </div>
+          <div class="social-icon email" id="loginEmailIcon">
+            <i class="fa-solid fa-envelope"></i>
+          </div>
+        </div>
+        
+        <div class="footer-text">Don't have an account? <a href="#" id="toRegMobile">Sign up</a></div>
+      </form>
+      
+      <form class="inscription-form" id="inscriptionForm">
+        <h1 class="form-title">Create <span>Account</span></h1>
+        
+        <div class="input-group">
+          <input type="text" id="regEmail" class="form-input" inputmode="numeric" placeholder=" " required>
+          <label class="form-label">Number</label>
+        </div>
+        
+        <div class="input-group" style="margin-bottom: 11px;">
+          <div class="password-wrapper">
+            <input type="password" id="regPass" class="form-input" placeholder=" " required>
+            <label class="form-label">Password</label>
+            <i class="fa-solid fa-eye-slash toggle-password"></i>
+          </div>
+        </div>
+        
+        <div class="terms-wrapper">
+          <input type="checkbox" id="termsCheck" required>
+          <label for="termsCheck">I accept the <a href="#" style="color: #a777e3;">Terms and Conditions</a></label>
+        </div>
+        
+        <button type="submit" class="btn">Sign up</button>
+        
+        <div class="social-login">
+          <div class="social-icon number" id="regPhoneIcon">
+            <i class="fa-solid fa-phone"></i>
+          </div>
+          <div class="social-icon email" id="regEmailIcon">
+            <i class="fa-solid fa-envelope"></i>
+          </div>
+        </div>
+        
+        <p class="footer-text">Already have an account? <a href="#" id="mobileLoginBtn">Login</a></p>
+      </form>
+    </div>
+    
+    <div class="toggle-container">
+      <div class="toggle">
+        <div class="toggle-panel toggle-left">
+          <h2>Return to the Board</h2>
+          <p>Continue your journey in the world of Malagasy strategy and wisdom</p>
+          <button class="toggle-btn" id="loginToggleBtn">Sign In</button>
+        </div>
+        <div class="toggle-panel toggle-right">
+          <h2>Join the Game!</h2>
+          <p>Join fellow players and experience the traditional Malagasy strategy game</p>
+          <button class="toggle-btn" id="inscriptionToggleBtn">Sign Up</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<!-- OTP MODAL -->
+<div id="otpModal" class="otp-overlay">
+  
+  <div class="otp-card">
+    
+    <h2 class="otp-title">Email Verification</h2>
+    <p class="otp-subtitle">
+      Enter the 6-digit verification sent to your email
+    </p>
+    
+    <div class="otp-input-group">
+      <input type="text" id="otpInput" maxlength="6" inputmode="numeric" placeholder="Enter 6-digit code">
+      
+      <button type="button"
+        id="resendBtn"
+        class="resend-btn">
+          Resend
+      </button>
+    </div>
+    
+    <div id="otpError" class="otp-error"></div>
+    
+    <button id="verifyBtn"
+        class="verify-btn">
+      Verify
+    </button>
+    
+  </div>
+</div>
+
+<!-- PHONE OTP MODAL -->
+<div id="phoneOtpModal" class="otp-overlay">
+  <div class="otp-card">
+    
+    <h2 class="otp-title">Phone Verification</h2>
+    <p class="otp-subtitle">
+      Enter the 6-digit code sent to your number
+    </p>
+    
+    <div class="otp-input-group">
+      <input type="text" id="phoneOtpInput"
+        maxlength="6"
+        inputmode="numeric"
+        placeholder="Enter 6-digit code">
+        
+      <button type="button"
+        id="phoneResendBtn"
+        class="resend-btn">
+        Resend
+      </button>
+    </div>
+    
+    <div id="phoneOtpError" class="otp-error"></div>
+    
+    <button id="phoneVerifyBtn"
+      class="verify-btn">
+      Verify
+    </button>
+    
+  </div>
+</div>
+
+<div id="loginBlockedMessage" class="blocked-message">
+  
+  <div class="blocked-header">
+    <div class="blocked-title">Login Blocked</div>
+    <div class="blocked-close" id="blockedCloseBtn">×</div>
+  </div>
+  
+  <div class="blocked-text" id="blockedText">
+    Too many attempts.
+  </div>
+  
+  <div class="blocked-footer">
+    <a href="support.html" class="support-link">
+      Contact Support
+    </a>
+    <div class="blocked-timer" id="blockedTimer"></div>
+  </div>
+  
+</div>
+
+<!-- GLOBAL ERROR MESSAGE -->
+<div id="globalErrorMessage" class="blocked-message error-message">
+  
+  <div class="blocked-header">
+    <div class="blocked-title" id="errorTitle">Error</div>
+    <div class="blocked-close" id="errorCloseBtn">×</div>
+  </div>
+  
+  <div class="blocked-text" id="errorText">
+    Something went wrong.
+  </div>
+  
+</div>
+
+<script>
+
+/* =====================================================
+   GLOBAL STATE
+===================================================== */
+
+let currentVerificationIdentifier = null;
+let otpCountdownInterval = null;
+let hourCountdownInterval = null;
+
+let resendBtn = null;
+let verifyBtn = null;
+let otpError = null;
+
+let loginMode = "phone";
+let registerMode = "phone";
+
+const loginBlockedMessage =
+  document.getElementById("loginBlockedMessage");
+  
+let blockedInterval = null;
+
+/* =====================================================
+   DOM READY
+===================================================== */
+
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // Check session using cookie
+  try {
+    const res = await fetch("/api/me", {
+      credentials: "include"
+    });
+
+    if (res.ok) {
+      window.location.href = "dashboard.html";
+      return;
+    }
+  } catch (e) {}
+
+  const container = document.getElementById("container");
+
+  document.getElementById("inscriptionToggleBtn")
+    ?.addEventListener("click", () => container?.classList.add("active"));
+
+  document.getElementById("loginToggleBtn")
+    ?.addEventListener("click", () => container?.classList.remove("active"));
+
+  document.getElementById("toRegMobile")
+    ?.addEventListener("click", e => {
+      e.preventDefault();
+      container?.classList.add("active");
+    });
+
+  document.getElementById("mobileLoginBtn")
+    ?.addEventListener("click", e => {
+      e.preventDefault();
+      container?.classList.remove("active");
+    });
+
+  resendBtn = document.getElementById("resendBtn");
+  verifyBtn = document.getElementById("verifyBtn");
+  otpError = document.getElementById("otpError");
+
+  resendBtn?.addEventListener("click", resendOTP);
+  verifyBtn?.addEventListener("click", verifyOTP);
+
+  // Allow Enter key to verify OTP
+  document.getElementById("otpInput")
+    ?.addEventListener("keydown", e => {
+      if (e.key === "Enter") verifyOTP();
+    });
+
+  // Allow only numbers + disable Verify if OTP < 6
+  document.getElementById("otpInput")
+  ?.addEventListener("input", function() {
+    this.value = this.value.replace(/[^0-9]/g, "");
+    verifyBtn.disabled = this.value.length !== 6;
+  });
+
+  setupModeToggle("login");
+  setupModeToggle("register");
+
+});
+
+
+/* =====================================================
+   MODE TOGGLE
+===================================================== */
+
+function setupModeToggle(type) {
+
+  const input = document.getElementById(
+    type === "login" ? "loginEmail" : "regEmail"
+  );
+
+  const label = input?.nextElementSibling;
+
+  const phoneIcon = document.getElementById(
+    type === "login" ? "loginPhoneIcon" : "regPhoneIcon"
+  );
+
+  const emailIcon = document.getElementById(
+    type === "login" ? "loginEmailIcon" : "regEmailIcon"
+  );
+
+  if (!input || !label) return;
+
+  setPhoneMode(input, label, type);
+
+  phoneIcon?.addEventListener("click", () => {
+    setPhoneMode(input, label, type);
+  });
+
+  emailIcon?.addEventListener("click", () => {
+    setEmailMode(input, label, type);
+  });
+}
+
+function setPhoneMode(input, label, type) {
+  input.value = "";
+  input.type = "text";
+  input.setAttribute("inputmode", "numeric");
+  label.textContent = "Number";
+  input.oninput = () => {
+    input.value = input.value.replace(/[^0-9]/g, "");
+  };
+
+  if (type === "login") loginMode = "phone";
+  if (type === "register") registerMode = "phone";
+}
+
+function setEmailMode(input, label, type) {
+  input.value = "";
+  input.type = "email";
+  input.removeAttribute("inputmode");
+  label.textContent = "Email";
+  input.oninput = null;
+
+  if (type === "login") loginMode = "email";
+  if (type === "register") registerMode = "email";
+}
+
+/* =====================================================
+   REGISTER
+===================================================== */
+
+document.getElementById("inscriptionForm")
+  ?.addEventListener("submit", async e => {
+    
+    e.preventDefault();
+    
+    const rawValue = document.getElementById("regEmail").value.trim();
+    const password = document.getElementById("regPass").value;
+    const terms = document.getElementById("termsCheck").checked;
+    
+    if (!terms)
+    return showGlobalError("Accept Terms first.", "left");
+    if (password.length < 6)
+    return showGlobalError("Password too short.", "left");
+    
+    let bodyData = {};
+    let identifierForOTP = null;
+    
+    if (registerMode === "email") {
+      
+      if (!rawValue.includes("@"))
+        return showGlobalError("Invalid email.", "left");
+      
+      const emailLower = rawValue.toLowerCase();
+      
+      bodyData = { email: emailLower, password };
+      identifierForOTP = emailLower;
+      
+    } else {
+      
+      if (rawValue.length < 8)
+        return showGlobalError("Invalid phone.", "left");
+      
+      bodyData = { phone: rawValue, password };
+    }
+    
+    try {
+      
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(bodyData)
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      if (data.emailVerificationRequired && identifierForOTP) {
+        openOtpModal(identifierForOTP);
+        return;
+      }
+      
+      if (data.phoneVerificationRequired && rawValue) {
+        openPhoneOtpModal(rawValue);
+        return;
+      }
+      
+      window.location.href = "dashboard.html";
+      
+    } catch (err) {
+      showGlobalError(err.message || "Registration failed.", "left");
+    }
+    
+  });
+
+/* =====================================================
+   LOGIN
+===================================================== */
+
+document.getElementById("loginForm")
+  ?.addEventListener("submit", async e => {
+    
+    e.preventDefault();
+    
+    loginBlockedMessage.classList.remove("show");
+    blockedText.textContent = "";
+    blockedTimer.textContent = "";
+    
+    const rawValue = document.getElementById("loginEmail").value.trim();
+    const password = document.getElementById("loginPass").value;
+    
+    if (!rawValue || !password)
+      return showGlobalError("Fill all fields.", "right");
+    
+    const identifier =
+      loginMode === "email" ?
+      rawValue.toLowerCase() :
+      rawValue;
+    
+    try {
+      
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ identifier, password })
+      });
+      
+      const data = await res.json();
+      
+      if (res.status === 429) {
+        
+        blockedText.textContent = data.error;
+        startLoginBlockCountdown(data.retryAfter);
+        
+        if (data.emailBlocked) {
+          startHourCountdown(data.retryAfter);
+          return;
+        }
+        
+        if (data.phoneBlocked) {
+          startPhoneHourCountdown(data.retryAfter);
+          return;
+        }
+        
+        return;
+      }
+      
+      if (res.status === 403) {
+        if (data.emailNotVerified)
+        return openOtpModal(identifier);
+  
+        if (data.phoneNotVerified)
+        return openPhoneOtpModal(identifier);
+      }
+      
+      if (!res.ok)
+        throw new Error(data.error);
+      
+      window.location.href = "dashboard.html";
+      
+    } catch (err) {
+      showGlobalError(err.message || "Login failed.", "right");
+    }
+    
+  });
+
+/* =====================================================
+   OTP SYSTEM
+===================================================== */
+
+/* ---------- ERROR HELPERS ---------- */
+
+function showError(message) {
+  if (!otpError) return;
+  otpError.textContent = message;
+  otpError.classList.add("show");
+}
+
+function clearError() {
+  if (!otpError) return;
+  otpError.textContent = "";
+  otpError.classList.remove("show");
+}
+
+
+/* ---------- COUNTDOWN 59s ---------- */
+
+function startOtpCountdown(seconds = 59) {
+  
+  clearInterval(otpCountdownInterval);
+  
+  resendBtn.disabled = true;
+  resendBtn.textContent = seconds;
+  
+  otpCountdownInterval = setInterval(() => {
+    
+    seconds--;
+    
+    if (seconds <= 0) {
+      clearInterval(otpCountdownInterval);
+      resendBtn.disabled = false;
+      resendBtn.textContent = "Resend";
+    } else {
+      resendBtn.textContent = seconds;
+    }
+    
+  }, 1000);
+}
+
+function startHourCountdown(seconds) {
+  
+  clearInterval(hourCountdownInterval);
+  clearInterval(otpCountdownInterval);
+  
+  resendBtn.disabled = true;
+  
+  function update() {
+    
+    if (seconds <= 0) {
+      clearInterval(hourCountdownInterval);
+      resendBtn.disabled = false;
+      resendBtn.textContent = "Resend";
+      clearError();
+      return;
+    }
+    
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    
+    if (m > 0) {
+      showError(`Try again in ${m}m`);
+    } else {
+      showError(`Try again in ${s}s`);
+    }
+    
+    seconds--;
+  }
+  
+  update();
+  hourCountdownInterval = setInterval(update, 1000);
+}
+
+
+/* ---------- VERIFY OTP ---------- */
+
+async function verifyOTP() {
+  
+  if (verifyBtn.disabled) return;
+  
+  if (!currentVerificationIdentifier) return;
+  
+  const otp = document.getElementById("otpInput").value.replace(/\s/g, "").trim();
+  
+  clearError();
+  
+  if (otp.length !== 6) {
+    showError("Invalid 6-digit code.");
+    return;
+  }
+  
+  verifyBtn.disabled = true;
+  verifyBtn.textContent = "Verifying...";
+  
+  try {
+    
+    const res = await fetch("/api/verify-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        identifier: currentVerificationIdentifier,
+        otp
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (res.status === 429)
+      throw new Error(data.error);
+    
+    if (!res.ok)
+      throw new Error(data.error);
+    
+    closeOtpModal();
+    window.location.href = "dashboard.html";
+    
+  } catch (err) {
+    
+    showError(err.message || "Verification failed.");
+    verifyBtn.disabled = false;
+    verifyBtn.textContent = "Verify";
+  }
+}
+
+
+/* ---------- RESEND OTP ---------- */
+
+async function resendOTP() {
+  
+  if (!currentVerificationIdentifier) return;
+  
+  resendBtn.disabled = true;
+  resendBtn.textContent = "Sending...";
+  
+  clearError();
+  
+  try {
+    
+    const res = await fetch("/api/resend-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        identifier: currentVerificationIdentifier
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      if (data.retryAfter) {
+        startHourCountdown(data.retryAfter);
+        return;
+      }
+      throw new Error(data.error);
+    }
+    
+    startOtpCountdown(59);
+    
+  } catch (err) {
+    
+    showError(err.message || "Server error.");
+    resendBtn.disabled = false;
+    resendBtn.textContent = "Resend";
+  }
+}
+
+
+/* ---------- OPEN / CLOSE MODAL ---------- */
+
+function openOtpModal(identifier) {
+  
+  currentVerificationIdentifier = identifier;
+  
+  document.getElementById("otpModal").style.display = "flex";
+  
+  // Disable background scroll (premium feel)
+  document.body.style.overflow = "hidden";
+  
+  const input = document.getElementById("otpInput");
+  input.value = "";
+  
+  verifyBtn.disabled = true;
+  verifyBtn.textContent = "Verify";
+  
+  input.focus();
+  
+  clearError();
+  
+  clearInterval(hourCountdownInterval);
+  clearInterval(otpCountdownInterval); 
+
+startOtpCountdown(59);
+}
+
+function closeOtpModal() {
+  
+  document.getElementById("otpModal").style.display = "none";
+
+  // Restore scroll
+  document.body.style.overflow = "";
+  
+  clearInterval(otpCountdownInterval);
+  clearInterval(hourCountdownInterval);
+  
+  clearError();
+}
+
+/* =====================================================
+   PHONE OTP SYSTEM (PRO VERSION)
+===================================================== */
+
+let currentPhoneVerification = null;
+let phoneCountdownInterval = null;
+let phoneHourInterval = null;
+
+const phoneVerifyBtn = document.getElementById("phoneVerifyBtn");
+const phoneResendBtn = document.getElementById("phoneResendBtn");
+const phoneOtpError = document.getElementById("phoneOtpError");
+const phoneOtpInput = document.getElementById("phoneOtpInput");
+
+/* ---------- INPUT CONTROL ---------- */
+
+phoneOtpInput?.addEventListener("input", function() {
+  this.value = this.value.replace(/[^0-9]/g, "");
+  if (phoneVerifyBtn)
+    phoneVerifyBtn.disabled = this.value.length !== 6;
+});
+
+phoneOtpInput?.addEventListener("keydown", e => {
+  if (e.key === "Enter") verifyPhoneOTP();
+});
+
+/* ---------- BUTTON EVENTS ---------- */
+
+phoneVerifyBtn?.addEventListener("click", verifyPhoneOTP);
+phoneResendBtn?.addEventListener("click", resendPhoneOTP);
+
+/* =====================================================
+   COUNTDOWN 5 MINUTES (SMART DISPLAY)
+===================================================== */
+
+function startPhoneCountdown(seconds = 300) {
+  
+  clearInterval(phoneCountdownInterval);
+  phoneResendBtn.disabled = true;
+  
+  updateDisplay(seconds);
+  
+  phoneCountdownInterval = setInterval(() => {
+    
+    seconds--;
+    
+    if (seconds <= 0) {
+      clearInterval(phoneCountdownInterval);
+      phoneResendBtn.disabled = false;
+      phoneResendBtn.textContent = "Resend";
+      return;
+    }
+    
+    updateDisplay(seconds);
+    
+  }, 1000);
+}
+
+function updateDisplay(seconds) {
+  
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  
+  if (minutes > 0) {
+    phoneResendBtn.textContent = minutes + "m";
+  } else {
+    phoneResendBtn.textContent = remainingSeconds + "s";
+  }
+}
+
+/* =====================================================
+   BLOCK 1 HOUR (429 HANDLER)
+===================================================== */
+
+function startPhoneHourCountdown(seconds) {
+  
+  clearInterval(phoneHourInterval);
+  clearInterval(phoneCountdownInterval);
+  
+  phoneResendBtn.disabled = true;
+  
+  function update() {
+    
+    if (seconds <= 0) {
+      clearInterval(phoneHourInterval);
+      phoneResendBtn.disabled = false;
+      phoneResendBtn.textContent = "Resend";
+      clearPhoneError();
+      return;
+    }
+    
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    
+    if (m > 0) {
+      showPhoneError(`Try again in ${m}m`);
+    } else {
+      showPhoneError(`Try again in ${s}s`);
+    }
+    
+    seconds--;
+  }
+  
+  update();
+  phoneHourInterval = setInterval(update, 1000);
+}
+
+/* =====================================================
+   VERIFY PHONE OTP
+===================================================== */
+
+async function verifyPhoneOTP() {
+  
+  if (!currentPhoneVerification) return;
+  
+  const otp = phoneOtpInput.value.trim();
+  
+  clearPhoneError();
+  
+  if (otp.length !== 6) {
+    showPhoneError("Invalid 6-digit code.");
+    return;
+  }
+  
+  phoneVerifyBtn.disabled = true;
+  phoneVerifyBtn.textContent = "Verifying...";
+  
+  try {
+    
+    const res = await fetch("/api/verify-otp-phone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        phone: currentPhoneVerification,
+        otp
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (res.status === 429) {
+      startPhoneHourCountdown(data.retryAfter);
+      phoneVerifyBtn.disabled = false;
+      phoneVerifyBtn.textContent = "Verify";
+      return;
+    }
+    
+    if (!res.ok)
+      throw new Error(data.error);
+    
+    closePhoneOtpModal();
+    window.location.href = "dashboard.html";
+    
+  } catch (err) {
+    
+    showPhoneError(err.message || "Verification failed.");
+    phoneVerifyBtn.disabled = false;
+    phoneVerifyBtn.textContent = "Verify";
+  }
+}
+
+/* =====================================================
+   RESEND PHONE OTP
+===================================================== */
+
+async function resendPhoneOTP() {
+  
+  if (!currentPhoneVerification) return;
+  
+  phoneResendBtn.disabled = true;
+  phoneResendBtn.textContent = "Sending...";
+  clearPhoneError();
+  
+  try {
+    
+    const res = await fetch("/api/resend-otp-phone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        phone: currentPhoneVerification
+      })
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      
+      if (data.retryAfter) {
+        startPhoneHourCountdown(data.retryAfter);
+        return;
+      }
+      
+      throw new Error(data.error);
+    }
+    
+    startPhoneCountdown(300);
+    
+  } catch (err) {
+    
+    showPhoneError(err.message || "Server error.");
+    phoneResendBtn.disabled = false;
+    phoneResendBtn.textContent = "Resend";
+  }
+}
+
+/* =====================================================
+   OPEN / CLOSE MODAL
+===================================================== */
+
+function openPhoneOtpModal(phone) {
+  
+  currentPhoneVerification = phone;
+  
+  document.getElementById("phoneOtpModal")
+    .style.display = "flex";
+  
+  document.body.style.overflow = "hidden";
+  
+  phoneOtpInput.value = "";
+  phoneVerifyBtn.disabled = true;
+  phoneVerifyBtn.textContent = "Verify";
+  
+  clearPhoneError();
+  
+  clearInterval(phoneHourInterval);
+  clearInterval(phoneCountdownInterval);
+  
+  startPhoneCountdown(300);
+}
+
+function closePhoneOtpModal() {
+  
+  document.getElementById("phoneOtpModal")
+    .style.display = "none";
+  
+  document.body.style.overflow = "";
+  
+  clearInterval(phoneCountdownInterval);
+  clearInterval(phoneHourInterval);
+  
+  clearPhoneError();
+}
+
+/* =====================================================
+   ERROR HANDLING
+===================================================== */
+
+function showPhoneError(msg) {
+  phoneOtpError.textContent = msg;
+  phoneOtpError.classList.add("show");
+}
+
+function clearPhoneError() {
+  phoneOtpError.textContent = "";
+  phoneOtpError.classList.remove("show");
+}
+
+// blocke //
+const blockedTimer = document.getElementById("blockedTimer");
+const blockedText = document.getElementById("blockedText");
+const blockedCloseBtn = document.getElementById("blockedCloseBtn");
+
+blockedCloseBtn?.addEventListener("click", () => {
+  loginBlockedMessage.classList.remove("show");
+  clearInterval(blockedInterval);
+});
+
+function startLoginBlockCountdown(seconds) {
+  
+  clearInterval(blockedInterval);
+  
+  loginBlockedMessage.classList.add("show");
+  
+  function update() {
+    
+    if (seconds <= 0) {
+      clearInterval(blockedInterval);
+      blockedTimer.textContent = "";
+      loginBlockedMessage.classList.remove("show");
+      return;
+    }
+    
+    const minutes = Math.ceil(seconds / 60);
+    blockedTimer.textContent = minutes + " min";
+    
+    seconds--;
+  }
+  
+  update();
+  blockedInterval = setInterval(update, 60000);
+}
+
+
+/* =====================================
+   GLOBAL ERROR SYSTEM
+===================================== */
+
+const globalErrorMessage = document.getElementById("globalErrorMessage");
+const errorText = document.getElementById("errorText");
+const errorCloseBtn = document.getElementById("errorCloseBtn");
+
+let errorTimeout = null;
+
+function showGlobalError(message, side = "right") {
+  
+  clearTimeout(errorTimeout);
+  
+  errorText.textContent = message;
+  
+  globalErrorMessage.classList.remove("left", "right");
+  globalErrorMessage.classList.add(side);
+  globalErrorMessage.classList.add("show");
+  
+  // Auto close after 5 seconds
+  errorTimeout = setTimeout(() => {
+    globalErrorMessage.classList.remove("show");
+  }, 5000);
+}
+
+errorCloseBtn?.addEventListener("click", () => {
+  globalErrorMessage.classList.remove("show");
+  clearTimeout(errorTimeout);
+});
+
+</script>
+</body>
+</html>
