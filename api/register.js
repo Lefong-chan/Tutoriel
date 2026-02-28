@@ -1,5 +1,3 @@
-// register.js
-
 import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
 import { sendOTPEmail } from "./mailer.js";
