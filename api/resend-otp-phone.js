@@ -35,21 +35,16 @@ function generateOTP() {
 
 export default async function handler(req, res) {
 
-  if (req.method !== "POST") {
+  if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
-  }
 
-  if (allowedOrigin && req.headers.origin !== allowedOrigin) {
+  if (allowedOrigin && req.headers.origin !== allowedOrigin)
     return res.status(403).json({ error: "Forbidden" });
-  }
 
   const { phone } = req.body;
 
-  if (!phone) {
-    return res.status(400).json({
-      error: "Phone required"
-    });
-  }
+  if (!phone)
+    return res.status(400).json({ error: "Phone required" });
 
   try {
 
@@ -62,29 +57,19 @@ export default async function handler(req, res) {
       .limitToFirst(1)
       .get();
 
-    if (!snap.exists()) {
-      return res.status(400).json({
-        error: "User not found"
-      });
-    }
+    if (!snap.exists())
+      return res.status(400).json({ error: "User not found" });
 
-    const userKey = Object.keys(snap.val())[0];
-    const userData = snap.val()[userKey];
+    const userData = Object.values(snap.val())[0];
     const now = Date.now();
 
-    if (userData.phoneVerified) {
-      return res.status(400).json({
-        error: "Phone already verified"
-      });
-    }
+    if (userData.phoneVerified)
+      return res.status(400).json({ error: "Phone already verified" });
 
-    if (userData.provider !== "local") {
+    if (userData.provider !== "local")
       return res.status(400).json({
         error: "OTP not required for this account"
       });
-    }
-
-    /* ================= 5 MINUTES COOLDOWN ================= */
 
     if (userData.phoneOTPExpires && now < userData.phoneOTPExpires) {
 
@@ -97,8 +82,6 @@ export default async function handler(req, res) {
         retryAfter
       });
     }
-
-    /* ================= 5 PER HOUR ================= */
 
     let resendCount = userData.phoneResendCount || 0;
     let resendWindowStart =
@@ -121,8 +104,6 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ================= GENERATE NEW OTP ================= */
-
     const newOTP = generateOTP();
     const newExpiry = now + FIVE_MINUTES;
 
@@ -132,8 +113,6 @@ export default async function handler(req, res) {
       phoneResendCount: resendCount + 1,
       phoneResendWindowStart: resendWindowStart
     });
-
-    console.log("PHONE OTP:", cleanPhone, newOTP);
 
     return res.status(200).json({
       success: true,
