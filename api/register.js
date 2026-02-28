@@ -1,3 +1,5 @@
+// register.js
+
 import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
 import { sendOTPEmail } from "./mailer.js";
@@ -25,16 +27,8 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-/* =====================================================
-   CONSTANTS
-===================================================== */
-
-const EMAIL_OTP_VALIDITY = 60 * 1000;        // 1 minute
-const PHONE_OTP_VALIDITY = 5 * 60 * 1000;    // 5 minutes
-
-/* =====================================================
-   HELPERS
-===================================================== */
+const EMAIL_OTP_VALIDITY = 60 * 1000;
+const PHONE_OTP_VALIDITY = 5 * 60 * 1000;
 
 async function generateUID() {
   let uid;
@@ -46,7 +40,6 @@ async function generateUID() {
     ).toString();
 
     snap = await db.ref("users/" + uid).get();
-
   } while (snap.exists());
 
   return uid;
@@ -57,10 +50,6 @@ function generateOTP() {
     100000 + Math.random() * 900000
   ).toString();
 }
-
-/* =====================================================
-   HANDLER
-===================================================== */
 
 export default async function handler(req, res) {
 
@@ -83,10 +72,7 @@ export default async function handler(req, res) {
     let emailLower = null;
     let phoneClean = null;
 
-    /* ================= EMAIL CHECK ================= */
-
     if (email) {
-
       emailLower = email.toLowerCase().trim();
 
       const existingEmail = await db
@@ -103,10 +89,7 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ================= PHONE CHECK ================= */
-
     if (phone) {
-
       phoneClean = phone.trim();
 
       const existingPhone = await db
@@ -123,39 +106,27 @@ export default async function handler(req, res) {
       }
     }
 
-    /* ================= PASSWORD HASH ================= */
-
     const hashedPassword = await bcrypt.hash(password, 12);
     const uid = await generateUID();
     const now = Date.now();
-
-    /* ================= EMAIL OTP ================= */
 
     const emailOTP = emailLower ? generateOTP() : null;
     const emailOTPExpires = emailLower
       ? now + EMAIL_OTP_VALIDITY
       : null;
 
-    /* ================= PHONE OTP ================= */
-
     const phoneOTP = phoneClean ? generateOTP() : null;
     const phoneOTPExpires = phoneClean
       ? now + PHONE_OTP_VALIDITY
       : null;
 
-    /* ================= SAVE USER ================= */
-
     await db.ref("users/" + uid).set({
 
       uid,
-
       email: emailLower,
       phone: phoneClean,
       password: hashedPassword,
-
       provider: "local",
-
-      /* ================= EMAIL VERIFICATION ================= */
 
       emailVerified: emailLower ? false : true,
       otp: emailOTP,
@@ -163,8 +134,6 @@ export default async function handler(req, res) {
 
       resendCount: 0,
       resendWindowStart: now,
-
-      /* ================= PHONE VERIFICATION ================= */
 
       phoneVerified: phoneClean ? false : true,
       phoneOTP,
@@ -176,24 +145,14 @@ export default async function handler(req, res) {
       phoneOtpAttempts: 0,
       phoneOtpBlockUntil: null,
 
-      /* ================= LOGIN RATE LIMIT ================= */
-
       loginAttempts: 0,
       loginWindowStart: null,
 
       createdAt: now
     });
 
-    /* ================= SEND EMAIL OTP ================= */
-
     if (emailLower) {
       await sendOTPEmail(emailLower, emailOTP);
-    }
-
-    /* ================= FAKE SMS (for now) ================= */
-
-    if (phoneClean) {
-      console.log("PHONE OTP:", phoneClean, phoneOTP);
     }
 
     return res.status(201).json({
