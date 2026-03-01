@@ -1,5 +1,9 @@
 import nodemailer from "nodemailer";
 
+if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+  throw new Error("EMAIL_USER or EMAIL_PASS not set");
+}
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
