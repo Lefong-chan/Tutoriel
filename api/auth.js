@@ -1,5 +1,5 @@
 // ================================
-// 🔐 AUTH API (Register + Login)
+// AUTH API (Register + Login)
 // ================================
 
 import admin from "firebase-admin";
@@ -18,13 +18,12 @@ if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
-
-  // Fix newline issue on Vercel
+  
   if (serviceAccount.private_key) {
     serviceAccount.private_key =
       serviceAccount.private_key.replace(/\\n/g, "\n");
   }
-
+  
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
@@ -40,29 +39,49 @@ function setCORS(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
+function normalizeIdentifier(identifier) {
+  const raw = identifier.trim();
+  const isEmail = raw.includes("@");
+  
+  if (isEmail) {
+    return {
+      clean: raw.toLowerCase(),
+      type: "email",
+    };
+  }
+  
+  // Remove all non-digits for phone
+  const phoneClean = raw.replace(/\D/g, "");
+  
+  return {
+    clean: phoneClean,
+    type: "phone",
+  };
+}
+
+function isValidEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
 /* ================= MAIN HANDLER ================= */
 
 export default async function handler(req, res) {
   setCORS(res);
-
+  
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
-
+  
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
+  
   const { action } = req.body;
-
-  if (action === "register") {
-    return register(req, res);
-  }
-
-  if (action === "login") {
-    return login(req, res);
-  }
-
+  
+  if (action === "register") return register(req, res);
+  if (action === "login") return login(req, res);
+  
   return res.status(400).json({ error: "Invalid action" });
 }
 
@@ -73,47 +92,63 @@ export default async function handler(req, res) {
 async function register(req, res) {
   try {
     const { identifier, password } = req.body;
-
+    
     if (!identifier || !password) {
       return res.status(400).json({
-        error: "Email or phone and valid password required",
+        error: "Email or phone and password required",
       });
     }
-
-    const cleanIdentifier = identifier.trim().toLowerCase();
-
-    const isEmail = cleanIdentifier.includes("@");
-
+    
+    if (password.length < 6) {
+      return res.status(400).json({
+        error: "Password must be at least 6 characters",
+      });
+    }
+    
+    const { clean, type } = normalizeIdentifier(identifier);
+    
+    if (type === "email" && !isValidEmail(clean)) {
+      return res.status(400).json({
+        error: "Invalid email format",
+      });
+    }
+    
+    if (type === "phone" && clean.length < 8) {
+      return res.status(400).json({
+        error: "Invalid phone number",
+      });
+    }
+    
     // Check if already exists
     const existingUser = await db
       .collection("users")
-      .where("identifier", "==", cleanIdentifier)
+      .where("identifier", "==", clean)
       .limit(1)
       .get();
-
+    
     if (!existingUser.empty) {
       return res.status(400).json({
         error: "User already registered",
       });
     }
-
+    
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Save user
+    
     const newUser = {
-      identifier: cleanIdentifier,
-      type: isEmail ? "email" : "phone",
+      identifier: clean,
+      type,
       password: hashedPassword,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
-
+    
     const docRef = await db.collection("users").add(newUser);
-
+    
     return res.status(201).json({
       message: "Account created successfully",
       userId: docRef.id,
     });
+    
   } catch (err) {
     console.error("REGISTER ERROR:", err);
     return res.status(500).json({ error: "Server error" });
@@ -127,52 +162,55 @@ async function register(req, res) {
 async function login(req, res) {
   try {
     const { identifier, password } = req.body;
-
+    
     if (!identifier || !password) {
       return res.status(400).json({
         error: "Invalid credentials",
       });
     }
-
-    const cleanIdentifier = identifier.trim().toLowerCase();
-
+    
+    const { clean } = normalizeIdentifier(identifier);
+    
     const userSnapshot = await db
       .collection("users")
-      .where("identifier", "==", cleanIdentifier)
+      .where("identifier", "==", clean)
       .limit(1)
       .get();
-
+    
     if (userSnapshot.empty) {
       return res.status(401).json({
         error: "Invalid credentials",
       });
     }
-
+    
     const userDoc = userSnapshot.docs[0];
     const user = userDoc.data();
-
+    
     const isMatch = await bcrypt.compare(password, user.password);
-
+    
     if (!isMatch) {
       return res.status(401).json({
         error: "Invalid credentials",
       });
     }
-
-    // Generate JWT
+    
     const token = jwt.sign(
       {
         uid: userDoc.id,
         identifier: user.identifier,
       },
       SECRET,
-      { expiresIn: "7d" }
+      {
+        expiresIn: "7d",
+        issuer: "malagasy-game-app",
+      }
     );
-
+    
     return res.status(200).json({
       message: "Login successful",
       token,
     });
+    
   } catch (err) {
     console.error("LOGIN ERROR:", err);
     return res.status(500).json({ error: "Server error" });
