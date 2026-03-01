@@ -142,6 +142,12 @@
     </div>
   </div>
   
+<div id="verifySection" style="display:none; text-align:center; margin-top:20px;">
+  <h2>Enter Verification Code</h2>
+  <input type="text" id="verifyCodeInput" maxlength="6" placeholder="6-digit code" />
+  <button id="verifyBtn">Verify</button>
+</div>
+  
 <script>
   document.addEventListener("DOMContentLoaded", () => {
     
@@ -266,27 +272,27 @@
 </script>
 
 <script>
-/* ================= API CALL ================= */
-
-document.addEventListener("DOMContentLoaded", () => {
-  
-  const loginForm = document.getElementById("loginForm");
-  const registerForm = document.getElementById("inscriptionForm");
-  
-  const API_URL = "/api/auth";
-  
-  /* ================= LOGIN ================= */
-  
-  loginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  document.addEventListener("DOMContentLoaded", () => {
     
-    const identifier =
-      document.getElementById("loginEmail").value.trim();
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("inscriptionForm");
+    const verifySection = document.getElementById("verifySection");
+    const verifyBtn = document.getElementById("verifyBtn");
     
-    const password =
-      document.getElementById("loginPass").value;
+    const API_URL = "/api/auth";
     
-    try {
+    let tempIdentifier = "";
+    
+    /* ================= LOGIN ================= */
+    
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      const identifier =
+        document.getElementById("loginEmail").value.trim();
+      const password =
+        document.getElementById("loginPass").value;
+      
       const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -299,32 +305,22 @@ document.addEventListener("DOMContentLoaded", () => {
       
       const data = await res.json();
       
-      if (!res.ok) {
-        alert(data.error);
-        return;
-      }
+      if (!res.ok) return alert(data.error);
       
       alert("Login success!");
       console.log("TOKEN:", data.token);
+    });
+    
+    /* ================= REGISTER ================= */
+    
+    registerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
       
-    } catch (err) {
-      alert("Network error");
-    }
-  });
-  
-  
-  /* ================= REGISTER ================= */
-  
-  registerForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    
-    const identifier =
-      document.getElementById("regEmail").value.trim();
-    
-    const password =
-      document.getElementById("regPass").value;
-    
-    try {
+      const identifier =
+        document.getElementById("regEmail").value.trim();
+      const password =
+        document.getElementById("regPass").value;
+      
       const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -337,19 +333,45 @@ document.addEventListener("DOMContentLoaded", () => {
       
       const data = await res.json();
       
-      if (!res.ok) {
-        alert(data.error);
-        return;
-      }
+      if (!res.ok) return alert(data.error);
       
-      alert("Account created!");
+      tempIdentifier = identifier;
       
-    } catch (err) {
-      alert("Network error");
-    }
+      alert("Verification code sent to your email");
+      
+      verifySection.style.display = "block";
+    });
+    
+    /* ================= VERIFY ================= */
+    
+    verifyBtn.addEventListener("click", async () => {
+      
+      const code =
+        document.getElementById("verifyCodeInput").value.trim();
+      
+      if (code.length !== 6)
+        return alert("Enter 6 digit code");
+      
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify",
+          identifier: tempIdentifier,
+          code,
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) return alert(data.error);
+      
+      alert("Account verified! You can login now.");
+      
+      verifySection.style.display = "none";
+    });
+    
   });
-  
-});
 </script>
 
 </body>
