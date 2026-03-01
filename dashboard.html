@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="mg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+
+    h2 {
+      margin-bottom: 20px;
+    }
+
+    .info {
+      margin-bottom: 10px;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 8px 15px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  
+  <h2>Welcome</h2>
+
+  <div class="info">
+    <strong>UID:</strong>
+    <span id="uid">Loading...</span>
+  </div>
+
+  <div class="info">
+    <strong>Number:</strong>
+    <span id="phone">Loading...</span>
+  </div>
+
+  <div class="info">
+    <strong>Email:</strong>
+    <span id="email">Loading...</span>
+  </div>
+
+  <button onclick="logout()">Logout</button>
+    
+  <script>
+
+    async function loadUser() {
+      try {
+
+        const res = await fetch("/api/me", {
+          credentials: "include"
+        });
+
+        if (!res.ok) {
+          window.location.href = "index.html";
+          return;
+        }
+
+        const data = await res.json();
+
+        document.getElementById("uid").innerText =
+          data.uid || "Unknown";
+
+        document.getElementById("phone").innerText =
+          data.phone || "No phone number provided";
+
+        document.getElementById("email").innerText =
+          data.email || "No email address provided";
+
+      } catch (error) {
+        window.location.href = "index.html";
+      }
+    }
+
+    async function logout() {
+      await fetch("/api/logout", {
+        method: "POST",
+        credentials: "include"
+      });
+
+      window.location.href = "index.html";
+    }
+
+    loadUser();
+
+  </script>
+
+</body>
+</html>
