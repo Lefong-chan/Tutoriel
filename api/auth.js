@@ -1,655 +1,294 @@
-<!DOCTYPE html>
-<html lang="mg">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login & Register</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+import admin from "firebase-admin";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { sendVerificationEmail } from "./mailer.js";
 
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
-    body { background: linear-gradient(135deg, #6e8efb, #a777e3); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
-    .container { position: relative; width: 800px; max-width: 100%; min-height: 350px; background-color: #fff; border-radius: 20px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2); overflow: hidden; transition: all 0.5s ease; }
-    .container.active { box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3); }
-    .forms-container { position: absolute; width: 100%; height: 100%; display: flex; transition: transform 0.8s ease-in-out; }
-    .login-form, .inscription-form { position: absolute; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 40px; transition: all 0.8s ease-in-out; }
-    .login-form { transform: translateX(0); }
-    .container.active .login-form { transform: translateX(-100%); opacity: 0; }
-    .inscription-form { right: 0; transform: translateX(100%); opacity: 0; }
-    .container.active .inscription-form { transform: translateX(0); opacity: 1; }
-    .form-title { font-size: 25px; color: #333; margin: 0 0 12px 0; text-align: center; }
-    .form-title span { color: #a777e3; }
-    .input-group { position: relative; width: 100%; margin-bottom: 15px; }
-    .form-input { width: 100%; padding: 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; background: none; transition: all 0.3s ease; }
-    .form-label { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); background-color: #fff; padding: 0 5px; color: #999; font-size: 16px; pointer-events: none; transition: all 0.5s ease; }
-    .form-input:focus, .form-input:not(:placeholder-shown) { border-color: #6e8efb; }
-    .form-input:focus+.form-label, .form-input:not(:placeholder-shown)+.form-label, .form-input:valid+.form-label { top: 0; font-size: 12px; color: #6e8efb; font-weight: bold; }
-    .password-wrapper { position: relative; width: 100%; }
-    .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #666; z-index: 3; }
-    .btn { width: 100%; padding: 14px; margin-top: 10px; background: linear-gradient(to right, #6e8efb, #a777e3); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
-    .btn:hover { transform: translateY(-3px); }
-    .social-login { display: flex; justify-content: center; gap: 15px; margin-top: 10px; }
-    .social-icon { width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; cursor: pointer; transition: all 0.3s ease; }
-    .number { background-color: #25D366; }
-    .email { background-color: #EA4335; }
-    .toggle-container { position: absolute; top: 0; left: 50%; width: 50%; height: 100%; overflow: hidden; transition: transform 0.8s ease-in-out; z-index: 10; }
-    .container.active .toggle-container { transform: translateX(-100%); }
-    .toggle { background: linear-gradient(to right, #6e8efb, #a777e3); height: 100%; color: white; position: relative; left: -100%; width: 200%; transform: translateX(0); transition: transform 0.8s ease-in-out; }
-    .container.active .toggle { transform: translateX(50%); }
-    .toggle-panel { position: absolute; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 40px; text-align: center; top: 0; transition: transform 0.8s ease-in-out; }
-    .toggle-panel h2 { font-size: 32px; margin-bottom: 20px; }
-    .toggle-panel p { margin-bottom: 30px; line-height: 1.5; }
-    .toggle-left { transform: translateX(-200%); }
-    .container.active .toggle-left { transform: translateX(0); }
-    .toggle-right { right: 0; }
-    .container.active .toggle-right { transform: translateX(200%); }
-    .toggle-btn { padding: 12px 45px; background-color: transparent; border: 2px solid white; color: white; border-radius: 25px; cursor: pointer; }
-    .footer-text { margin-top: 10px; color: #666; font-size: 14px; text-align: center; }
-    .footer-text a { color: #a777e3; text-decoration: none; font-weight: 600; }
-    .terms-wrapper { display: flex; align-items: center; gap: 8px; width: 100%; margin: 2px 0; font-size: 13px; color: #666; }
-    .terms-wrapper input { cursor: pointer; }
-    @media (max-width: 768px) { .toggle-container { display: none; } .login-form, .inscription-form { width: 100%; } }
-    
-/* ================= VERIFY MODAL ================= */
+/* ================= ENV ================= */
 
-.verify-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.45);
-  backdrop-filter: blur(5px);
-  display: none;
-  justify-content: center;
-  align-items: center;
-  z-index: 999;
-}
+const SECRET = process.env.JWT_SECRET;
+const NODE_ENV = process.env.NODE_ENV || "development";
+const allowedOrigin =
+  NODE_ENV === "production"
+    ? process.env.ALLOWED_ORIGIN
+    : "*";
 
-.verify-modal.active {
-  display: flex;
-}
+if (!SECRET) throw new Error("JWT_SECRET not set");
+if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
 
-.verify-box {
-  background: white;
-  padding: 30px;
-  width: 320px;
-  border-radius: 20px;
-  text-align: center;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-  animation: popIn 0.3s ease;
-  position: relative;
-}
+/* ================= FIREBASE INIT ================= */
 
-.verify-btn {
-  width: 100%;
-  padding: 12px;
-  border-radius: 10px;
-  border: none;
-  background: linear-gradient(to right, #6e8efb, #a777e3);
-  color: white;
-  font-weight: bold;
-  cursor: pointer;
-}
+if (!admin.apps.length) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
-.close-modal {
-  position: absolute;
-  top: 12px;
-  right: 15px;
-  border: none;
-  background: none;
-  font-size: 22px;
-  cursor: pointer;
-  color: #999;
-}
-
-@keyframes popIn {
-  from { transform: scale(0.9); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
-}
-
-/* ===== CODE ROW FLEX ===== */
-
-.code-row {
-  display: flex;
-  gap: 10px;
-  width: 100%;
-  margin-bottom: 15px;
-}
-
-.code-row input {
-  flex: 1;
-  padding: 14px;
-  border-radius: 10px;
-  border: 1px solid #ddd;
-  font-size: 18px;
-  text-align: center;
-  letter-spacing: 5px;
-  outline: none;
-  transition: 0.3s ease;
-}
-
-.code-row input:focus {
-  border-color: #6e8efb;
-}
-
-/* ===== RESEND BUTTON ===== */
-
-.resend-btn {
-  padding: 0 18px;
-  border-radius: 10px;
-  border: none;
-  background: linear-gradient(to right, #6e8efb, #a777e3);
-  color: white;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  white-space: nowrap;
-}
-
-.resend-btn:hover {
-  transform: translateY(-2px);
-  opacity: 0.9;
-}
-
-/* ===== RESPONSIVE ===== */
-
-@media (max-width: 480px) {
-  .code-row {
-    flex-direction: column;
+  if (serviceAccount.private_key) {
+    serviceAccount.private_key =
+      serviceAccount.private_key.replace(/\\n/g, "\n");
   }
-  
-  .resend-btn {
-    width: 100%;
-    padding: 12px;
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
+
+const db = admin.firestore();
+
+/* ================= HELPERS ================= */
+
+function setCORS(res) {
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+function normalizeIdentifier(identifier = "") {
+  if (typeof identifier !== "string") return null;
+
+  const raw = identifier.trim();
+  if (!raw) return null;
+
+  if (raw.includes("@")) {
+    return { clean: raw.toLowerCase(), type: "email" };
+  }
+
+  const phone = raw.replace(/\s+/g, "");
+  const malagasyRegex = /^03\d{8}$/;
+
+  if (!malagasyRegex.test(phone)) return null;
+
+  return { clean: phone, type: "phone" };
+}
+
+function generateCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/* ================= MAIN HANDLER ================= */
+
+export default async function handler(req, res) {
+  setCORS(res);
+
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST")
+    return res.status(405).json({ error: "Method not allowed" });
+
+  const { action } = req.body || {};
+  if (!action)
+    return res.status(400).json({ error: "Missing action" });
+
+  try {
+    if (action === "register") return await register(req, res);
+    if (action === "verify") return await verify(req, res);
+    if (action === "login") return await login(req, res);
+    if (action === "resend") return await resend(req, res);
+
+    return res.status(400).json({ error: "Invalid action" });
+  } catch (err) {
+    console.error("SERVER ERROR:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 }
-  </style>
-</head>
-<body>
-  
-  <div class="container" id="container">
-    <div class="forms-container">
-      
-      <form class="login-form" id="loginForm">
-        <h1 class="form-title">Login <span>Now</span></h1>
-        
-        <div class="input-group">
-          <input type="text" id="loginEmail" class="form-input" inputmode="numeric" placeholder=" " required>
-          <label class="form-label">Number</label>
-        </div>
-        
-        <div class="input-group" style="margin-bottom: 13px;">
-          <div class="password-wrapper">
-            <input type="password" id="loginPass" class="form-input" placeholder=" " required>
-            <label class="form-label">Password</label>
-            <i class="fa-solid fa-eye-slash toggle-password"></i>
-          </div>
-        </div>
-        
-        <div style="width: 100%; text-align: center; margin-bottom: 2px;">
-          <a href="#" style="text-decoration: none; font-weight: bold; color: #a777e3; font-size: 14px;">Forgot password?</a>
-        </div>
-        
-        <button type="submit" class="btn">Sign In</button>
-        
-        <div class="social-login">
-          <div class="social-icon number" id="loginPhoneIcon">
-            <i class="fa-solid fa-phone"></i>
-          </div>
-          <div class="social-icon email" id="loginEmailIcon">
-            <i class="fa-solid fa-envelope"></i>
-          </div>
-        </div>
-        
-        <div class="footer-text">Don't have an account? <a href="#" id="toRegMobile">Sign up</a></div>
-      </form>
-      
-      <form class="inscription-form" id="inscriptionForm">
-        <h1 class="form-title">Create <span>Account</span></h1>
-        
-        <div class="input-group">
-          <input type="text" id="regEmail" class="form-input" inputmode="numeric" placeholder=" " required>
-          <label class="form-label">Number</label>
-        </div>
-        
-        <div class="input-group" style="margin-bottom: 11px;">
-          <div class="password-wrapper">
-            <input type="password" id="regPass" class="form-input" placeholder=" " required>
-            <label class="form-label">Password</label>
-            <i class="fa-solid fa-eye-slash toggle-password"></i>
-          </div>
-        </div>
-        
-        <div class="terms-wrapper">
-          <input type="checkbox" id="termsCheck" required>
-          <label for="termsCheck">I accept the <a href="#" style="color: #a777e3;">Terms and Conditions</a></label>
-        </div>
-        
-        <button type="submit" class="btn">Sign up</button>
-        
-        <div class="social-login">
-          <div class="social-icon number" id="regPhoneIcon">
-            <i class="fa-solid fa-phone"></i>
-          </div>
-          <div class="social-icon email" id="regEmailIcon">
-            <i class="fa-solid fa-envelope"></i>
-          </div>
-        </div>
-        
-        <p class="footer-text">Already have an account? <a href="#" id="mobileLoginBtn">Login</a></p>
-      </form>
-    </div>
-    
-    <div class="toggle-container">
-      <div class="toggle">
-        <div class="toggle-panel toggle-left">
-          <h2>Return to the Board</h2>
-          <p>Continue your journey in the world of Malagasy strategy and wisdom</p>
-          <button class="toggle-btn" id="loginToggleBtn">Sign In</button>
-        </div>
-        <div class="toggle-panel toggle-right">
-          <h2>Join the Game!</h2>
-          <p>Join fellow players and experience the traditional Malagasy strategy game</p>
-          <button class="toggle-btn" id="inscriptionToggleBtn">Sign Up</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-<div id="verifyModal" class="verify-modal">
-  <div class="verify-box">
-    
-    <button class="close-modal" id="closeVerify">&times;</button>
-    
-    <h2>Enter Verification Code</h2>
-    <p style="color:#666; font-size:14px; margin-bottom:15px;">
-      Please enter the 6-digit code sent to you
-    </p>
-    
-    <div class="code-row">
-      <input 
-        type="text" 
-        id="verifyCodeInput" 
-        maxlength="6" 
-        placeholder="000000" 
-      />
 
-      <button type="button" class="resend-btn">
-        Resend
-      </button>
-    </div>
-    
-    <button id="verifyBtn" class="verify-btn">Verify</button>
-    
-  </div>
-</div>
-  
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    
-    /* ================= ELEMENTS ================= */
-    
-    const container = document.getElementById("container");
-    
-    const signUpBtn = document.getElementById("inscriptionToggleBtn");
-    const signInBtn = document.getElementById("loginToggleBtn");
-    const toRegMobile = document.getElementById("toRegMobile");
-    const mobileLoginBtn = document.getElementById("mobileLoginBtn");
-    
-    const loginForm = document.getElementById("loginForm");
-    const registerForm = document.getElementById("inscriptionForm");
-    
-    
-    /* ================= FUNCTION: CLEAR FORM ================= */
-    
-    function clearForm(form) {
-      form.querySelectorAll("input").forEach(input => {
-        if (input.type === "checkbox") {
-          input.checked = false;
-        } else {
-          input.value = "";
-        }
-      });
-    }
-    
-    
-    /* ================= TOGGLE PANELS WITH 0.5s DELAY ================= */
-    
-    function goToRegister() {
-      
-      container.classList.add("active");
-      
-      setTimeout(() => {
-        clearForm(loginForm);
-      }, 500); // 0.5s delay
-    }
-    
-    function goToLogin() {
-      
-      container.classList.remove("active");
-      
-      setTimeout(() => {
-        clearForm(registerForm);
-      }, 500); // 0.5s delay
-    }
-    
-    signUpBtn?.addEventListener("click", goToRegister);
-    signInBtn?.addEventListener("click", goToLogin);
-    
-    toRegMobile?.addEventListener("click", (e) => {
-      e.preventDefault();
-      goToRegister();
-    });
-    
-    mobileLoginBtn?.addEventListener("click", (e) => {
-      e.preventDefault();
-      goToLogin();
-    });
-    
-    
-    /* ================= PASSWORD TOGGLE ================= */
-    
-    const toggleIcons = document.querySelectorAll(".toggle-password");
-    
-    toggleIcons.forEach(icon => {
-      icon.addEventListener("click", () => {
-        
-        const passwordInput = icon.closest(".password-wrapper").querySelector("input");
-        
-        if (passwordInput.type === "password") {
-          passwordInput.type = "text";
-          icon.classList.remove("fa-eye-slash");
-          icon.classList.add("fa-eye");
-        } else {
-          passwordInput.type = "password";
-          icon.classList.remove("fa-eye");
-          icon.classList.add("fa-eye-slash");
-        }
-        
-      });
-    });
-    
-    
-    /* ================= NUMBER / EMAIL SWITCH ================= */
-    
-    function setupModeSwitch(inputId, phoneIconId, emailIconId) {
-      
-      const input = document.getElementById(inputId);
-      const phoneIcon = document.getElementById(phoneIconId);
-      const emailIcon = document.getElementById(emailIconId);
-      const label = input.parentElement.querySelector(".form-label");
-      
-      function setNumberMode() {
-        input.value = "";
-        input.type = "text";
-        input.setAttribute("inputmode", "numeric");
-        input.pattern = "[0-9]*";
-        label.textContent = "Number";
-      }
-      
-      function setEmailMode() {
-        input.value = "";
-        input.type = "email";
-        input.removeAttribute("pattern");
-        input.removeAttribute("inputmode");
-        label.textContent = "Email";
-      }
-      
-      phoneIcon?.addEventListener("click", setNumberMode);
-      emailIcon?.addEventListener("click", setEmailMode);
-      
-      setNumberMode(); // default
-    }
-    
-    setupModeSwitch("loginEmail", "loginPhoneIcon", "loginEmailIcon");
-    setupModeSwitch("regEmail", "regPhoneIcon", "regEmailIcon");
-    
+/* ================= REGISTER ================= */
+
+async function register(req, res) {
+  const { identifier, password } = req.body || {};
+
+  if (!identifier || !password)
+    return res.status(400).json({ error: "All fields required" });
+
+  if (password.length < 6)
+    return res.status(400).json({ error: "Password too short" });
+
+  const normalized = normalizeIdentifier(identifier);
+  if (!normalized)
+    return res.status(400).json({ error: "Invalid identifier" });
+
+  const { clean, type } = normalized;
+  const docRef = db.collection("users").doc(clean);
+
+  const existing = await docRef.get();
+  if (existing.exists)
+    return res.status(400).json({ error: "User already registered" });
+
+  const hashedPassword = await bcrypt.hash(password, 12);
+  const code = generateCode();
+  const hashedCode = await bcrypt.hash(code, 10);
+
+  await docRef.set({
+    identifier: clean,
+    type,
+    password: hashedPassword,
+    isVerified: false,
+    verificationCode: hashedCode,
+    verificationExpires: Date.now() + 10 * 60 * 1000,
+    verificationAttempts: 0,
+    loginAttempts: 0,
+    loginBlockedUntil: null,
+    lastResendAt: null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-</script>
 
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    
-    /* ================= ELEMENTS ================= */
-    
-    const loginForm = document.getElementById("loginForm");
-    const registerForm = document.getElementById("inscriptionForm");
-    
-    const verifyModal = document.getElementById("verifyModal");
-    const closeVerify = document.getElementById("closeVerify");
-    const verifyBtn = document.getElementById("verifyBtn");
-    const verifyInput = document.getElementById("verifyCodeInput");
-    const resendBtn = verifyModal.querySelector(".resend-btn"); // ✅ scoped
-    
-    const container = document.getElementById("container");
-    
-    const loginIdentifierInput = document.getElementById("loginEmail");
-    const registerIdentifierInput = document.getElementById("regEmail");
-    
-    const API_URL = "/api/auth";
-    
-    
-    /* ================= FIX BUG: NORMALIZE IDENTIFIER ================= */
-    
-    function normalizeIdentifier(identifier) {
-      if (!identifier) return null;
-      
-      const raw = identifier.trim();
-      if (!raw) return null;
-      
-      // Email
-      if (raw.includes("@")) {
-        return raw.toLowerCase();
-      }
-      
-      // Phone (remove spaces)
-      return raw.replace(/\s+/g, "");
-    }
-    
-    
-    /* ================= STORE IDENTIFIER ================= */
-    
-    let currentIdentifier = null;
-    
-    function openVerifyModal(identifier) {
-      currentIdentifier = normalizeIdentifier(identifier); // ✅ FIX
-      verifyInput.value = "";
-      verifyModal.classList.add("active");
-    }
-    
-    function closeVerifyModal() {
-      verifyModal.classList.remove("active");
-      verifyInput.value = "";
-      currentIdentifier = null;
-    }
-    
-    
-    /* ================= LOGIN ================= */
-    
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      
-      const identifier = normalizeIdentifier(loginIdentifierInput.value);
-      const password = document.getElementById("loginPass").value;
-      
-      if (!identifier || !password) return;
-      
-      try {
-        const res = await fetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "login",
-            identifier,
-            password,
-          }),
-        });
-        
-        let data = {};
-        try { data = await res.json(); } catch {}
-        
-        if (res.status === 403) {
-          openVerifyModal(identifier);
-          return;
-        }
-        
-        if (!res.ok) {
-          alert(data.error || "Login failed");
-          return;
-        }
-        
-        alert("Login successful!");
-        
-      } catch {
-        alert("Network error");
-      }
-    });
-    
-    
-    /* ================= REGISTER ================= */
-    
-    registerForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      
-      const identifier = normalizeIdentifier(registerIdentifierInput.value);
-      const password = document.getElementById("regPass").value;
-      
-      if (!identifier || !password) return;
-      
-      try {
-        const res = await fetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "register",
-            identifier,
-            password,
-          }),
-        });
-        
-        let data = {};
-        try { data = await res.json(); } catch {}
-        
-        if (!res.ok) {
-          alert(data.error || "Register failed");
-          return;
-        }
-        
-        openVerifyModal(identifier); // ✅ efa normalized
-        
-      } catch {
-        alert("Network error");
-      }
-    });
-    
-    
-    /* ================= VERIFY ================= */
-    
-    verifyBtn.addEventListener("click", async () => {
-      
-      const code = verifyInput.value.trim();
-      
-      if (!currentIdentifier) {
-        alert("Session expired. Please login/register again.");
-        return;
-      }
-      
-      if (!code || code.length !== 6) {
-        alert("Enter valid 6-digit code.");
-        return;
-      }
-      
-      try {
-        const res = await fetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "verify",
-            identifier: currentIdentifier,
-            code,
-          }),
-        });
-        
-        let data = {};
-        try { data = await res.json(); } catch {}
-        
-        if (!res.ok) {
-          alert(data.error || "Verification failed");
-          return;
-        }
-        
-        closeVerifyModal();
-        container.classList.remove("active");
-        
-        alert("Account verified successfully!");
-        
-      } catch {
-        alert("Network error");
-      }
-    });
-    
-    
-    /* ================= RESEND ================= */
-    
-    resendBtn.addEventListener("click", async () => {
-      
-      if (!currentIdentifier) {
-        alert("Session expired.");
-        return;
-      }
-      
-      try {
-        resendBtn.disabled = true;
-        resendBtn.textContent = "Sending...";
-        
-        const res = await fetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "resend",
-            identifier: currentIdentifier,
-          }),
-        });
-        
-        let data = {};
-        try { data = await res.json(); } catch {}
-        
-        if (!res.ok) {
-          alert(data.error || "Resend failed");
-          resendBtn.disabled = false;
-          resendBtn.textContent = "Resend";
-          return;
-        }
-        
-        alert("New code sent!");
-        
-        let seconds = 60;
-        resendBtn.textContent = `Wait ${seconds}s`;
-        
-        const interval = setInterval(() => {
-          seconds--;
-          resendBtn.textContent = `Wait ${seconds}s`;
-          
-          if (seconds <= 0) {
-            clearInterval(interval);
-            resendBtn.disabled = false;
-            resendBtn.textContent = "Resend";
-          }
-        }, 1000);
-        
-      } catch {
-        alert("Network error");
-        resendBtn.disabled = false;
-        resendBtn.textContent = "Resend";
-      }
-    });
-    
-    
-    /* ================= CLOSE MODAL ================= */
-    
-    closeVerify.addEventListener("click", closeVerifyModal);
-    
+  if (type === "email") {
+    await sendVerificationEmail(clean, code);
+  }
+
+  return res.status(201).json({
+    message: "Account created. Enter verification code.",
   });
-</script>
+}
 
-</body>
-</html>
+/* ================= VERIFY ================= */
+
+async function verify(req, res) {
+  const { identifier, code } = req.body || {};
+
+  if (!identifier || !code)
+    return res.status(400).json({ error: "Invalid request" });
+
+  const normalized = normalizeIdentifier(identifier);
+  if (!normalized)
+    return res.status(400).json({ error: "Invalid identifier" });
+
+  const docRef = db.collection("users").doc(normalized.clean);
+  const snapshot = await docRef.get();
+
+  if (!snapshot.exists)
+    return res.status(400).json({ error: "User not found" });
+
+  const user = snapshot.data();
+
+  if (user.isVerified)
+    return res.status(400).json({ error: "Already verified" });
+
+  if (!user.verificationExpires || Date.now() > user.verificationExpires)
+    return res.status(400).json({ error: "Code expired" });
+
+  if (user.verificationAttempts >= 5)
+    return res.status(429).json({ error: "Too many attempts" });
+
+  const match = await bcrypt.compare(code, user.verificationCode);
+
+  if (!match) {
+    await docRef.update({
+      verificationAttempts: user.verificationAttempts + 1,
+    });
+    return res.status(400).json({ error: "Invalid code" });
+  }
+
+  await docRef.update({
+    isVerified: true,
+    verificationCode: admin.firestore.FieldValue.delete(),
+    verificationExpires: admin.firestore.FieldValue.delete(),
+    verificationAttempts: admin.firestore.FieldValue.delete(),
+  });
+
+  return res.status(200).json({ message: "Account verified" });
+}
+
+/* ================= LOGIN ================= */
+
+async function login(req, res) {
+  const { identifier, password } = req.body || {};
+
+  if (!identifier || !password)
+    return res.status(400).json({ error: "All fields required" });
+
+  const normalized = normalizeIdentifier(identifier);
+  if (!normalized)
+    return res.status(400).json({ error: "Invalid identifier" });
+
+  const docRef = db.collection("users").doc(normalized.clean);
+  const snapshot = await docRef.get();
+
+  if (!snapshot.exists)
+    return res.status(401).json({ error: "Invalid credentials" });
+
+  const user = snapshot.data();
+
+  if (!user.isVerified)
+    return res.status(403).json({ error: "Account not verified" });
+
+  if (user.loginBlockedUntil && Date.now() < user.loginBlockedUntil)
+    return res.status(429).json({ error: "Account locked" });
+
+  const match = await bcrypt.compare(password, user.password);
+
+  if (!match) {
+    const attempts = (user.loginAttempts || 0) + 1;
+
+    await docRef.update({
+      loginAttempts: attempts,
+      loginBlockedUntil:
+        attempts >= 5 ? Date.now() + 15 * 60 * 1000 : null,
+    });
+
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  await docRef.update({
+    loginAttempts: 0,
+    loginBlockedUntil: null,
+  });
+
+  const token = jwt.sign(
+    { uid: snapshot.id },
+    SECRET,
+    { expiresIn: "7d" }
+  );
+
+  return res.status(200).json({
+    message: "Login successful",
+    token,
+  });
+}
+
+/* ================= RESEND ================= */
+
+async function resend(req, res) {
+  const { identifier } = req.body || {};
+
+  if (!identifier)
+    return res.status(400).json({ error: "Identifier required" });
+
+  const normalized = normalizeIdentifier(identifier);
+  if (!normalized)
+    return res.status(400).json({ error: "Invalid identifier" });
+
+  const docRef = db.collection("users").doc(normalized.clean);
+  const snapshot = await docRef.get();
+
+  if (!snapshot.exists)
+    return res.status(400).json({ error: "User not found" });
+
+  const user = snapshot.data();
+
+  if (user.isVerified)
+    return res.status(400).json({ error: "Already verified" });
+
+  if (
+    user.lastResendAt &&
+    Date.now() - user.lastResendAt < 60 * 1000
+  ) {
+    return res.status(429).json({
+      error: "Please wait before requesting again",
+    });
+  }
+
+  const newCode = generateCode();
+  const hashedCode = await bcrypt.hash(newCode, 10);
+
+  await docRef.update({
+    verificationCode: hashedCode,
+    verificationExpires: Date.now() + 10 * 60 * 1000,
+    verificationAttempts: 0,
+    lastResendAt: Date.now(),
+  });
+
+  if (user.type === "email") {
+    await sendVerificationEmail(normalized.clean, newCode);
+  }
+
+  return res.status(200).json({
+    message: "New verification code sent",
+  });
+}
