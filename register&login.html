@@ -78,17 +78,6 @@
   position: relative;
 }
 
-.verify-box input {
-  width: 100%;
-  padding: 14px;
-  border-radius: 10px;
-  border: 1px solid #ddd;
-  font-size: 18px;
-  text-align: center;
-  letter-spacing: 5px;
-  margin-bottom: 15px;
-}
-
 .verify-btn {
   width: 100%;
   padding: 12px;
@@ -114,6 +103,64 @@
 @keyframes popIn {
   from { transform: scale(0.9); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+
+/* ===== CODE ROW FLEX ===== */
+
+.code-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+.code-row input {
+  flex: 1;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  font-size: 18px;
+  text-align: center;
+  letter-spacing: 5px;
+  outline: none;
+  transition: 0.3s ease;
+}
+
+.code-row input:focus {
+  border-color: #6e8efb;
+}
+
+/* ===== RESEND BUTTON ===== */
+
+.resend-btn {
+  padding: 0 18px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(to right, #6e8efb, #a777e3);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.resend-btn:hover {
+  transform: translateY(-2px);
+  opacity: 0.9;
+}
+
+/* ===== RESPONSIVE ===== */
+
+@media (max-width: 480px) {
+  .code-row {
+    flex-direction: column;
+  }
+  
+  .resend-btn {
+    width: 100%;
+    padding: 12px;
+  }
 }
   </style>
 </head>
@@ -218,7 +265,18 @@
       Please enter the 6-digit code sent to you
     </p>
     
-    <input type="text" id="verifyCodeInput" maxlength="6" placeholder="000000" />
+    <div class="code-row">
+      <input 
+        type="text" 
+        id="verifyCodeInput" 
+        maxlength="6" 
+        placeholder="000000" 
+      />
+
+      <button type="button" class="resend-btn">
+        Resend
+      </button>
+    </div>
     
     <button id="verifyBtn" class="verify-btn">Verify</button>
     
@@ -351,12 +409,17 @@
 <script>
   document.addEventListener("DOMContentLoaded", () => {
     
+    /* ================= ELEMENTS ================= */
+    
     const loginForm = document.getElementById("loginForm");
     const registerForm = document.getElementById("inscriptionForm");
+    
     const verifyModal = document.getElementById("verifyModal");
     const closeVerify = document.getElementById("closeVerify");
     const verifyBtn = document.getElementById("verifyBtn");
     const verifyInput = document.getElementById("verifyCodeInput");
+    const resendBtn = verifyModal.querySelector(".resend-btn"); // ✅ scoped
+    
     const container = document.getElementById("container");
     
     const loginIdentifierInput = document.getElementById("loginEmail");
@@ -364,12 +427,48 @@
     
     const API_URL = "/api/auth";
     
+    
+    /* ================= FIX BUG: NORMALIZE IDENTIFIER ================= */
+    
+    function normalizeIdentifier(identifier) {
+      if (!identifier) return null;
+      
+      const raw = identifier.trim();
+      if (!raw) return null;
+      
+      // Email
+      if (raw.includes("@")) {
+        return raw.toLowerCase();
+      }
+      
+      // Phone (remove spaces)
+      return raw.replace(/\s+/g, "");
+    }
+    
+    
+    /* ================= STORE IDENTIFIER ================= */
+    
+    let currentIdentifier = null;
+    
+    function openVerifyModal(identifier) {
+      currentIdentifier = normalizeIdentifier(identifier); // ✅ FIX
+      verifyInput.value = "";
+      verifyModal.classList.add("active");
+    }
+    
+    function closeVerifyModal() {
+      verifyModal.classList.remove("active");
+      verifyInput.value = "";
+      currentIdentifier = null;
+    }
+    
+    
     /* ================= LOGIN ================= */
     
     loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       
-      const identifier = loginIdentifierInput.value.trim();
+      const identifier = normalizeIdentifier(loginIdentifierInput.value);
       const password = document.getElementById("loginPass").value;
       
       if (!identifier || !password) return;
@@ -385,12 +484,11 @@
           }),
         });
         
-        const data = await res.json();
+        let data = {};
+        try { data = await res.json(); } catch {}
         
-        // Raha mbola tsy verified → sokafy modal
         if (res.status === 403) {
-          verifyInput.value = "";
-          verifyModal.classList.add("active");
+          openVerifyModal(identifier);
           return;
         }
         
@@ -406,12 +504,13 @@
       }
     });
     
+    
     /* ================= REGISTER ================= */
     
     registerForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       
-      const identifier = registerIdentifierInput.value.trim();
+      const identifier = normalizeIdentifier(registerIdentifierInput.value);
       const password = document.getElementById("regPass").value;
       
       if (!identifier || !password) return;
@@ -427,21 +526,21 @@
           }),
         });
         
-        const data = await res.json();
+        let data = {};
+        try { data = await res.json(); } catch {}
         
         if (!res.ok) {
           alert(data.error || "Register failed");
           return;
         }
         
-        // Sokafy modal fa tsy mitahiry identifier
-        verifyInput.value = "";
-        verifyModal.classList.add("active");
+        openVerifyModal(identifier); // ✅ efa normalized
         
       } catch {
         alert("Network error");
       }
     });
+    
     
     /* ================= VERIFY ================= */
     
@@ -449,13 +548,8 @@
       
       const code = verifyInput.value.trim();
       
-      // Makà identifier mivantana avy amin’ny input
-      let identifier =
-        registerIdentifierInput.value.trim() ||
-        loginIdentifierInput.value.trim();
-      
-      if (!identifier) {
-        alert("Enter your phone number or email first.");
+      if (!currentIdentifier) {
+        alert("Session expired. Please login/register again.");
         return;
       }
       
@@ -470,35 +564,89 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "verify",
-            identifier,
+            identifier: currentIdentifier,
             code,
           }),
         });
         
-        const data = await res.json();
+        let data = {};
+        try { data = await res.json(); } catch {}
         
         if (!res.ok) {
           alert(data.error || "Verification failed");
           return;
         }
         
-        verifyInput.value = "";
-        verifyModal.classList.remove("active");
+        closeVerifyModal();
         container.classList.remove("active");
         
-        alert("Account verified!");
+        alert("Account verified successfully!");
         
       } catch {
         alert("Network error");
       }
     });
     
+    
+    /* ================= RESEND ================= */
+    
+    resendBtn.addEventListener("click", async () => {
+      
+      if (!currentIdentifier) {
+        alert("Session expired.");
+        return;
+      }
+      
+      try {
+        resendBtn.disabled = true;
+        resendBtn.textContent = "Sending...";
+        
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "resend",
+            identifier: currentIdentifier,
+          }),
+        });
+        
+        let data = {};
+        try { data = await res.json(); } catch {}
+        
+        if (!res.ok) {
+          alert(data.error || "Resend failed");
+          resendBtn.disabled = false;
+          resendBtn.textContent = "Resend";
+          return;
+        }
+        
+        alert("New code sent!");
+        
+        let seconds = 60;
+        resendBtn.textContent = `Wait ${seconds}s`;
+        
+        const interval = setInterval(() => {
+          seconds--;
+          resendBtn.textContent = `Wait ${seconds}s`;
+          
+          if (seconds <= 0) {
+            clearInterval(interval);
+            resendBtn.disabled = false;
+            resendBtn.textContent = "Resend";
+          }
+        }, 1000);
+        
+      } catch {
+        alert("Network error");
+        resendBtn.disabled = false;
+        resendBtn.textContent = "Resend";
+      }
+    });
+    
+    
     /* ================= CLOSE MODAL ================= */
     
-    closeVerify.addEventListener("click", () => {
-      verifyModal.classList.remove("active");
-      verifyInput.value = "";
-    });
+    closeVerify.addEventListener("click", closeVerifyModal);
     
   });
 </script>
