@@ -1,29 +1,21 @@
-// ================================
-// AUTH API (Register + Login)
-// ================================
-
 import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
-/* ================= ENV ================= */
+import { sendVerificationEmail } from "./mailer.js";
 
 const SECRET = process.env.JWT_SECRET;
-const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
 if (!SECRET) throw new Error("JWT_SECRET not set");
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
 
-/* ================= FIREBASE INIT ================= */
-
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
-  
+
   if (serviceAccount.private_key) {
     serviceAccount.private_key =
       serviceAccount.private_key.replace(/\\n/g, "\n");
   }
-  
+
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
@@ -31,188 +23,141 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-/* ================= HELPER ================= */
-
-function setCORS(res) {
-  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-}
-
-function normalizeIdentifier(identifier) {
-  const raw = identifier.trim();
-  const isEmail = raw.includes("@");
-  
-  if (isEmail) {
-    return {
-      clean: raw.toLowerCase(),
-      type: "email",
-    };
-  }
-  
-  // Remove all non-digits for phone
-  const phoneClean = raw.replace(/\D/g, "");
-  
-  return {
-    clean: phoneClean,
-    type: "phone",
-  };
-}
-
-function isValidEmail(email) {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-}
-
-/* ================= MAIN HANDLER ================= */
+/* ================= MAIN ================= */
 
 export default async function handler(req, res) {
-  setCORS(res);
-  
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-  
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-  
+
   const { action } = req.body;
-  
+
   if (action === "register") return register(req, res);
+  if (action === "verify") return verifyCode(req, res);
   if (action === "login") return login(req, res);
-  
+
   return res.status(400).json({ error: "Invalid action" });
 }
 
-/* =========================================================
-   📝 REGISTER
-========================================================= */
+/* ================= REGISTER ================= */
 
 async function register(req, res) {
   try {
     const { identifier, password } = req.body;
-    
-    if (!identifier || !password) {
-      return res.status(400).json({
-        error: "Email or phone and password required",
-      });
-    }
-    
-    if (password.length < 6) {
-      return res.status(400).json({
-        error: "Password must be at least 6 characters",
-      });
-    }
-    
-    const { clean, type } = normalizeIdentifier(identifier);
-    
-    if (type === "email" && !isValidEmail(clean)) {
-      return res.status(400).json({
-        error: "Invalid email format",
-      });
-    }
-    
-    if (type === "phone" && clean.length < 8) {
-      return res.status(400).json({
-        error: "Invalid phone number",
-      });
-    }
-    
-    // Check if already exists
-    const existingUser = await db
+
+    const clean = identifier.trim().toLowerCase();
+
+    const existing = await db
       .collection("users")
       .where("identifier", "==", clean)
       .limit(1)
       .get();
-    
-    if (!existingUser.empty) {
-      return res.status(400).json({
-        error: "User already registered",
-      });
-    }
-    
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const newUser = {
+
+    if (!existing.empty)
+      return res.status(400).json({ error: "User already exists" });
+
+    const hashed = await bcrypt.hash(password, 10);
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await db.collection("users").add({
       identifier: clean,
-      type,
-      password: hashedPassword,
+      password: hashed,
+      verified: false,
+      verificationCode: code,
+      codeExpires: Date.now() + 10 * 60 * 1000,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-    
-    const docRef = await db.collection("users").add(newUser);
-    
-    return res.status(201).json({
-      message: "Account created successfully",
-      userId: docRef.id,
     });
-    
+
+    await sendVerificationEmail(clean, code);
+
+    return res.json({
+      message: "Verification code sent",
+    });
+
   } catch (err) {
-    console.error("REGISTER ERROR:", err);
+    console.error(err);
     return res.status(500).json({ error: "Server error" });
   }
 }
 
-/* =========================================================
-   🔑 LOGIN
-========================================================= */
+/* ================= VERIFY ================= */
+
+async function verifyCode(req, res) {
+  try {
+    const { identifier, code } = req.body;
+
+    const snapshot = await db
+      .collection("users")
+      .where("identifier", "==", identifier.toLowerCase())
+      .limit(1)
+      .get();
+
+    if (snapshot.empty)
+      return res.status(400).json({ error: "User not found" });
+
+    const doc = snapshot.docs[0];
+    const user = doc.data();
+
+    if (user.verified)
+      return res.status(400).json({ error: "Already verified" });
+
+    if (user.verificationCode !== code)
+      return res.status(400).json({ error: "Invalid code" });
+
+    if (Date.now() > user.codeExpires)
+      return res.status(400).json({ error: "Code expired" });
+
+    await doc.ref.update({
+      verified: true,
+      verificationCode: null,
+      codeExpires: null,
+    });
+
+    return res.json({ message: "Account verified!" });
+
+  } catch (err) {
+    return res.status(500).json({ error: "Server error" });
+  }
+}
+
+/* ================= LOGIN ================= */
 
 async function login(req, res) {
   try {
     const { identifier, password } = req.body;
-    
-    if (!identifier || !password) {
-      return res.status(400).json({
-        error: "Invalid credentials",
-      });
-    }
-    
-    const { clean } = normalizeIdentifier(identifier);
-    
-    const userSnapshot = await db
+
+    const snapshot = await db
       .collection("users")
-      .where("identifier", "==", clean)
+      .where("identifier", "==", identifier.toLowerCase())
       .limit(1)
       .get();
-    
-    if (userSnapshot.empty) {
-      return res.status(401).json({
-        error: "Invalid credentials",
+
+    if (snapshot.empty)
+      return res.status(401).json({ error: "Invalid credentials" });
+
+    const doc = snapshot.docs[0];
+    const user = doc.data();
+
+    if (!user.verified)
+      return res.status(403).json({
+        error: "Please verify your account first",
       });
-    }
-    
-    const userDoc = userSnapshot.docs[0];
-    const user = userDoc.data();
-    
-    const isMatch = await bcrypt.compare(password, user.password);
-    
-    if (!isMatch) {
-      return res.status(401).json({
-        error: "Invalid credentials",
-      });
-    }
-    
+
+    const match = await bcrypt.compare(password, user.password);
+
+    if (!match)
+      return res.status(401).json({ error: "Invalid credentials" });
+
     const token = jwt.sign(
-      {
-        uid: userDoc.id,
-        identifier: user.identifier,
-      },
+      { uid: doc.id },
       SECRET,
-      {
-        expiresIn: "7d",
-        issuer: "malagasy-game-app",
-      }
+      { expiresIn: "7d" }
     );
-    
-    return res.status(200).json({
-      message: "Login successful",
-      token,
-    });
-    
+
+    return res.json({ token });
+
   } catch (err) {
-    console.error("LOGIN ERROR:", err);
     return res.status(500).json({ error: "Server error" });
   }
 }
