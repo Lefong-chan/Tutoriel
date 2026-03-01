@@ -359,16 +359,17 @@
     const verifyInput = document.getElementById("verifyCodeInput");
     const container = document.getElementById("container");
     
-    const API_URL = "/api/auth";
+    const loginIdentifierInput = document.getElementById("loginEmail");
+    const registerIdentifierInput = document.getElementById("regEmail");
     
-    let currentVerifyIdentifier = null;
+    const API_URL = "/api/auth";
     
     /* ================= LOGIN ================= */
     
     loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       
-      const identifier = document.getElementById("loginEmail").value.trim();
+      const identifier = loginIdentifierInput.value.trim();
       const password = document.getElementById("loginPass").value;
       
       if (!identifier || !password) return;
@@ -386,9 +387,8 @@
         
         const data = await res.json();
         
-        // Raha mbola tsy verified
+        // Raha mbola tsy verified → sokafy modal
         if (res.status === 403) {
-          currentVerifyIdentifier = identifier;
           verifyInput.value = "";
           verifyModal.classList.add("active");
           return;
@@ -411,7 +411,7 @@
     registerForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       
-      const identifier = document.getElementById("regEmail").value.trim();
+      const identifier = registerIdentifierInput.value.trim();
       const password = document.getElementById("regPass").value;
       
       if (!identifier || !password) return;
@@ -434,7 +434,7 @@
           return;
         }
         
-        currentVerifyIdentifier = identifier;
+        // Sokafy modal fa tsy mitahiry identifier
         verifyInput.value = "";
         verifyModal.classList.add("active");
         
@@ -449,8 +449,20 @@
       
       const code = verifyInput.value.trim();
       
-      if (!currentVerifyIdentifier) return;
-      if (!code || code.length !== 6) return;
+      // Makà identifier mivantana avy amin’ny input
+      let identifier =
+        registerIdentifierInput.value.trim() ||
+        loginIdentifierInput.value.trim();
+      
+      if (!identifier) {
+        alert("Enter your phone number or email first.");
+        return;
+      }
+      
+      if (!code || code.length !== 6) {
+        alert("Enter valid 6-digit code.");
+        return;
+      }
       
       try {
         const res = await fetch(API_URL, {
@@ -458,7 +470,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "verify",
-            identifier: currentVerifyIdentifier,
+            identifier,
             code,
           }),
         });
@@ -470,8 +482,6 @@
           return;
         }
         
-        // Vita verification
-        currentVerifyIdentifier = null;
         verifyInput.value = "";
         verifyModal.classList.remove("active");
         container.classList.remove("active");
