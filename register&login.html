@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="mg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login & Register</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: linear-gradient(135deg, #6e8efb, #a777e3); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+    .container { position: relative; width: 800px; max-width: 100%; min-height: 350px; background-color: #fff; border-radius: 20px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2); overflow: hidden; transition: all 0.5s ease; }
+    .container.active { box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3); }
+    .forms-container { position: absolute; width: 100%; height: 100%; display: flex; transition: transform 0.8s ease-in-out; }
+    .login-form, .inscription-form { position: absolute; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 40px; transition: all 0.8s ease-in-out; }
+    .login-form { transform: translateX(0); }
+    .container.active .login-form { transform: translateX(-100%); opacity: 0; }
+    .inscription-form { right: 0; transform: translateX(100%); opacity: 0; }
+    .container.active .inscription-form { transform: translateX(0); opacity: 1; }
+    .form-title { font-size: 25px; color: #333; margin: 0 0 12px 0; text-align: center; }
+    .form-title span { color: #a777e3; }
+    .input-group { position: relative; width: 100%; margin-bottom: 15px; }
+    .form-input { width: 100%; padding: 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; background: none; transition: all 0.3s ease; }
+    .form-label { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); background-color: #fff; padding: 0 5px; color: #999; font-size: 16px; pointer-events: none; transition: all 0.5s ease; }
+    .form-input:focus, .form-input:not(:placeholder-shown) { border-color: #6e8efb; }
+    .form-input:focus+.form-label, .form-input:not(:placeholder-shown)+.form-label, .form-input:valid+.form-label { top: 0; font-size: 12px; color: #6e8efb; font-weight: bold; }
+    .password-wrapper { position: relative; width: 100%; }
+    .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #666; z-index: 3; }
+    .btn { width: 100%; padding: 14px; margin-top: 10px; background: linear-gradient(to right, #6e8efb, #a777e3); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+    .btn:hover { transform: translateY(-3px); }
+    .social-login { display: flex; justify-content: center; gap: 15px; margin-top: 10px; }
+    .social-icon { width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; cursor: pointer; transition: all 0.3s ease; }
+    .number { background-color: #25D366; }
+    .email { background-color: #EA4335; }
+    .toggle-container { position: absolute; top: 0; left: 50%; width: 50%; height: 100%; overflow: hidden; transition: transform 0.8s ease-in-out; z-index: 10; }
+    .container.active .toggle-container { transform: translateX(-100%); }
+    .toggle { background: linear-gradient(to right, #6e8efb, #a777e3); height: 100%; color: white; position: relative; left: -100%; width: 200%; transform: translateX(0); transition: transform 0.8s ease-in-out; }
+    .container.active .toggle { transform: translateX(50%); }
+    .toggle-panel { position: absolute; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 40px; text-align: center; top: 0; transition: transform 0.8s ease-in-out; }
+    .toggle-panel h2 { font-size: 32px; margin-bottom: 20px; }
+    .toggle-panel p { margin-bottom: 30px; line-height: 1.5; }
+    .toggle-left { transform: translateX(-200%); }
+    .container.active .toggle-left { transform: translateX(0); }
+    .toggle-right { right: 0; }
+    .container.active .toggle-right { transform: translateX(200%); }
+    .toggle-btn { padding: 12px 45px; background-color: transparent; border: 2px solid white; color: white; border-radius: 25px; cursor: pointer; }
+    .footer-text { margin-top: 10px; color: #666; font-size: 14px; text-align: center; }
+    .footer-text a { color: #a777e3; text-decoration: none; font-weight: 600; }
+    .terms-wrapper { display: flex; align-items: center; gap: 8px; width: 100%; margin: 2px 0; font-size: 13px; color: #666; }
+    .terms-wrapper input { cursor: pointer; }
+    @media (max-width: 768px) { .toggle-container { display: none; } .login-form, .inscription-form { width: 100%; } }
+  </style>
+</head>
+<body>
+  
+  <div class="container" id="container">
+    <div class="forms-container">
+      
+      <form class="login-form" id="loginForm">
+        <h1 class="form-title">Login <span>Now</span></h1>
+        
+        <div class="input-group">
+          <input type="text" id="loginEmail" class="form-input" inputmode="numeric" placeholder=" " required>
+          <label class="form-label">Number</label>
+        </div>
+        
+        <div class="input-group" style="margin-bottom: 13px;">
+          <div class="password-wrapper">
+            <input type="password" id="loginPass" class="form-input" placeholder=" " required>
+            <label class="form-label">Password</label>
+            <i class="fa-solid fa-eye-slash toggle-password"></i>
+          </div>
+        </div>
+        
+        <div style="width: 100%; text-align: center; margin-bottom: 2px;">
+          <a href="#" style="text-decoration: none; font-weight: bold; color: #a777e3; font-size: 14px;">Forgot password?</a>
+        </div>
+        
+        <button type="submit" class="btn">Sign In</button>
+        
+        <div class="social-login">
+          <div class="social-icon number" id="loginPhoneIcon">
+            <i class="fa-solid fa-phone"></i>
+          </div>
+          <div class="social-icon email" id="loginEmailIcon">
+            <i class="fa-solid fa-envelope"></i>
+          </div>
+        </div>
+        
+        <div class="footer-text">Don't have an account? <a href="#" id="toRegMobile">Sign up</a></div>
+      </form>
+      
+      <form class="inscription-form" id="inscriptionForm">
+        <h1 class="form-title">Create <span>Account</span></h1>
+        
+        <div class="input-group">
+          <input type="text" id="regEmail" class="form-input" inputmode="numeric" placeholder=" " required>
+          <label class="form-label">Number</label>
+        </div>
+        
+        <div class="input-group" style="margin-bottom: 11px;">
+          <div class="password-wrapper">
+            <input type="password" id="regPass" class="form-input" placeholder=" " required>
+            <label class="form-label">Password</label>
+            <i class="fa-solid fa-eye-slash toggle-password"></i>
+          </div>
+        </div>
+        
+        <div class="terms-wrapper">
+          <input type="checkbox" id="termsCheck" required>
+          <label for="termsCheck">I accept the <a href="#" style="color: #a777e3;">Terms and Conditions</a></label>
+        </div>
+        
+        <button type="submit" class="btn">Sign up</button>
+        
+        <div class="social-login">
+          <div class="social-icon number" id="regPhoneIcon">
+            <i class="fa-solid fa-phone"></i>
+          </div>
+          <div class="social-icon email" id="regEmailIcon">
+            <i class="fa-solid fa-envelope"></i>
+          </div>
+        </div>
+        
+        <p class="footer-text">Already have an account? <a href="#" id="mobileLoginBtn">Login</a></p>
+      </form>
+    </div>
+    
+    <div class="toggle-container">
+      <div class="toggle">
+        <div class="toggle-panel toggle-left">
+          <h2>Return to the Board</h2>
+          <p>Continue your journey in the world of Malagasy strategy and wisdom</p>
+          <button class="toggle-btn" id="loginToggleBtn">Sign In</button>
+        </div>
+        <div class="toggle-panel toggle-right">
+          <h2>Join the Game!</h2>
+          <p>Join fellow players and experience the traditional Malagasy strategy game</p>
+          <button class="toggle-btn" id="inscriptionToggleBtn">Sign Up</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    
+    /* ================= ELEMENTS ================= */
+    
+    const container = document.getElementById("container");
+    
+    const signUpBtn = document.getElementById("inscriptionToggleBtn");
+    const signInBtn = document.getElementById("loginToggleBtn");
+    const toRegMobile = document.getElementById("toRegMobile");
+    const mobileLoginBtn = document.getElementById("mobileLoginBtn");
+    
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("inscriptionForm");
+    
+    
+    /* ================= FUNCTION: CLEAR FORM ================= */
+    
+    function clearForm(form) {
+      form.querySelectorAll("input").forEach(input => {
+        if (input.type === "checkbox") {
+          input.checked = false;
+        } else {
+          input.value = "";
+        }
+      });
+    }
+    
+    
+    /* ================= TOGGLE PANELS WITH 0.5s DELAY ================= */
+    
+    function goToRegister() {
+      
+      container.classList.add("active");
+      
+      setTimeout(() => {
+        clearForm(loginForm);
+      }, 500); // 0.5s delay
+    }
+    
+    function goToLogin() {
+      
+      container.classList.remove("active");
+      
+      setTimeout(() => {
+        clearForm(registerForm);
+      }, 500); // 0.5s delay
+    }
+    
+    signUpBtn?.addEventListener("click", goToRegister);
+    signInBtn?.addEventListener("click", goToLogin);
+    
+    toRegMobile?.addEventListener("click", (e) => {
+      e.preventDefault();
+      goToRegister();
+    });
+    
+    mobileLoginBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      goToLogin();
+    });
+    
+    
+    /* ================= PASSWORD TOGGLE ================= */
+    
+    const toggleIcons = document.querySelectorAll(".toggle-password");
+    
+    toggleIcons.forEach(icon => {
+      icon.addEventListener("click", () => {
+        
+        const passwordInput = icon.closest(".password-wrapper").querySelector("input");
+        
+        if (passwordInput.type === "password") {
+          passwordInput.type = "text";
+          icon.classList.remove("fa-eye-slash");
+          icon.classList.add("fa-eye");
+        } else {
+          passwordInput.type = "password";
+          icon.classList.remove("fa-eye");
+          icon.classList.add("fa-eye-slash");
+        }
+        
+      });
+    });
+    
+    
+    /* ================= NUMBER / EMAIL SWITCH ================= */
+    
+    function setupModeSwitch(inputId, phoneIconId, emailIconId) {
+      
+      const input = document.getElementById(inputId);
+      const phoneIcon = document.getElementById(phoneIconId);
+      const emailIcon = document.getElementById(emailIconId);
+      const label = input.parentElement.querySelector(".form-label");
+      
+      function setNumberMode() {
+        input.value = "";
+        input.type = "text";
+        input.setAttribute("inputmode", "numeric");
+        input.pattern = "[0-9]*";
+        label.textContent = "Number";
+      }
+      
+      function setEmailMode() {
+        input.value = "";
+        input.type = "email";
+        input.removeAttribute("pattern");
+        input.removeAttribute("inputmode");
+        label.textContent = "Email";
+      }
+      
+      phoneIcon?.addEventListener("click", setNumberMode);
+      emailIcon?.addEventListener("click", setEmailMode);
+      
+      setNumberMode(); // default
+    }
+    
+    setupModeSwitch("loginEmail", "loginPhoneIcon", "loginEmailIcon");
+    setupModeSwitch("regEmail", "regPhoneIcon", "regEmailIcon");
+    
+  });
+</script>
+
+<script>
+/* ================= API CALL ================= */
+
+document.addEventListener("DOMContentLoaded", () => {
+  
+  const loginForm = document.getElementById("loginForm");
+  const registerForm = document.getElementById("inscriptionForm");
+  
+  const API_URL = "/api/auth";
+  
+  /* ================= LOGIN ================= */
+  
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    
+    const identifier =
+      document.getElementById("loginEmail").value.trim();
+    
+    const password =
+      document.getElementById("loginPass").value;
+    
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "login",
+          identifier,
+          password,
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        alert(data.error);
+        return;
+      }
+      
+      alert("Login success!");
+      console.log("TOKEN:", data.token);
+      
+    } catch (err) {
+      alert("Network error");
+    }
+  });
+  
+  
+  /* ================= REGISTER ================= */
+  
+  registerForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    
+    const identifier =
+      document.getElementById("regEmail").value.trim();
+    
+    const password =
+      document.getElementById("regPass").value;
+    
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register",
+          identifier,
+          password,
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        alert(data.error);
+        return;
+      }
+      
+      alert("Account created!");
+      
+    } catch (err) {
+      alert("Network error");
+    }
+  });
+  
+});
+</script>
+
+</body>
+</html>
