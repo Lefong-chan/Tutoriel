@@ -875,26 +875,26 @@ async function handleForgotPasswordRequest(body, res) {
 /* ================= FORGOT PASSWORD : RÉINITIALISATION ================= */
 async function handleForgotPasswordReset(body, res) {
   const { identifier, otp, newPassword } = body;
-
+  
   if (!identifier || !otp || !newPassword) {
     return res.status(400).json({ error: "Identifier, OTP and new password required" });
   }
-
-  if (newPassword.length < 6) {
+  
+  const isVerifyOnly = (newPassword === "VERIFY_ONLY");
+  
+  if (!isVerifyOnly && newPassword.length < 6) {
     return res.status(400).json({ error: "Password must be at least 6 characters" });
   }
-
+  
   try {
     const value = identifier.trim();
     const cleanOtp = otp.toString().trim();
     const now = Date.now();
-
+    
     let snap = null;
-    let isEmail = false;
     let cleanIdentifier = null;
-
+    
     if (emailRegex.test(value)) {
-      isEmail = true;
       cleanIdentifier = value.toLowerCase();
       snap = await db
         .ref("users")
@@ -903,7 +903,6 @@ async function handleForgotPasswordReset(body, res) {
         .limitToFirst(1)
         .get();
     } else if (phoneRegex.test(value)) {
-      isEmail = false;
       cleanIdentifier = value;
       snap = await db
         .ref("users")
@@ -914,21 +913,19 @@ async function handleForgotPasswordReset(body, res) {
     } else {
       return res.status(400).json({ error: "Invalid email or phone format" });
     }
-
-    // Anti-enumeration : ne pas révéler si le compte existe
+    
     if (!snap.exists()) {
       await new Promise(r => setTimeout(r, 300));
       return res.status(400).json({ error: "Invalid code" });
     }
-
+    
     const userData = Object.values(snap.val())[0];
     const userRef = db.ref("users/" + userData.uid);
-
+    
     if (userData.provider !== "local") {
       return res.status(400).json({ error: "Invalid account type" });
     }
-
-    // Vérifier le blocage
+    
     if (userData.resetLockUntil && now < userData.resetLockUntil) {
       const retryAfter = Math.ceil((userData.resetLockUntil - now) / 1000);
       return res.status(429).json({
@@ -936,54 +933,58 @@ async function handleForgotPasswordReset(body, res) {
         retryAfter
       });
     }
-
-    // Vérifier l'expiration du code
+    
     if (!userData.resetOTPExpires || now > userData.resetOTPExpires) {
       await userRef.update({ resetAttempts: 0 });
       return res.status(400).json({ error: "Code expired" });
     }
-
-    // Vérifier le code
+    
     if (!userData.resetOTP || userData.resetOTP !== cleanOtp) {
       let attempts = (userData.resetAttempts || 0) + 1;
       const updateData = { resetAttempts: attempts };
-
+      
       if (attempts >= MAX_ATTEMPTS) {
         updateData.resetLockUntil = now + LOCK_TIME;
       }
-
+      
       await userRef.update(updateData);
-
+      
       if (attempts >= MAX_ATTEMPTS) {
         return res.status(429).json({
           error: "Too many attempts. Account locked for 1 hour.",
           retryAfter: 3600
         });
       }
-
+      
       return res.status(400).json({ error: "Invalid code" });
     }
-
-    // Tout est bon : on change le mot de passe
+    
+    // ✅ Si c'est une simple vérification (sans changement de mot de passe)
+    if (isVerifyOnly) {
+      // On réinitialise les tentatives mais on garde le code (il n'est pas consommé)
+      await userRef.update({
+        resetAttempts: 0
+        // On ne touche pas à resetOTP, resetOTPExpires
+      });
+      return res.status(200).json({ success: true, message: "Code verified" });
+    }
+    
+    // Sinon, on change le mot de passe
     const hashedNewPassword = await bcrypt.hash(newPassword, 12);
-
+    
     await userRef.update({
       password: hashedNewPassword,
       resetOTP: null,
       resetOTPExpires: null,
       resetAttempts: 0,
       resetLockUntil: null
-      // On ne remet pas à zéro resetRequestCount car c'est une limite horaire
     });
-
-    // Optionnel : on peut déconnecter l'utilisateur de toutes ses sessions
-    // (mais on ne gère pas ça ici)
-
+    
     return res.status(200).json({
       success: true,
       message: "Password updated successfully"
     });
-
+    
   } catch (err) {
     console.error("FORGOT PASSWORD RESET ERROR:", err);
     throw err;
