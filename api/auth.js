@@ -1,12 +1,25 @@
+// ================================
+// AUTH API (Register + Login + Verify)
+// Production Safe Version
+// ================================
+
 import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { sendVerificationEmail } from "./mailer.js";
 
 const SECRET = process.env.JWT_SECRET;
+const NODE_ENV = process.env.NODE_ENV || "development";
+const allowedOrigin =
+  NODE_ENV === "production"
+    ? process.env.ALLOWED_ORIGIN
+    : "*";
 
 if (!SECRET) throw new Error("JWT_SECRET not set");
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
+if (NODE_ENV === "production" && !process.env.ALLOWED_ORIGIN)
+  throw new Error("ALLOWED_ORIGIN required in production");
+
+/* ================= FIREBASE INIT ================= */
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -23,141 +36,215 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-/* ================= MAIN ================= */
+/* ================= HELPERS ================= */
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+function setCORS(res) {
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+function normalizeIdentifier(identifier = "") {
+  if (typeof identifier !== "string") return null;
+
+  const raw = identifier.trim();
+  if (!raw) return null;
+
+  if (raw.includes("@")) {
+    return { clean: raw.toLowerCase(), type: "email" };
   }
 
-  const { action } = req.body;
+  const phone = raw.replace(/\s+/g, "");
+  const malagasyRegex = /^03\d{8}$/;
 
-  if (action === "register") return register(req, res);
-  if (action === "verify") return verifyCode(req, res);
-  if (action === "login") return login(req, res);
+  if (!malagasyRegex.test(phone)) return null;
 
-  return res.status(400).json({ error: "Invalid action" });
+  return { clean: phone, type: "phone" };
+}
+
+function generateCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/* ================= MAIN HANDLER ================= */
+
+export default async function handler(req, res) {
+  setCORS(res);
+
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST")
+    return res.status(405).json({ error: "Method not allowed" });
+
+  const { action } = req.body || {};
+  if (!action)
+    return res.status(400).json({ error: "Missing action" });
+
+  try {
+    if (action === "register") return await register(req, res);
+    if (action === "login") return await login(req, res);
+    if (action === "verify") return await verify(req, res);
+
+    return res.status(400).json({ error: "Invalid action" });
+  } catch (err) {
+    console.error("SERVER ERROR:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
 }
 
 /* ================= REGISTER ================= */
 
 async function register(req, res) {
-  try {
-    const { identifier, password } = req.body;
+  const { identifier, password } = req.body || {};
 
-    const clean = identifier.trim().toLowerCase();
+  if (!identifier || !password)
+    return res.status(400).json({ error: "All fields required" });
 
-    const existing = await db
-      .collection("users")
-      .where("identifier", "==", clean)
-      .limit(1)
-      .get();
+  if (password.length < 6)
+    return res.status(400).json({ error: "Password too short" });
 
-    if (!existing.empty)
-      return res.status(400).json({ error: "User already exists" });
+  const normalized = normalizeIdentifier(identifier);
+  if (!normalized)
+    return res.status(400).json({ error: "Invalid identifier" });
 
-    const hashed = await bcrypt.hash(password, 10);
+  const { clean, type } = normalized;
+  const docRef = db.collection("users").doc(clean);
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const existingUser = await docRef.get();
+  if (existingUser.exists)
+    return res.status(400).json({ error: "User already registered" });
 
-    await db.collection("users").add({
-      identifier: clean,
-      password: hashed,
-      verified: false,
-      verificationCode: code,
-      codeExpires: Date.now() + 10 * 60 * 1000,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+  const hashedPassword = await bcrypt.hash(password, 12);
+  const code = generateCode();
+  const hashedCode = await bcrypt.hash(code, 10);
 
-    await sendVerificationEmail(clean, code);
+  await docRef.set({
+    identifier: clean,
+    type,
+    password: hashedPassword,
+    isVerified: false,
+    verificationCode: hashedCode,
+    verificationExpires: Date.now() + 10 * 60 * 1000,
+    verificationAttempts: 0,
+    loginAttempts: 0,
+    loginBlockedUntil: null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
 
-    return res.json({
-      message: "Verification code sent",
-    });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+  if (NODE_ENV !== "production") {
+    console.log("Verification code:", code);
   }
+
+  return res.status(201).json({
+    message: "Account created. Enter verification code.",
+  });
 }
 
 /* ================= VERIFY ================= */
 
-async function verifyCode(req, res) {
-  try {
-    const { identifier, code } = req.body;
+async function verify(req, res) {
+  const { identifier, code } = req.body || {};
 
-    const snapshot = await db
-      .collection("users")
-      .where("identifier", "==", identifier.toLowerCase())
-      .limit(1)
-      .get();
+  if (!identifier || !code)
+    return res.status(400).json({ error: "Invalid request" });
 
-    if (snapshot.empty)
-      return res.status(400).json({ error: "User not found" });
+  const normalized = normalizeIdentifier(identifier);
+  if (!normalized)
+    return res.status(400).json({ error: "Invalid identifier" });
 
-    const doc = snapshot.docs[0];
-    const user = doc.data();
+  const docRef = db.collection("users").doc(normalized.clean);
+  const snapshot = await docRef.get();
 
-    if (user.verified)
-      return res.status(400).json({ error: "Already verified" });
+  if (!snapshot.exists)
+    return res.status(400).json({ error: "User not found" });
 
-    if (user.verificationCode !== code)
-      return res.status(400).json({ error: "Invalid code" });
+  const user = snapshot.data();
 
-    if (Date.now() > user.codeExpires)
-      return res.status(400).json({ error: "Code expired" });
+  if (user.isVerified)
+    return res.status(400).json({ error: "Already verified" });
 
-    await doc.ref.update({
-      verified: true,
-      verificationCode: null,
-      codeExpires: null,
+  if (!user.verificationExpires || Date.now() > user.verificationExpires) {
+    await docRef.update({
+      verificationCode: admin.firestore.FieldValue.delete(),
+      verificationExpires: admin.firestore.FieldValue.delete(),
     });
-
-    return res.json({ message: "Account verified!" });
-
-  } catch (err) {
-    return res.status(500).json({ error: "Server error" });
+    return res.status(400).json({ error: "Code expired" });
   }
+
+  if (user.verificationAttempts >= 5)
+    return res.status(429).json({ error: "Too many attempts" });
+
+  const match = await bcrypt.compare(code, user.verificationCode);
+
+  if (!match) {
+    await docRef.update({
+      verificationAttempts: user.verificationAttempts + 1,
+    });
+    return res.status(400).json({ error: "Invalid code" });
+  }
+
+  await docRef.update({
+    isVerified: true,
+    verificationCode: admin.firestore.FieldValue.delete(),
+    verificationExpires: admin.firestore.FieldValue.delete(),
+    verificationAttempts: admin.firestore.FieldValue.delete(),
+  });
+
+  return res.status(200).json({ message: "Account verified" });
 }
 
 /* ================= LOGIN ================= */
 
 async function login(req, res) {
-  try {
-    const { identifier, password } = req.body;
+  const { identifier, password } = req.body || {};
 
-    const snapshot = await db
-      .collection("users")
-      .where("identifier", "==", identifier.toLowerCase())
-      .limit(1)
-      .get();
+  if (!identifier || !password)
+    return res.status(400).json({ error: "All fields required" });
 
-    if (snapshot.empty)
-      return res.status(401).json({ error: "Invalid credentials" });
+  const normalized = normalizeIdentifier(identifier);
+  if (!normalized)
+    return res.status(400).json({ error: "Invalid identifier" });
 
-    const doc = snapshot.docs[0];
-    const user = doc.data();
+  const docRef = db.collection("users").doc(normalized.clean);
+  const snapshot = await docRef.get();
 
-    if (!user.verified)
-      return res.status(403).json({
-        error: "Please verify your account first",
-      });
+  if (!snapshot.exists)
+    return res.status(401).json({ error: "Invalid credentials" });
 
-    const match = await bcrypt.compare(password, user.password);
+  const user = snapshot.data();
 
-    if (!match)
-      return res.status(401).json({ error: "Invalid credentials" });
+  if (!user.isVerified)
+    return res.status(403).json({ error: "Account not verified" });
 
-    const token = jwt.sign(
-      { uid: doc.id },
-      SECRET,
-      { expiresIn: "7d" }
-    );
+  if (user.loginBlockedUntil && Date.now() < user.loginBlockedUntil)
+    return res.status(429).json({ error: "Account temporarily locked" });
 
-    return res.json({ token });
+  const match = await bcrypt.compare(password, user.password);
 
-  } catch (err) {
-    return res.status(500).json({ error: "Server error" });
+  if (!match) {
+    const attempts = (user.loginAttempts || 0) + 1;
+
+    await docRef.update({
+      loginAttempts: attempts,
+      loginBlockedUntil:
+        attempts >= 5 ? Date.now() + 15 * 60 * 1000 : null,
+    });
+
+    return res.status(401).json({ error: "Invalid credentials" });
   }
+
+  await docRef.update({
+    loginAttempts: 0,
+    loginBlockedUntil: null,
+  });
+
+  const token = jwt.sign(
+    { uid: snapshot.id },
+    SECRET,
+    { expiresIn: "7d" }
+  );
+
+  return res.status(200).json({
+    message: "Login successful",
+    token,
+  });
 }
