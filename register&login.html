@@ -356,24 +356,25 @@
     const verifyModal = document.getElementById("verifyModal");
     const closeVerify = document.getElementById("closeVerify");
     const verifyBtn = document.getElementById("verifyBtn");
+    const verifyInput = document.getElementById("verifyCodeInput");
     const container = document.getElementById("container");
     
     const API_URL = "/api/auth";
     
+    /* ================= RESTORE VERIFY SESSION ================= */
+    
     const storedIdentifier = localStorage.getItem("verify_id");
-    if (storedIdentifier && verifyModal) {
+    if (storedIdentifier) {
       verifyModal.classList.add("active");
     }
     
     /* ================= LOGIN ================= */
     
-    loginForm?.addEventListener("submit", async (e) => {
+    loginForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       
-      const identifier =
-        document.getElementById("loginEmail")?.value.trim();
-      const password =
-        document.getElementById("loginPass")?.value;
+      const identifier = document.getElementById("loginEmail").value.trim();
+      const password = document.getElementById("loginPass").value;
       
       if (!identifier || !password) {
         alert("All fields required");
@@ -408,13 +409,11 @@
     
     /* ================= REGISTER ================= */
     
-    registerForm?.addEventListener("submit", async (e) => {
+    registerForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       
-      const identifier =
-        document.getElementById("regEmail")?.value.trim();
-      const password =
-        document.getElementById("regPass")?.value;
+      const identifier = document.getElementById("regEmail").value.trim();
+      const password = document.getElementById("regPass").value;
       
       if (!identifier || !password) {
         alert("All fields required");
@@ -440,8 +439,10 @@
         }
         
         localStorage.setItem("verify_id", identifier);
+        verifyInput.value = "";
+        verifyModal.classList.add("active");
+        
         alert("Verification code sent");
-        verifyModal?.classList.add("active");
         
       } catch {
         alert("Network error");
@@ -450,19 +451,18 @@
     
     /* ================= VERIFY ================= */
     
-    verifyBtn?.addEventListener("click", async () => {
+    verifyBtn.addEventListener("click", async () => {
       
-      const code =
-        document.getElementById("verifyCodeInput")?.value.trim();
+      const code = verifyInput.value.trim();
+      const identifier = localStorage.getItem("verify_id");
       
-      if (!code || code.length !== 6) {
-        alert("Enter 6 digit code");
+      if (!identifier) {
+        alert("Session expired");
         return;
       }
       
-      const identifier = localStorage.getItem("verify_id");
-      if (!identifier) {
-        alert("Session expired");
+      if (!code || code.length !== 6) {
+        alert("Enter 6 digit code");
         return;
       }
       
@@ -484,21 +484,23 @@
           return;
         }
         
-        alert("Account verified!");
         localStorage.removeItem("verify_id");
-        document.getElementById("verifyCodeInput").value = "";
-        verifyModal?.classList.remove("active");
-        container?.classList.remove("active");
+        verifyInput.value = "";
+        verifyModal.classList.remove("active");
+        container.classList.remove("active");
+        
+        alert("Account verified!");
         
       } catch {
         alert("Network error");
       }
     });
     
-    /* FIXED CLOSE BUTTON */
+    /* ================= CLOSE MODAL ================= */
     
-    closeVerify?.addEventListener("click", () => {
-      verifyModal?.classList.remove("active");
+    closeVerify.addEventListener("click", () => {
+      verifyModal.classList.remove("active");
+      verifyInput.value = "";
       localStorage.removeItem("verify_id");
     });
     
