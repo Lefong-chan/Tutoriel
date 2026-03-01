@@ -361,7 +361,6 @@
     
     const API_URL = "/api/auth";
     
-    // Tehirizina anaty memory fotsiny (tsy localStorage)
     let currentVerifyIdentifier = null;
     
     /* ================= LOGIN ================= */
@@ -372,10 +371,7 @@
       const identifier = document.getElementById("loginEmail").value.trim();
       const password = document.getElementById("loginPass").value;
       
-      if (!identifier || !password) {
-        alert("All fields required");
-        return;
-      }
+      if (!identifier || !password) return;
       
       try {
         const res = await fetch(API_URL, {
@@ -389,6 +385,14 @@
         });
         
         const data = await res.json();
+        
+        // Raha mbola tsy verified
+        if (res.status === 403) {
+          currentVerifyIdentifier = identifier;
+          verifyInput.value = "";
+          verifyModal.classList.add("active");
+          return;
+        }
         
         if (!res.ok) {
           alert(data.error || "Login failed");
@@ -410,10 +414,7 @@
       const identifier = document.getElementById("regEmail").value.trim();
       const password = document.getElementById("regPass").value;
       
-      if (!identifier || !password) {
-        alert("All fields required");
-        return;
-      }
+      if (!identifier || !password) return;
       
       try {
         const res = await fetch(API_URL, {
@@ -433,13 +434,9 @@
           return;
         }
         
-        // Tehirizina anaty memory fotsiny
         currentVerifyIdentifier = identifier;
-        
         verifyInput.value = "";
         verifyModal.classList.add("active");
-        
-        alert("Verification code sent");
         
       } catch {
         alert("Network error");
@@ -452,15 +449,8 @@
       
       const code = verifyInput.value.trim();
       
-      if (!currentVerifyIdentifier) {
-        alert("Session expired");
-        return;
-      }
-      
-      if (!code || code.length !== 6) {
-        alert("Enter 6 digit code");
-        return;
-      }
+      if (!currentVerifyIdentifier) return;
+      if (!code || code.length !== 6) return;
       
       try {
         const res = await fetch(API_URL, {
@@ -480,6 +470,7 @@
           return;
         }
         
+        // Vita verification
         currentVerifyIdentifier = null;
         verifyInput.value = "";
         verifyModal.classList.remove("active");
@@ -497,7 +488,6 @@
     closeVerify.addEventListener("click", () => {
       verifyModal.classList.remove("active");
       verifyInput.value = "";
-      currentVerifyIdentifier = null;
     });
     
   });
