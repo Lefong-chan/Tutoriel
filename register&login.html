@@ -49,6 +49,72 @@
     .terms-wrapper { display: flex; align-items: center; gap: 8px; width: 100%; margin: 2px 0; font-size: 13px; color: #666; }
     .terms-wrapper input { cursor: pointer; }
     @media (max-width: 768px) { .toggle-container { display: none; } .login-form, .inscription-form { width: 100%; } }
+    
+/* ================= VERIFY MODAL ================= */
+
+.verify-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(5px);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+.verify-modal.active {
+  display: flex;
+}
+
+.verify-box {
+  background: white;
+  padding: 30px;
+  width: 320px;
+  border-radius: 20px;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+  animation: popIn 0.3s ease;
+  position: relative;
+}
+
+.verify-box input {
+  width: 100%;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  font-size: 18px;
+  text-align: center;
+  letter-spacing: 5px;
+  margin-bottom: 15px;
+}
+
+.verify-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(to right, #6e8efb, #a777e3);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close-modal {
+  position: absolute;
+  top: 12px;
+  right: 15px;
+  border: none;
+  background: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #999;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
   </style>
 </head>
 <body>
@@ -142,10 +208,21 @@
     </div>
   </div>
   
-<div id="verifySection" style="display:none; text-align:center; margin-top:20px;">
-  <h2>Enter Verification Code</h2>
-  <input type="text" id="verifyCodeInput" maxlength="6" placeholder="6-digit code" />
-  <button id="verifyBtn">Verify</button>
+<div id="verifyModal" class="verify-modal">
+  <div class="verify-box">
+    
+    <button class="close-modal" id="closeVerify">&times;</button>
+    
+    <h2>Enter Verification Code</h2>
+    <p style="color:#666; font-size:14px; margin-bottom:15px;">
+      Please enter the 6-digit code sent to you
+    </p>
+    
+    <input type="text" id="verifyCodeInput" maxlength="6" placeholder="000000" />
+    
+    <button id="verifyBtn" class="verify-btn">Verify</button>
+    
+  </div>
 </div>
   
 <script>
@@ -276,99 +353,153 @@
     
     const loginForm = document.getElementById("loginForm");
     const registerForm = document.getElementById("inscriptionForm");
-    const verifySection = document.getElementById("verifySection");
+    const verifyModal = document.getElementById("verifyModal");
+    const closeVerify = document.getElementById("closeVerify");
     const verifyBtn = document.getElementById("verifyBtn");
+    const container = document.getElementById("container");
     
     const API_URL = "/api/auth";
     
-    let tempIdentifier = "";
+    const storedIdentifier = localStorage.getItem("verify_id");
+    if (storedIdentifier && verifyModal) {
+      verifyModal.classList.add("active");
+    }
     
     /* ================= LOGIN ================= */
     
-    loginForm.addEventListener("submit", async (e) => {
+    loginForm?.addEventListener("submit", async (e) => {
       e.preventDefault();
       
       const identifier =
-        document.getElementById("loginEmail").value.trim();
+        document.getElementById("loginEmail")?.value.trim();
       const password =
-        document.getElementById("loginPass").value;
+        document.getElementById("loginPass")?.value;
       
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "login",
-          identifier,
-          password,
-        }),
-      });
+      if (!identifier || !password) {
+        alert("All fields required");
+        return;
+      }
       
-      const data = await res.json();
-      
-      if (!res.ok) return alert(data.error);
-      
-      alert("Login success!");
-      console.log("TOKEN:", data.token);
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "login",
+            identifier,
+            password,
+          }),
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          alert(data.error || "Login failed");
+          return;
+        }
+        
+        localStorage.setItem("auth_token", data.token);
+        alert("Login successful!");
+        
+      } catch {
+        alert("Network error");
+      }
     });
     
     /* ================= REGISTER ================= */
     
-    registerForm.addEventListener("submit", async (e) => {
+    registerForm?.addEventListener("submit", async (e) => {
       e.preventDefault();
       
       const identifier =
-        document.getElementById("regEmail").value.trim();
+        document.getElementById("regEmail")?.value.trim();
       const password =
-        document.getElementById("regPass").value;
+        document.getElementById("regPass")?.value;
       
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "register",
-          identifier,
-          password,
-        }),
-      });
+      if (!identifier || !password) {
+        alert("All fields required");
+        return;
+      }
       
-      const data = await res.json();
-      
-      if (!res.ok) return alert(data.error);
-      
-      tempIdentifier = identifier;
-      
-      alert("Verification code sent to your email");
-      
-      verifySection.style.display = "block";
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "register",
+            identifier,
+            password,
+          }),
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          alert(data.error || "Register failed");
+          return;
+        }
+        
+        localStorage.setItem("verify_id", identifier);
+        alert("Verification code sent");
+        verifyModal?.classList.add("active");
+        
+      } catch {
+        alert("Network error");
+      }
     });
     
     /* ================= VERIFY ================= */
     
-    verifyBtn.addEventListener("click", async () => {
+    verifyBtn?.addEventListener("click", async () => {
       
       const code =
-        document.getElementById("verifyCodeInput").value.trim();
+        document.getElementById("verifyCodeInput")?.value.trim();
       
-      if (code.length !== 6)
-        return alert("Enter 6 digit code");
+      if (!code || code.length !== 6) {
+        alert("Enter 6 digit code");
+        return;
+      }
       
-      const res = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "verify",
-          identifier: tempIdentifier,
-          code,
-        }),
-      });
+      const identifier = localStorage.getItem("verify_id");
+      if (!identifier) {
+        alert("Session expired");
+        return;
+      }
       
-      const data = await res.json();
-      
-      if (!res.ok) return alert(data.error);
-      
-      alert("Account verified! You can login now.");
-      
-      verifySection.style.display = "none";
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "verify",
+            identifier,
+            code,
+          }),
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          alert(data.error || "Verification failed");
+          return;
+        }
+        
+        alert("Account verified!");
+        localStorage.removeItem("verify_id");
+        document.getElementById("verifyCodeInput").value = "";
+        verifyModal?.classList.remove("active");
+        container?.classList.remove("active");
+        
+      } catch {
+        alert("Network error");
+      }
+    });
+    
+    /* FIXED CLOSE BUTTON */
+    
+    closeVerify?.addEventListener("click", () => {
+      verifyModal?.classList.remove("active");
+      localStorage.removeItem("verify_id");
     });
     
   });
