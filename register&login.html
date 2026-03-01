@@ -361,12 +361,8 @@
     
     const API_URL = "/api/auth";
     
-    /* ================= RESTORE VERIFY SESSION ================= */
-    
-    const storedIdentifier = localStorage.getItem("verify_id");
-    if (storedIdentifier) {
-      verifyModal.classList.add("active");
-    }
+    // Tehirizina anaty memory fotsiny (tsy localStorage)
+    let currentVerifyIdentifier = null;
     
     /* ================= LOGIN ================= */
     
@@ -399,7 +395,6 @@
           return;
         }
         
-        localStorage.setItem("auth_token", data.token);
         alert("Login successful!");
         
       } catch {
@@ -438,7 +433,9 @@
           return;
         }
         
-        localStorage.setItem("verify_id", identifier);
+        // Tehirizina anaty memory fotsiny
+        currentVerifyIdentifier = identifier;
+        
         verifyInput.value = "";
         verifyModal.classList.add("active");
         
@@ -454,9 +451,8 @@
     verifyBtn.addEventListener("click", async () => {
       
       const code = verifyInput.value.trim();
-      const identifier = localStorage.getItem("verify_id");
       
-      if (!identifier) {
+      if (!currentVerifyIdentifier) {
         alert("Session expired");
         return;
       }
@@ -472,7 +468,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "verify",
-            identifier,
+            identifier: currentVerifyIdentifier,
             code,
           }),
         });
@@ -484,7 +480,7 @@
           return;
         }
         
-        localStorage.removeItem("verify_id");
+        currentVerifyIdentifier = null;
         verifyInput.value = "";
         verifyModal.classList.remove("active");
         container.classList.remove("active");
@@ -501,7 +497,7 @@
     closeVerify.addEventListener("click", () => {
       verifyModal.classList.remove("active");
       verifyInput.value = "";
-      localStorage.removeItem("verify_id");
+      currentVerifyIdentifier = null;
     });
     
   });
