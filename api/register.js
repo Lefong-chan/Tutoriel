@@ -2,14 +2,20 @@ import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
 import { sendOTPEmail } from "./mailer.js";
 
+/* == ENV == */
+
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
 if (!process.env.FIREBASE_KEY) {
   throw new Error("FIREBASE_KEY not set");
 }
 
+/* == FIREBASE INIT == */
+
 if (!admin.apps.length) {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+
+  const serviceAccount =
+    JSON.parse(process.env.FIREBASE_KEY);
 
   if (serviceAccount.private_key) {
     serviceAccount.private_key =
@@ -25,10 +31,23 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
+/* == CONFIG == */
+
 const EMAIL_OTP_VALIDITY = 60 * 1000;
 const PHONE_OTP_VALIDITY = 5 * 60 * 1000;
 
+/* == VALIDATION REGEX == */
+
+const emailRegex =
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const phoneRegex =
+  /^(\+261|0)[0-9]{9}$/;
+
+/* == HELPERS == */
+
 async function generateUID() {
+
   let uid;
   let snap;
 
@@ -38,6 +57,7 @@ async function generateUID() {
     ).toString();
 
     snap = await db.ref("users/" + uid).get();
+
   } while (snap.exists());
 
   return uid;
@@ -49,29 +69,48 @@ function generateOTP() {
   ).toString();
 }
 
+/* == HANDLER == */
+
 export default async function handler(req, res) {
 
   if (req.method !== "POST")
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({
+      error: "Method not allowed"
+    });
 
-  if (allowedOrigin && req.headers.origin !== allowedOrigin)
-    return res.status(403).json({ error: "Forbidden" });
+  if (allowedOrigin &&
+      req.headers.origin !== allowedOrigin)
+    return res.status(403).json({
+      error: "Forbidden"
+    });
 
   const { email, phone, password } = req.body;
 
-  if ((!email && !phone) || !password || password.length < 6) {
+  if ((!email && !phone) ||
+      !password ||
+      password.length < 6)
     return res.status(400).json({
-      error: "Email or phone and valid password required"
+      error:
+        "Email or phone and valid password required"
     });
-  }
 
   try {
 
     let emailLower = null;
     let phoneClean = null;
 
+    /* == EMAIL CHECK == */
+
     if (email) {
-      emailLower = email.toLowerCase().trim();
+
+      emailLower =
+        email.toLowerCase().trim();
+
+      if (!emailRegex.test(emailLower)) {
+        return res.status(400).json({
+          error: "Invalid email format"
+        });
+      }
 
       const existingEmail = await db
         .ref("users")
@@ -82,13 +121,22 @@ export default async function handler(req, res) {
 
       if (existingEmail.exists()) {
         return res.status(400).json({
-          error: "Email already registered"
+          error: "Account already exists"
         });
       }
     }
 
+    /* == PHONE CHECK == */
+
     if (phone) {
+
       phoneClean = phone.trim();
+
+      if (!phoneRegex.test(phoneClean)) {
+        return res.status(400).json({
+          error: "Invalid phone format"
+        });
+      }
 
       const existingPhone = await db
         .ref("users")
@@ -99,32 +147,42 @@ export default async function handler(req, res) {
 
       if (existingPhone.exists()) {
         return res.status(400).json({
-          error: "Phone already registered"
+          error: "Account already exists"
         });
       }
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    /* == CREATE USER == */
+
+    const hashedPassword =
+      await bcrypt.hash(password, 12);
+
     const uid = await generateUID();
     const now = Date.now();
 
-    const emailOTP = emailLower ? generateOTP() : null;
-    const emailOTPExpires = emailLower
-      ? now + EMAIL_OTP_VALIDITY
-      : null;
+    const emailOTP =
+      emailLower ? generateOTP() : null;
 
-    const phoneOTP = phoneClean ? generateOTP() : null;
-    const phoneOTPExpires = phoneClean
-      ? now + PHONE_OTP_VALIDITY
-      : null;
+    const emailOTPExpires =
+      emailLower ? now + EMAIL_OTP_VALIDITY : null;
+
+    const phoneOTP =
+      phoneClean ? generateOTP() : null;
+
+    const phoneOTPExpires =
+      phoneClean ? now + PHONE_OTP_VALIDITY : null;
 
     await db.ref("users/" + uid).set({
 
       uid,
+
       email: emailLower,
       phone: phoneClean,
+
       password: hashedPassword,
       provider: "local",
+
+      /* == EMAIL VERIFICATION == */
 
       emailVerified: emailLower ? false : true,
       otp: emailOTP,
@@ -132,6 +190,10 @@ export default async function handler(req, res) {
 
       resendCount: 0,
       resendWindowStart: now,
+      otpAttempts: 0,
+      otpLockUntil: null,
+
+      /* == PHONE VERIFICATION == */
 
       phoneVerified: phoneClean ? false : true,
       phoneOTP,
@@ -139,15 +201,18 @@ export default async function handler(req, res) {
 
       phoneResendCount: 0,
       phoneResendWindowStart: now,
-
       phoneOtpAttempts: 0,
       phoneOtpBlockUntil: null,
+
+      /* == LOGIN RATE LIMIT == */
 
       loginAttempts: 0,
       loginWindowStart: null,
 
       createdAt: now
     });
+
+    /* == SEND EMAIL OTP == */
 
     if (emailLower) {
       await sendOTPEmail(emailLower, emailOTP);
