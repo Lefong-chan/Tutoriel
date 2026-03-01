@@ -1,11 +1,9 @@
-// ================================
-// AUTH API (Register + Login + Verify)
-// Production Safe Version
-// ================================
-
 import admin from "firebase-admin";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { sendVerificationEmail } from "./mailer.js";
+
+/* ================= ENV ================= */
 
 const SECRET = process.env.JWT_SECRET;
 const NODE_ENV = process.env.NODE_ENV || "development";
@@ -16,8 +14,6 @@ const allowedOrigin =
 
 if (!SECRET) throw new Error("JWT_SECRET not set");
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
-if (NODE_ENV === "production" && !process.env.ALLOWED_ORIGIN)
-  throw new Error("ALLOWED_ORIGIN required in production");
 
 /* ================= FIREBASE INIT ================= */
 
@@ -66,7 +62,7 @@ function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-/* ================= MAIN HANDLER ================= */
+/* ================= MAIN ================= */
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -81,12 +77,12 @@ export default async function handler(req, res) {
 
   try {
     if (action === "register") return await register(req, res);
-    if (action === "login") return await login(req, res);
     if (action === "verify") return await verify(req, res);
+    if (action === "login") return await login(req, res);
 
     return res.status(400).json({ error: "Invalid action" });
   } catch (err) {
-    console.error("SERVER ERROR:", err);
+    console.error(err);
     return res.status(500).json({ error: "Server error" });
   }
 }
@@ -109,8 +105,8 @@ async function register(req, res) {
   const { clean, type } = normalized;
   const docRef = db.collection("users").doc(clean);
 
-  const existingUser = await docRef.get();
-  if (existingUser.exists)
+  const existing = await docRef.get();
+  if (existing.exists)
     return res.status(400).json({ error: "User already registered" });
 
   const hashedPassword = await bcrypt.hash(password, 12);
@@ -130,8 +126,9 @@ async function register(req, res) {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  if (NODE_ENV !== "production") {
-    console.log("Verification code:", code);
+  /* === MANDEFA EMAIL === */
+  if (type === "email") {
+    await sendVerificationEmail(clean, code);
   }
 
   return res.status(201).json({
@@ -162,13 +159,8 @@ async function verify(req, res) {
   if (user.isVerified)
     return res.status(400).json({ error: "Already verified" });
 
-  if (!user.verificationExpires || Date.now() > user.verificationExpires) {
-    await docRef.update({
-      verificationCode: admin.firestore.FieldValue.delete(),
-      verificationExpires: admin.firestore.FieldValue.delete(),
-    });
+  if (!user.verificationExpires || Date.now() > user.verificationExpires)
     return res.status(400).json({ error: "Code expired" });
-  }
 
   if (user.verificationAttempts >= 5)
     return res.status(429).json({ error: "Too many attempts" });
@@ -216,7 +208,7 @@ async function login(req, res) {
     return res.status(403).json({ error: "Account not verified" });
 
   if (user.loginBlockedUntil && Date.now() < user.loginBlockedUntil)
-    return res.status(429).json({ error: "Account temporarily locked" });
+    return res.status(429).json({ error: "Account locked" });
 
   const match = await bcrypt.compare(password, user.password);
 
