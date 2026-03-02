@@ -1,11 +1,15 @@
 import admin from "firebase-admin";
 import jwt from "jsonwebtoken";
 
+/* ================= ENV ================= */
+
 const SECRET = process.env.JWT_SECRET;
 
 if (!SECRET) throw new Error("JWT_SECRET not set");
 if (!process.env.FIREBASE_KEY)
   throw new Error("FIREBASE_KEY not set");
+
+/* ================= FIREBASE INIT ================= */
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -24,6 +28,8 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
+/* ================= TOKEN HELPER ================= */
+
 function getTokenFromCookie(req) {
   const cookieHeader = req.headers.cookie;
   if (!cookieHeader) return null;
@@ -39,37 +45,57 @@ function getTokenFromCookie(req) {
   return null;
 }
 
+/* ================= MAIN HANDLER ================= */
+
 export default async function handler(req, res) {
 
-  if (req.method !== "GET")
-    return res.status(405).json({ error: "Method not allowed" });
+  /* ================= ME (GET) ================= */
+  if (req.method === "GET") {
+    try {
 
-  try {
+      const token = getTokenFromCookie(req);
 
-    const token = getTokenFromCookie(req);
+      if (!token)
+        return res.status(401).json({ error: "Not authenticated" });
 
-    if (!token)
-      return res.status(401).json({ error: "Not authenticated" });
+      const decoded = jwt.verify(token, SECRET);
 
-    const decoded = jwt.verify(token, SECRET);
+      const snap = await db.ref("users/" + decoded.uid).get();
 
-    const snap = await db.ref("users/" + decoded.uid).get();
+      if (!snap.exists())
+        return res.status(404).json({ error: "User not found" });
 
-    if (!snap.exists())
-      return res.status(404).json({ error: "User not found" });
+      const userData = snap.val();
 
-    const userData = snap.val();
+      return res.status(200).json({
+        uid: userData.uid,
+        email: userData.email || null,
+        phone: userData.phone || null,
+        provider: userData.provider
+      });
 
-    return res.status(200).json({
-      uid: userData.uid,
-      email: userData.email || null,
-      phone: userData.phone || null,
-      provider: userData.provider
-    });
-
-  } catch (err) {
-    return res.status(401).json({
-      error: "Invalid or expired session"
-    });
+    } catch (err) {
+      return res.status(401).json({
+        error: "Invalid or expired session"
+      });
+    }
   }
+
+  /* ================= LOGOUT (POST) ================= */
+  if (req.method === "POST") {
+
+    res.setHeader("Set-Cookie", `
+      token=;
+      HttpOnly;
+      Secure;
+      SameSite=Strict;
+      Path=/;
+      Max-Age=0
+    `.replace(/\s+/g, " ").trim());
+
+    return res.status(200).json({ success: true });
+  }
+
+  /* ================= METHOD NOT ALLOWED ================= */
+  return res.status(405).json({ error: "Method not allowed" });
 }
