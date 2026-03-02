@@ -1,101 +1,167 @@
+// api/session.js
+
 import admin from "firebase-admin";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-/* ================= ENV ================= */
-
 const SECRET = process.env.JWT_SECRET;
+const isProd = process.env.NODE_ENV === "production";
+const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
 if (!SECRET) throw new Error("JWT_SECRET not set");
-if (!process.env.FIREBASE_KEY)
-  throw new Error("FIREBASE_KEY not set");
+if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
 
-/* ================= FIREBASE INIT ================= */
-
+// Initialisation Firebase (identique à auth.js)
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
-
   if (serviceAccount.private_key) {
-    serviceAccount.private_key =
-      serviceAccount.private_key.replace(/\\n/g, "\n");
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
   }
-
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL:
-      "https://tutoriel-ff487-default-rtdb.firebaseio.com/"
   });
 }
+const db = admin.firestore();
+const usersCollection = db.collection("users");
 
-const db = admin.database();
+// Regex pour validation du username
+const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
 
-/* ================= TOKEN HELPER ================= */
-
-function getTokenFromCookie(req) {
-  const cookieHeader = req.headers.cookie;
-  if (!cookieHeader) return null;
-
-  const cookies = cookieHeader.split(";").map(c => c.trim());
-
-  for (let c of cookies) {
-    if (c.startsWith("token=")) {
-      return c.substring("token=".length);
-    }
+// Helper : extraire l'utilisateur depuis le cookie
+async function getUserFromCookie(req) {
+  const cookie = req.headers.cookie;
+  if (!cookie) return null;
+  
+  const tokenMatch = cookie.match(/token=([^;]+)/);
+  if (!tokenMatch) return null;
+  
+  const token = tokenMatch[1];
+  try {
+    const decoded = jwt.verify(token, SECRET);
+    const uid = decoded.uid;
+    const userDoc = await usersCollection.doc(uid).get();
+    if (!userDoc.exists) return null;
+    return { id: uid, ...userDoc.data() };
+  } catch (err) {
+    return null;
   }
-
-  return null;
 }
 
-/* ================= MAIN HANDLER ================= */
+// Helper : définir le cookie (réutilisé)
+function setCookie(res, token) {
+  const cookieOptions = [
+    `token=${token}`,
+    "HttpOnly",
+    `Max-Age=${7 * 24 * 60 * 60}`,
+    "Path=/",
+    `SameSite=${isProd ? "None" : "Lax"}`,
+    "Priority=High"
+  ];
+  if (isProd) cookieOptions.push("Secure");
+  res.setHeader("Set-Cookie", cookieOptions.join("; "));
+}
+
+// Helper : supprimer le cookie
+function clearCookie(res) {
+  const cookieOptions = [
+    `token=`,
+    "HttpOnly",
+    `Max-Age=0`,
+    "Path=/",
+    `SameSite=${isProd ? "None" : "Lax"}`,
+  ];
+  if (isProd) cookieOptions.push("Secure");
+  res.setHeader("Set-Cookie", cookieOptions.join("; "));
+}
 
 export default async function handler(req, res) {
+  // Vérification CORS
+  if (allowedOrigin && req.headers.origin !== allowedOrigin) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
 
-  /* ================= ME (GET) ================= */
+  // GET : récupérer la session
   if (req.method === "GET") {
     try {
-
-      const token = getTokenFromCookie(req);
-
-      if (!token)
-        return res.status(401).json({ error: "Not authenticated" });
-
-      const decoded = jwt.verify(token, SECRET);
-
-      const snap = await db.ref("users/" + decoded.uid).get();
-
-      if (!snap.exists())
-        return res.status(404).json({ error: "User not found" });
-
-      const userData = snap.val();
-
-      return res.status(200).json({
-        uid: userData.uid,
-        email: userData.email || null,
-        phone: userData.phone || null,
-        provider: userData.provider
-      });
-
+      const user = await getUserFromCookie(req);
+      if (!user) {
+        return res.status(401).json({ authenticated: false });
+      }
+      // Ne pas renvoyer les champs sensibles
+      const { password, otp, otpExpires, phoneOTP, phoneOTPExpires, resetOTP, resetOTPExpires, ...safeUser } = user;
+      return res.status(200).json({ authenticated: true, user: safeUser });
     } catch (err) {
-      return res.status(401).json({
-        error: "Invalid or expired session"
-      });
+      console.error("SESSION GET ERROR:", err);
+      return res.status(500).json({ error: "Server error" });
     }
   }
 
-  /* ================= LOGOUT (POST) ================= */
+  // POST : actions (update-username, logout)
   if (req.method === "POST") {
+    const { action, ...payload } = req.body;
+    if (!action) {
+      return res.status(400).json({ error: "Action required" });
+    }
 
-    res.setHeader("Set-Cookie", `
-      token=;
-      HttpOnly;
-      Secure;
-      SameSite=Strict;
-      Path=/;
-      Max-Age=0
-    `.replace(/\s+/g, " ").trim());
-
-    return res.status(200).json({ success: true });
+    try {
+      switch (action) {
+        case "update-username":
+          return await handleUpdateUsername(req, payload, res);
+        case "logout":
+          return await handleLogout(res);
+        default:
+          return res.status(400).json({ error: "Invalid action" });
+      }
+    } catch (err) {
+      console.error(`SESSION POST ERROR [${action}]:`, err);
+      return res.status(500).json({ error: "Server error" });
+    }
   }
 
-  /* ================= METHOD NOT ALLOWED ================= */
   return res.status(405).json({ error: "Method not allowed" });
+}
+
+async function handleUpdateUsername(req, body, res) {
+  const { newUsername, password } = body;
+  if (!newUsername || !password) {
+    return res.status(400).json({ error: "New username and password required" });
+  }
+
+  // Validation du format
+  if (!usernameRegex.test(newUsername)) {
+    return res.status(400).json({ error: "Username must be 3-20 characters and contain only letters, numbers, or underscores" });
+  }
+
+  // Récupérer l'utilisateur connecté
+  const user = await getUserFromCookie(req);
+  if (!user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  // Vérifier le mot de passe
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    return res.status(400).json({ error: "Invalid password" });
+  }
+
+  // Vérifier l'unicité du username
+  const existing = await usersCollection.where("username", "==", newUsername).limit(1).get();
+  if (!existing.empty) {
+    const existingDoc = existing.docs[0];
+    if (existingDoc.id !== user.uid) {
+      return res.status(400).json({ error: "Username already taken" });
+    }
+  }
+
+  // Mettre à jour
+  await usersCollection.doc(user.uid).update({
+    username: newUsername
+  });
+
+  return res.status(200).json({ success: true, username: newUsername });
+}
+
+async function handleLogout(res) {
+  clearCookie(res);
+  return res.status(200).json({ success: true });
 }
