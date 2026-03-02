@@ -13,8 +13,7 @@ if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
   if (serviceAccount.private_key) {
-    serviceAccount.private_key =
-      serviceAccount.private_key.replace(/\\n/g, "\n");
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
   }
 
   admin.initializeApp({
@@ -160,6 +159,9 @@ export default async function handler(req, res) {
     try {
       switch (action) {
 
+        case "set-username":
+          return await handleSetUsername(req, payload, res);
+
         case "update-username":
           return await handleUpdateUsername(req, payload, res);
 
@@ -180,9 +182,54 @@ export default async function handler(req, res) {
   return res.status(405).json({ error: "Method not allowed" });
 }
 
-/* ================= UPDATE USERNAME ================= */
-async function handleUpdateUsername(req, body, res) {
+/* ================= SET USERNAME (first time) ================= */
+async function handleSetUsername(req, body, res) {
+  const { newUsername } = body;
 
+  if (!newUsername) {
+    return res.status(400).json({ error: "New username required" });
+  }
+
+  if (!usernameRegex.test(newUsername)) {
+    return res.status(400).json({
+      error: "Username must be 3-20 characters (letters, numbers, underscores)"
+    });
+  }
+
+  const user = await getUserFromCookie(req);
+  if (!user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  // Optionnel : empêcher de modifier un username déjà existant
+  // Si vous voulez autoriser la modification même après, retirez ce bloc
+  if (user.username) {
+    return res.status(400).json({ error: "Username already set. Use update-username to change it." });
+  }
+
+  // Vérifier que le nouveau nom n'est pas déjà pris par un autre utilisateur
+  const existing = await usersCollection
+    .where("username", "==", newUsername)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) {
+    return res.status(400).json({ error: "Username already taken" });
+  }
+
+  // Mettre à jour l'utilisateur
+  await usersCollection.doc(user.uid).update({
+    username: newUsername
+  });
+
+  return res.status(200).json({
+    success: true,
+    username: newUsername
+  });
+}
+
+/* ================= UPDATE USERNAME (with password) ================= */
+async function handleUpdateUsername(req, body, res) {
   const { newUsername, password } = body;
 
   if (!newUsername || !password) {
