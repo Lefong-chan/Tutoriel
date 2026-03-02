@@ -238,12 +238,124 @@
       position: relative;
     }
 
-    #playersModal {
-      justify-content: center; 
-      align-items: center; 
-      padding: 0;
+    /* ===== STYLES AMÉLIORÉS POUR LA MODALE PROFIL ===== */
+    .profile-modal-content {
+      background: linear-gradient(145deg, #ffffff, #f8f9ff);
+      border-radius: 24px;
+      padding: 30px 25px;
+      max-width: 450px;
+      box-shadow: 0 20px 40px rgba(106, 13, 173, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.5);
     }
 
+    .profile-title {
+      font-size: 2.2em;
+      margin-bottom: 20px;
+      color: #4A008F;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .profile-title i {
+      font-size: 1.2em;
+      color: #FFD700;
+    }
+
+    .profile-info-container {
+      background: rgba(106, 13, 173, 0.05);
+      border-radius: 18px;
+      padding: 25px 20px;
+      margin: 20px 0;
+      border: 1px solid rgba(106, 13, 173, 0.2);
+    }
+
+    .profile-username {
+      font-size: 2.5em;
+      font-weight: 800;
+      color: #4A008F;
+      text-align: center;
+      margin-bottom: 15px;
+      word-break: break-word;
+      background: linear-gradient(135deg, #4A008F, #6C00BF);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .profile-uid-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 1.1em;
+      background: white;
+      padding: 12px 15px;
+      border-radius: 50px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .uid-label {
+      font-weight: 600;
+      color: #6C00BF;
+      font-size: 0.9em;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .uid-value {
+      font-family: 'Courier New', monospace;
+      font-weight: 600;
+      color: #333;
+      font-size: 0.95em;
+      background: #f0f0f0;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    .copy-uid-btn {
+      background: #6C00BF;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 1.1em;
+      box-shadow: 0 4px 8px rgba(108, 0, 191, 0.3);
+    }
+
+    .copy-uid-btn:hover {
+      background: #4A008F;
+      transform: scale(1.05);
+    }
+
+    .copy-uid-btn.copied {
+      background: #2ecc71;
+    }
+
+    .profile-games-btn {
+      background: linear-gradient(135deg, #FFD700, #FFC000) !important;
+      color: #4A008F !important;
+      font-size: 1.2em !important;
+      padding: 15px !important;
+      border-radius: 50px !important;
+      margin-top: 10px;
+      border: none;
+      box-shadow: 0 8px 15px rgba(255, 215, 0, 0.3);
+      transition: transform 0.2s;
+    }
+
+    .profile-games-btn:hover {
+      transform: translateY(-3px);
+    }
+
+    /* Reste des styles existants pour les autres modales */
     #playersModal .modal-content {
       max-width: 800px; 
       width: 90%;
@@ -840,20 +952,6 @@
       text-align: center;
     }
 
-    /* Style pour la modale de profil */
-    #profileInfoModal .modal-content p {
-      font-size: 1.1em;
-      margin: 15px 0;
-      color: #333;
-    }
-    #profileInfoModal .modal-content p strong {
-      color: #6C00BF;
-    }
-    #profileGamesBtn {
-      width: 100%;
-      margin-top: 10px;
-    }
-
     @media (max-width: 768px) {
       .game-options-container {
         flex-direction: column;
@@ -996,16 +1094,22 @@
     </div>
   </div>
   
-  <!-- Modale de profil (informations utilisateur) -->
+  <!-- Modale de profil (informations utilisateur) - AMÉLIORÉE -->
   <div class="modal-overlay" id="profileInfoModal">
-    <div class="modal-content">
+    <div class="modal-content profile-modal-content">
       <i class="fas fa-times modal-close-btn" id="profileInfoCloseBtn"></i>
-      <h2><i class="fas fa-user-circle"></i> Profile</h2>
-      <div style="text-align: left; margin: 20px 0;">
-        <p><strong>Username:</strong> <span id="profileUsername"></span></p>
-        <p><strong>UID:</strong> <span id="profileUid"></span></p>
+      <h2 class="profile-title"><i class="fas fa-user-circle"></i> Profile</h2>
+      <div class="profile-info-container">
+        <div class="profile-username" id="profileUsernameDisplay"></div>
+        <div class="profile-uid-wrapper">
+          <span class="uid-label">UID:</span>
+          <span class="uid-value" id="profileUid"></span>
+          <button class="copy-uid-btn" id="copyUidBtn" title="Copy UID">
+            <i class="fas fa-copy"></i>
+          </button>
+        </div>
       </div>
-      <button class="modal-action-btn" id="profileGamesBtn" style="background-color: #FFD700; color: #4A008F;">
+      <button class="modal-action-btn profile-games-btn" id="profileGamesBtn">
         <i class="fas fa-dice"></i> Games
       </button>
     </div>
@@ -1202,8 +1306,11 @@
       const confirmLogoutBtn = document.getElementById('confirmLogoutBtn');
       const cancelLogoutBtn = document.getElementById('cancelLogoutBtn');
       const profileGamesBtn = document.getElementById('profileGamesBtn');
-      const profileUsername = document.getElementById('profileUsername');
+      
+      // Nouveaux éléments pour le profil amélioré
+      const profileUsernameDisplay = document.getElementById('profileUsernameDisplay');
       const profileUid = document.getElementById('profileUid');
+      const copyUidBtn = document.getElementById('copyUidBtn');
       
       // Regex validation username
       const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
@@ -1213,6 +1320,7 @@
       // ========== FONCTIONS UTILITAIRES ==========
       function closeAllModals() {
         document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+        document.querySelectorAll('.friend-actions-modal-overlay').forEach(m => m.classList.remove('active'));
       }
       
       function openModal(modal) {
@@ -1233,6 +1341,27 @@
         confirmRenameBtn.disabled = !(usernameRegex.test(newName) && password.length > 0);
       }
       
+      // ========== FONCTION DE COPIE ==========
+      function copyUidToClipboard() {
+        const uid = profileUid.textContent;
+        if (!uid) return;
+        
+        navigator.clipboard.writeText(uid).then(() => {
+          // Feedback visuel
+          copyUidBtn.classList.add('copied');
+          // On peut changer l'icône temporairement
+          const originalIcon = copyUidBtn.innerHTML;
+          copyUidBtn.innerHTML = '<i class="fas fa-check"></i>';
+          setTimeout(() => {
+            copyUidBtn.innerHTML = originalIcon;
+            copyUidBtn.classList.remove('copied');
+          }, 1500);
+        }).catch(err => {
+          console.error('Erreur de copie :', err);
+          alert('Impossible de copier l\'UID');
+        });
+      }
+      
       // ========== APPELS API ==========
       async function fetchSession() {
         try {
@@ -1242,7 +1371,7 @@
           });
           if (!res.ok) {
             if (res.status === 401) {
-              window.location.href = '/login.html';
+              window.location.href = '/login&register.html';
               return null;
             }
             throw new Error('Erreur réseau');
@@ -1251,12 +1380,12 @@
           if (data.authenticated && data.user) {
             return data.user;
           } else {
-            window.location.href = '/login.html';
+            window.location.href = '/login&register.html';
             return null;
           }
         } catch (err) {
           console.error('Erreur session:', err);
-          window.location.href = '/login.html';
+          window.location.href = '/login&register.html';
           return null;
         }
       }
@@ -1356,7 +1485,7 @@
         } catch (err) {
           console.error('Erreur logout', err);
         }
-        window.location.href = '/login.html';
+        window.location.href = '/login&register.html';
       }
       
       // ========== INITIALISATION ==========
@@ -1396,11 +1525,14 @@
           if (!currentUser.username) {
             openModal(setUsernameModal);
           } else {
-            profileUsername.textContent = currentUser.username;
+            profileUsernameDisplay.textContent = currentUser.username;
             profileUid.textContent = currentUser.uid;
             openModal(profileInfoModal);
           }
         });
+        
+        // Copie de l'UID
+        copyUidBtn.addEventListener('click', copyUidToClipboard);
         
         // Ouvrir les paramètres
         settingsBtn.addEventListener('click', () => {
