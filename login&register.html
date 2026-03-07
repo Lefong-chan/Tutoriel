@@ -71,8 +71,6 @@
   </style>
 </head>
 <body>
-  
-  <!-- main container toggle login / register -->
   <div class="container" id="container">
     <div class="forms-container">
       <form class="login-form" id="loginForm">
@@ -133,7 +131,6 @@
     </div>
   </div>
 
-  <!-- notification modale (status) -->
   <div id="statusModal" class="modal-status">
     <div class="modal-header">
       <div class="modal-title" id="modalTitle"></div>
@@ -161,7 +158,6 @@
     </div>
   </div>
 
-  <!-- forgot request modal (email) -->
   <div id="forgotRequestOverlay" class="overlay">
     <div class="dialog-card">
       <h3>Réinitialisation <span class="close-icon" id="closeForgotRequest">&times;</span></h3>
@@ -174,7 +170,6 @@
     </div>
   </div>
 
-  <!-- forgot reset modal (OTP + nouveau mot de passe) -->
   <div id="forgotResetOverlay" class="overlay">
     <div class="dialog-card">
       <h3>Nouveau mot de passe <span class="close-icon" id="closeForgotReset">&times;</span></h3>
@@ -315,7 +310,6 @@
             document.getElementById('otpEmailDisplay').value = email;
             document.getElementById('otpCode').value = '';
             document.getElementById('otpOverlay').style.display = 'flex';
-            showStatusModal('success', 'Code de vérification envoyé par email.', false);
           } else {
             showStatusModal('success', 'Inscription réussie !', false);
           }
