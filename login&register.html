@@ -6,7 +6,6 @@
   <title>Login & Register</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    /* --- CSS Fototra --- */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
     body { background: linear-gradient(135deg, #6e8efb, #a777e3); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
     
@@ -60,9 +59,6 @@
 
     @media (max-width: 768px) { .toggle-container { display: none; } .login-form, .inscription-form { width: 100%; } }
 
-    /* --- CSS ho an'ny MODALS --- */
-    
-    /* 1. Modal fampandrenesana kely (Status) */
     .status-alert { position: fixed; top: 30px; width: 280px; max-width: 90%; padding: 14px; border-radius: 14px; z-index: 10000; opacity: 0; pointer-events: none; transition: all 0.25s ease; background: white; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2); }
     .status-alert.show { opacity: 1; pointer-events: auto; }
     .status-alert.error { border-left: 5px solid #ff4d4f; }
@@ -72,7 +68,6 @@
     .status-title.error { color: #ff4d4f; }
     .status-title.success { color: #10b981; }
     
-    /* 2. Modals lehibe (OTP & Forgot Password) */
     .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 9999; font-family: 'Inter', -apple-system, sans-serif; padding: 15px; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
     .modal-overlay.active { opacity: 1; pointer-events: auto; }
 
@@ -125,8 +120,29 @@
       to { transform: rotate(360deg); }
     }
     
-    .modal-step { display: none; }
-    .modal-step.active { display: block; }
+    /* Animation des étapes dans la modale Forgot Password */
+    .modal-steps-container {
+      position: relative;
+      min-height: 260px; /* Ajusté pour contenir les deux étapes */
+      overflow: hidden;
+      margin-top: 15px;
+    }
+    .modal-step {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      opacity: 0;
+      transform: translateX(100%);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+      pointer-events: none;
+    }
+    .modal-step.active {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+      position: relative; /* Pour occuper la hauteur dans le flux */
+    }
   </style>
 </head>
 <body>
@@ -231,23 +247,25 @@
       <button class="modal-close" id="closeForgotModal">×</button>
       <h2 class="modal-card-title" style="margin-bottom: 15px;">Reset your password</h2>
       
-      <div id="forgotStep1" class="modal-step active">
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <input type="text" id="forgotIdentifier" class="modal-input" placeholder="Enter your email">
-          <button id="forgotSendBtn" class="modal-resend-btn">Send</button>
+      <div class="modal-steps-container">
+        <div id="forgotStep1" class="modal-step active">
+          <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <input type="text" id="forgotIdentifier" class="modal-input" placeholder="Enter your email">
+            <button id="forgotSendBtn" class="modal-resend-btn">Send</button>
+          </div>
+          <div style="margin-bottom: 15px;">
+            <input type="text" id="forgotOtp" class="modal-input" maxlength="6" inputmode="numeric" placeholder="Enter the 6-digit code">
+          </div>
+          <div id="forgotError1" class="modal-info-text"></div>
+          <button id="forgotVerifyBtn" class="modal-action-btn" disabled>Verify code</button>
         </div>
-        <div style="margin-bottom: 15px;">
-          <input type="text" id="forgotOtp" class="modal-input" maxlength="6" inputmode="numeric" placeholder="Enter the 6-digit code">
+        
+        <div id="forgotStep2" class="modal-step">
+          <input type="password" id="forgotNewPass" class="modal-input" placeholder="New password (min 6)" style="margin-bottom: 10px;">
+          <input type="password" id="forgotConfirmPass" class="modal-input" placeholder="Confirm password" style="margin-bottom: 15px;">
+          <div id="forgotError2" class="modal-info-text"></div>
+          <button id="forgotResetBtn" class="modal-action-btn">Reset Password</button>
         </div>
-        <div id="forgotError1" class="modal-info-text"></div>
-        <button id="forgotVerifyBtn" class="modal-action-btn">Verify code</button>
-      </div>
-      
-      <div id="forgotStep2" class="modal-step">
-        <input type="password" id="forgotNewPass" class="modal-input" placeholder="New password (min 6)" style="margin-bottom: 10px;">
-        <input type="password" id="forgotConfirmPass" class="modal-input" placeholder="Confirm password" style="margin-bottom: 15px;">
-        <div id="forgotError2" class="modal-info-text"></div>
-        <button id="forgotResetBtn" class="modal-action-btn">Reset Password</button>
       </div>
     </div>
   </div>
@@ -257,7 +275,6 @@
       // ==================== CONSTANTES & ÉTAT GLOBAL ====================
       const API_URL = '/api/auth'; // à ajuster si nécessaire
       
-      // Éléments DOM
       const container = document.getElementById('container');
       const loginForm = document.getElementById('loginForm');
       const inscriptionForm = document.getElementById('inscriptionForm');
@@ -293,16 +310,14 @@
       const loginBtn = document.getElementById('loginBtn');
       const registerBtn = document.getElementById('registerBtn');
       
-      // Variables d'état
-      let currentEmail = '';            // Email utilisé pour l'inscription (en attente de vérification)
-      let forgotEmail = '';             // Email pour le reset
-      let countdownInterval = null;      // Pour le compte à rebours des boutons Resend/Send
-      let countdownEndTime = 0;          // Timestamp (ms) de fin du compte à rebours
+      let currentEmail = '';
+      let forgotEmail = '';
+      let codeRequested = false;
+      let countdownInterval = null;
+      let countdownEndTime = 0;
       
       // ==================== FONCTIONS UTILITAIRES ====================
       function showStatus(message, type, position = 'right') {
-        // type : 'success' ou 'error'
-        // position : 'right' (login) ou 'left' (register)
         modalTitle.textContent = type === 'success' ? 'Success' : 'Error';
         modalTitle.className = `status-title ${type}`;
         modalMessage.textContent = message;
@@ -310,7 +325,6 @@
         statusModal.style.right = position === 'right' ? '20px' : 'auto';
         statusModal.style.left = position === 'left' ? '20px' : 'auto';
         
-        // Auto-cacher après 5 secondes
         setTimeout(() => {
           statusModal.classList.remove('show');
         }, 5000);
@@ -320,10 +334,8 @@
         statusModal.classList.remove('show');
       }
       
-      // Fermeture manuelle
       closeStatus.addEventListener('click', hideStatus);
       
-      // Fonction pour appeler l'API
       async function callApi(action, payload) {
         const response = await fetch(API_URL, {
           method: 'POST',
@@ -332,13 +344,11 @@
         });
         const data = await response.json();
         if (!response.ok) {
-          // Gestion des erreurs HTTP (4xx, 5xx)
           throw new Error(data.error || 'Erreur serveur');
         }
         return data;
       }
       
-      // Gestion du chargement (spinner)
       function setLoading(button, isLoading) {
         if (isLoading) {
           button.classList.add('loading');
@@ -349,11 +359,9 @@
         }
       }
       
-      // Gestion du compte à rebours pour les boutons Resend/Send
-      function startCountdown(button, durationSeconds = 300) { // 5 minutes par défaut
+      function startCountdown(button, durationSeconds = 300) {
         if (countdownInterval) clearInterval(countdownInterval);
         
-        // Sauvegarder le texte original si ce n'est pas déjà fait
         if (!button.dataset.originalText) {
           button.dataset.originalText = button.textContent;
         }
@@ -374,7 +382,7 @@
             const minutes = Math.floor(remaining / 60);
             const seconds = remaining % 60;
             const timeStr = minutes > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${seconds}s`;
-            button.textContent = timeStr; // Seulement le temps
+            button.textContent = timeStr;
           }
         };
         
@@ -382,20 +390,17 @@
         countdownInterval = setInterval(updateButton, 1000);
       }
       
-      // Fonction pour afficher un message dans un élément .modal-info-text avec transition
       function setModalMessage(element, message, type) {
         element.textContent = message;
         element.className = `modal-info-text ${type} visible`;
       }
       
-      // Fonction pour effacer un message
       function clearModalMessage(element) {
         element.textContent = '';
         element.className = 'modal-info-text';
         element.classList.remove('visible', 'error', 'success');
       }
       
-      // Réinitialiser les modales
       function resetOtpModal() {
         otpCodeInput.value = '';
         clearModalMessage(otpMessageDiv);
@@ -413,8 +418,11 @@
         clearModalMessage(forgotError2);
         forgotSendBtn.disabled = false;
         forgotSendBtn.textContent = 'Send';
+        forgotVerifyBtn.disabled = true; // Désactivé tant qu'aucun code n'est demandé
         forgotStep1.classList.add('active');
         forgotStep2.classList.remove('active');
+        codeRequested = false;
+        forgotEmail = '';
         if (countdownInterval) clearInterval(countdownInterval);
       }
       
@@ -437,11 +445,9 @@
           const data = await callApi('register', { email, password });
           if (data.success && data.emailVerificationRequired) {
             currentEmail = email;
-            // Réinitialiser la modale OTP puis afficher le message
             resetOtpModal();
             setModalMessage(otpMessageDiv, 'Inscription réussie ! Un code de vérification a été envoyé par email.', 'success');
             otpModal.classList.add('active');
-            // Démarrer le compte à rebours sur le bouton Resend
             resendOtpBtn.dataset.originalText = 'Resend';
             startCountdown(resendOtpBtn, 300);
           } else {
@@ -466,16 +472,13 @@
         try {
           const data = await callApi('login', { identifier, password });
           if (data.success) {
-            // Afficher le bandeau de succès avant redirection
             showStatus('Login successful! Redirecting...', 'success', 'right');
             setTimeout(() => {
               window.location.href = 'dashboard.html';
             }, 1500);
           }
         } catch (err) {
-          // Gestion spéciale pour email non vérifié
           if (err.message.includes('Email not verified') || err.message.includes('emailNotVerified')) {
-            // On récupère l'email depuis le formulaire et on ouvre la modale OTP
             currentEmail = identifier;
             resetOtpModal();
             setModalMessage(otpMessageDiv, 'Veuillez vérifier votre email.', 'error');
@@ -495,8 +498,7 @@
         otpModal.classList.remove('active');
         resetOtpModal();
       });
-      
-      // Vérification OTP
+
       verifyOtpBtn.addEventListener('click', async () => {
         const otp = otpCodeInput.value.trim();
         if (!otp || otp.length !== 6) {
@@ -513,7 +515,6 @@
             setTimeout(() => {
               otpModal.classList.remove('active');
               resetOtpModal();
-              // Rediriger vers dashboard
               window.location.href = 'dashboard.html';
             }, 1500);
           }
@@ -524,7 +525,6 @@
         }
       });
       
-      // Renvoyer OTP
       resendOtpBtn.addEventListener('click', async () => {
         if (resendOtpBtn.disabled) return;
         
@@ -534,7 +534,6 @@
           const data = await callApi('resend-otp', { identifier: currentEmail });
           if (data.success) {
             setModalMessage(otpMessageDiv, 'Nouveau code envoyé.', 'success');
-            // Redémarrer le compte à rebours
             startCountdown(resendOtpBtn, 300);
           }
         } catch (err) {
@@ -557,7 +556,6 @@
         resetForgotModal();
       });
       
-      // Étape 1 : Envoi du code
       forgotSendBtn.addEventListener('click', async () => {
         const identifier = forgotIdentifier.value.trim();
         if (!identifier) {
@@ -571,10 +569,12 @@
           const data = await callApi('forgot-password-request', { identifier });
           if (data.success) {
             forgotEmail = identifier;
+            codeRequested = true;
+            forgotVerifyBtn.disabled = false;
             setModalMessage(forgotError1, 'Code envoyé ! Vérifiez votre email.', 'success');
-            // Démarrer le compte à rebours sur le bouton Send
             forgotSendBtn.dataset.originalText = 'Send';
             startCountdown(forgotSendBtn, 300);
+            forgotOtp.focus();
           }
         } catch (err) {
           setModalMessage(forgotError1, err.message, 'error');
@@ -583,8 +583,12 @@
         }
       });
       
-      // Étape 1 : Vérification du code
       forgotVerifyBtn.addEventListener('click', async () => {
+        if (!codeRequested || !forgotEmail) {
+          setModalMessage(forgotError1, 'Veuillez d\'abord demander un code.', 'error');
+          return;
+        }
+        
         const otp = forgotOtp.value.trim();
         if (!otp || otp.length !== 6) {
           setModalMessage(forgotError1, 'Code à 6 chiffres requis.', 'error');
@@ -593,8 +597,6 @@
         
         setLoading(forgotVerifyBtn, true);
         
-        // Simuler une vérification (on passe à l'étape 2)
-        // Normalement, on pourrait appeler une API de vérification, mais ici on passe directement
         setTimeout(() => {
           forgotStep1.classList.remove('active');
           forgotStep2.classList.add('active');
@@ -602,7 +604,6 @@
         }, 500);
       });
       
-      // Étape 2 : Réinitialisation du mot de passe
       forgotResetBtn.addEventListener('click', async () => {
         const newPass = forgotNewPass.value;
         const confirmPass = forgotConfirmPass.value;
@@ -664,9 +665,6 @@
         });
       }
       initPasswordToggles();
-      
-      // ==================== SUPPRESSION DE LA FERMETURE PAR OVERLAY ====================
-      // On ne met pas d'écouteur sur l'overlay, donc la fermeture se fait uniquement par le bouton ×
       
     })();
   </script>
