@@ -6,7 +6,6 @@
   <title>Login & Register</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    /* (Les styles restent inchangés, identiques à ceux fournis) */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
     body { background: linear-gradient(135deg, #6e8efb, #a777e3); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
     
@@ -220,26 +219,25 @@
     </div>
   </div>
   
-  <!-- Forgot Password Modal (corrigé) -->
+  <!-- Forgot Password Modal -->
   <div id="forgotModal" class="modal-overlay">
     <div class="modal-card">
       <button class="modal-close" id="closeForgotModal">×</button>
       <h2 class="modal-card-title" style="margin-bottom: 15px;">Reset your password</h2>
       
-      <!-- Étape 1 : saisie de l'email et envoi du code -->
       <div id="forgotStep1" class="modal-step active">
         <div style="display: flex; gap: 10px; margin-bottom: 10px;">
           <input type="text" id="forgotIdentifier" class="modal-input" placeholder="Enter your email">
           <button id="forgotSendBtn" class="modal-resend-btn">Send</button>
         </div>
+        <div style="margin-bottom: 15px;">
+          <input type="text" id="forgotOtp" class="modal-input" maxlength="6" inputmode="numeric" placeholder="Enter the 6-digit code">
+        </div>
         <div id="forgotError1" class="modal-info-text"></div>
-        <!-- Pas de champ OTP ici, il passe à l'étape 2 après envoi -->
-        <p style="font-size:13px; color:#64748b; margin-top:10px;">Un code à 6 chiffres vous sera envoyé par email.</p>
+        <button id="forgotVerifyBtn" class="modal-action-btn">Verify code</button>
       </div>
       
-      <!-- Étape 2 : saisie du code et du nouveau mot de passe -->
       <div id="forgotStep2" class="modal-step">
-        <input type="text" id="forgotOtp" class="modal-input" maxlength="6" inputmode="numeric" placeholder="6-digit code" style="margin-bottom: 10px;">
         <input type="password" id="forgotNewPass" class="modal-input" placeholder="New password (min 6)" style="margin-bottom: 10px;">
         <input type="password" id="forgotConfirmPass" class="modal-input" placeholder="Confirm password" style="margin-bottom: 15px;">
         <div id="forgotError2" class="modal-info-text"></div>
@@ -275,6 +273,7 @@
       const forgotIdentifier = document.getElementById('forgotIdentifier');
       const forgotSendBtn = document.getElementById('forgotSendBtn');
       const forgotOtp = document.getElementById('forgotOtp');
+      const forgotVerifyBtn = document.getElementById('forgotVerifyBtn');
       const forgotError1 = document.getElementById('forgotError1');
       const forgotNewPass = document.getElementById('forgotNewPass');
       const forgotConfirmPass = document.getElementById('forgotConfirmPass');
@@ -285,7 +284,7 @@
       const registerBtn = document.getElementById('registerBtn');
       
       let currentEmail = '';
-      let forgotEmail = ''; // email pour la réinitialisation
+      let forgotEmail = '';
       let countdownInterval = null;
       let countdownEndTime = 0;
       
@@ -463,6 +462,7 @@
       });
       
       // ==================== OTP MODAL ====================
+      // Fermeture
       closeOtp.addEventListener('click', () => {
         otpModal.classList.remove('active');
         resetOtpModal();
@@ -512,7 +512,7 @@
         }
       });
       
-      // ==================== FORGOT PASSWORD (CORRIGÉ) ====================
+      // ==================== FORGOT PASSWORD ====================
       document.getElementById('forgotPasswordLink').addEventListener('click', (e) => {
         e.preventDefault();
         resetForgotModal();
@@ -524,7 +524,6 @@
         resetForgotModal();
       });
       
-      // Étape 1 : Envoi du code
       forgotSendBtn.addEventListener('click', async () => {
         const identifier = forgotIdentifier.value.trim();
         if (!identifier) {
@@ -537,12 +536,8 @@
         try {
           const data = await callApi('forgot-password-request', { identifier });
           if (data.success) {
-            forgotEmail = identifier; // stocke l'email pour l'étape suivante
+            forgotEmail = identifier;
             setModalMessage(forgotError1, 'Code envoyé ! Vérifiez votre email.', 'success');
-            // Passer à l'étape 2
-            forgotStep1.classList.remove('active');
-            forgotStep2.classList.add('active');
-            // Démarrer le compte à rebours sur le bouton d'envoi (optionnel)
             forgotSendBtn.dataset.originalText = 'Send';
             startCountdown(forgotSendBtn, 300);
           }
@@ -553,16 +548,27 @@
         }
       });
       
-      // Étape 2 : Réinitialisation avec code et nouveau mot de passe
-      forgotResetBtn.addEventListener('click', async () => {
+      forgotVerifyBtn.addEventListener('click', async () => {
         const otp = forgotOtp.value.trim();
-        const newPass = forgotNewPass.value;
-        const confirmPass = forgotConfirmPass.value;
-        
         if (!otp || otp.length !== 6) {
-          setModalMessage(forgotError2, 'Veuillez entrer le code à 6 chiffres.', 'error');
+          setModalMessage(forgotError1, 'Code à 6 chiffres requis.', 'error');
           return;
         }
+        
+        setLoading(forgotVerifyBtn, true);
+        
+        setTimeout(() => {
+          forgotStep1.classList.remove('active');
+          forgotStep2.classList.add('active');
+          setLoading(forgotVerifyBtn, false);
+        }, 500);
+      });
+      
+      forgotResetBtn.addEventListener('click', async () => {
+        const newPass = forgotNewPass.value;
+        const confirmPass = forgotConfirmPass.value;
+        const otp = forgotOtp.value.trim();
+        
         if (!newPass || newPass.length < 6) {
           setModalMessage(forgotError2, 'Le mot de passe doit contenir au moins 6 caractères.', 'error');
           return;
