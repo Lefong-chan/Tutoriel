@@ -380,9 +380,13 @@
           const data = await callApi('register', { email, password });
           if (data.success && data.emailVerificationRequired) {
             currentEmail = email;
-            showStatus('Inscription réussie ! Un code de vérification a été envoyé par email.', 'success', 'left');
+            // Afficher le message de succès dans la modale OTP
+            otpMessageDiv.textContent = 'Inscription réussie ! Un code de vérification a été envoyé par email.';
+            otpMessageDiv.className = 'modal-info-text success';
             // Ouvrir la modale OTP
-            resetOtpModal();
+            resetOtpModal(); // Attention: reset efface le message, donc on le remet après
+            otpMessageDiv.textContent = 'Inscription réussie ! Un code de vérification a été envoyé par email.';
+            otpMessageDiv.className = 'modal-info-text success';
             otpModal.classList.add('active');
             // Démarrer le compte à rebours sur le bouton Resend
             resendOtpBtn.dataset.originalText = 'Resend';
@@ -405,10 +409,8 @@
         try {
           const data = await callApi('login', { identifier, password });
           if (data.success) {
-            showStatus('Connexion réussie !', 'success', 'right');
-            // Redirection ou action supplémentaire
-            // Par exemple, recharger la page ou aller au tableau de bord
-            // window.location.href = '/dashboard';
+            // Redirection vers dashboard
+            window.location.href = 'dashboard.html';
           }
         } catch (err) {
           // Gestion spéciale pour email non vérifié
@@ -416,9 +418,10 @@
             // On récupère l'email depuis le formulaire et on ouvre la modale OTP
             currentEmail = identifier;
             resetOtpModal();
+            otpMessageDiv.textContent = 'Veuillez vérifier votre email.';
+            otpMessageDiv.className = 'modal-info-text error';
             otpModal.classList.add('active');
             startCountdown(resendOtpBtn, 300);
-            showStatus('Veuillez vérifier votre email.', 'error', 'right');
           } else {
             showStatus(err.message, 'error', 'right');
           }
@@ -449,7 +452,8 @@
             setTimeout(() => {
               otpModal.classList.remove('active');
               resetOtpModal();
-              // Optionnel : connecter automatiquement l'utilisateur ?
+              // Rediriger vers dashboard
+              window.location.href = 'dashboard.html';
             }, 1500);
           }
         } catch (err) {
@@ -523,9 +527,7 @@
           return;
         }
         
-        // On ne fait pas encore d'appel API, on passe à l'étape 2
-        // Mais l'API de vérification du code forgot n'existe pas séparément, on vérifiera lors du reset.
-        // On va simplement passer à l'étape 2 et stocker l'OTP.
+        // On passe à l'étape 2
         forgotStep1.classList.remove('active');
         forgotStep2.classList.add('active');
       });
@@ -559,7 +561,7 @@
             setTimeout(() => {
               forgotModal.classList.remove('active');
               resetForgotModal();
-              // Si l'email n'était pas vérifié, il l'est maintenant (normalement côté serveur)
+              // Optionnel : rediriger vers login ou dashboard ?
             }, 2000);
           }
         } catch (err) {
@@ -594,16 +596,8 @@
       }
       initPasswordToggles();
       
-      // ==================== GESTION DE LA FERMETURE DES MODALES EN CLIQUANT SUR L'OVERLAY ====================
-      [otpModal, forgotModal].forEach(modal => {
-        modal.addEventListener('click', (e) => {
-          if (e.target === modal) {
-            modal.classList.remove('active');
-            if (modal === otpModal) resetOtpModal();
-            if (modal === forgotModal) resetForgotModal();
-          }
-        });
-      });
+      // ==================== SUPPRESSION DE LA FERMETURE PAR OVERLAY ====================
+      // On ne met pas d'écouteur sur l'overlay, donc la fermeture se fait uniquement par le bouton ×
       
     })();
   </script>
