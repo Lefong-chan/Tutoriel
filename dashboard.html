@@ -6,7 +6,7 @@
   <title>Accueil - Fanorona</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <style>
-    /* ... (gardez tout votre style existant, aucun changement nécessaire) ... */
+    /* ========== STYLES EXISTANTS (inchangés) ========== */
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
     body { background: linear-gradient(135deg, #6e8efb, #a777e3); color: #333; min-height: 100vh; display: flex; flex-direction: column; }
     .header { padding: 10px 30px; display: flex; justify-content: space-between; align-items: center; color: white; }
@@ -151,7 +151,7 @@
     <div class="user-info">
       <div class="profile-box" id="profileBox"> 
         <i class="fas fa-user-circle icon-user"></i>
-        <span class="name" id="UsernameDisplay">Username</span>
+        <span class="name" id="UsernameDisplay">____</span>
       </div>
     </div>
 
@@ -199,6 +199,7 @@
     </div>
   </div>
   
+  <!-- MODAL PROFIL -->
   <div class="modal-overlay" id="userProfileModal">
     <div class="modal-content">
       <i class="fas fa-times modal-close-btn" id="profileModalCloseBtn"></i>
@@ -214,6 +215,7 @@
     </div>
   </div>
   
+  <!-- MODAL PARAMÈTRES -->
   <div class="modal-overlay" id="userSettingModal">
     <div class="modal-content">
       <i class="fas fa-times modal-close-btn" id="settingModalCloseBtn"></i>
@@ -229,6 +231,7 @@
     </div>
   </div>
   
+  <!-- MODAL CHANGER DE PSEUDO -->
   <div class="modal-overlay" id="renameModal">
     <div class="modal-content">
       <i class="fas fa-times modal-close-btn" id="renameModalCloseBtn"></i>
@@ -236,7 +239,7 @@
       <div class="rename-form">
         <div class="input-group">
           <label for="newNameInput">New name</label>
-          <input type="text" id="newNameInput" placeholder="Enter new name" required>
+          <input type="text" id="newNameInput" placeholder="Enter new name (3-20 caractères, _ autorisé)" required>
           <span class="error-message" id="UsernameError">Username already taken.</span>
         </div>
         <div class="input-group">
@@ -251,6 +254,7 @@
     </div>
   </div>
   
+  <!-- MODAL CHOIX DU PSEUDO (première connexion) -->
   <div class="modal-overlay" id="setUsernameModal">
     <div class="modal-content">
       <h2><i class="fas fa-signature"></i> Choose your username</h2>
@@ -264,6 +268,7 @@
     </div>
   </div>
   
+  <!-- MODAL CONFIRMATION DÉCONNEXION -->
   <div class="modal-overlay" id="logoutConfirmModal">
     <div class="modal-content">
       <i class="fas fa-times modal-close-btn" id="logoutModalCloseBtn"></i>
@@ -276,6 +281,7 @@
     </div>
   </div>
 
+  <!-- MODAL PLAYERS (fonctionnalité à venir) -->
   <div class="modal-overlay" id="playersModal">
     <div class="modal-content">
       <div class="players-modal-header">
@@ -328,6 +334,7 @@
     </div>
   </div>
   
+  <!-- MODAL ACTIONS AMI (non utilisé actuellement) -->
   <div class="friend-actions-modal-overlay" id="friendActionsModal">
     <div class="friend-actions-modal-content">
       <i class="fas fa-times modal-close-btn" id="friendActionsCloseBtn"></i>
@@ -357,6 +364,7 @@
 
   <script>
     (function() {
+      // ========== ÉLÉMENTS DOM ==========
       const usernameDisplay = document.getElementById('UsernameDisplay');
       const profileBox = document.getElementById('profileBox');
       const settingsBtn = document.getElementById('settingsBtn');
@@ -394,10 +402,12 @@
 
       const uidDisplay = document.getElementById('uidDisplay');
       
+      // Regex pour le pseudo (lettres, chiffres, underscore, 3-20 caractères)
       const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
       
-      let currentUser = null;
+      let currentUser = null; // { uid, email, username }
       
+      // ========== FONCTIONS UTILES ==========
       function closeAllModals() {
         document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
       }
@@ -419,15 +429,16 @@
         confirmRenameBtn.disabled = !(usernameRegex.test(newName) && password.length > 0);
       }
       
+      // ========== APPELS API SESSION ==========
       async function fetchSession() {
         try {
           const res = await fetch('/api/session', {
             method: 'GET',
-            credentials: 'include'
+            credentials: 'include' // important pour envoyer le cookie
           });
           if (!res.ok) {
             if (res.status === 401) {
-              window.location.href = '/login.html';
+              window.location.href = '/login&register.html';
               return null;
             }
             throw new Error('Erreur réseau');
@@ -436,12 +447,12 @@
           if (data.authenticated && data.user) {
             return data.user;
           } else {
-            window.location.href = '/login.html';
+            window.location.href = '/login&register.html';
             return null;
           }
         } catch (err) {
           console.error('Erreur session:', err);
-          window.location.href = '/login.html';
+          window.location.href = '/login&register.html';
           return null;
         }
       }
@@ -541,7 +552,8 @@
         } catch (err) {
           console.error('Erreur logout', err);
         }
-        window.location.href = '/login.html';
+        // Redirection vers la page de connexion
+        window.location.href = '/login&register.html';
       }
       
       // ========== INITIALISATION ==========
@@ -554,6 +566,7 @@
           usernameDisplay.textContent = user.username;
         } else {
           usernameDisplay.textContent = '____';
+          // Ouvre la modale de choix de pseudo
           openModal(setUsernameModal);
         }
         
@@ -561,6 +574,7 @@
           uidDisplay.textContent = user.uid;
         }
         
+        // Écouteurs d'événements pour les inputs
         setUsernameInput.addEventListener('input', validateSetUsernameInput);
         newNameInput.addEventListener('input', validateRenameInput);
         passwordConfirmInput.addEventListener('input', validateRenameInput);
@@ -568,7 +582,7 @@
         validateSetUsernameInput();
         validateRenameInput();
         
-        // --- AJOUT : écouteur pour le bouton de confirmation du premier username ---
+        // Validation du pseudo
         confirmSetUsernameBtn.addEventListener('click', () => {
           const newName = setUsernameInput.value.trim();
           if (usernameRegex.test(newName)) {
@@ -576,6 +590,7 @@
           }
         });
         
+        // Ouvrir le profil
         profileBox.addEventListener('click', () => {
           if (!currentUser) return;
           if (!currentUser.username) {
@@ -586,6 +601,7 @@
           }
         });
 
+        // Ouvrir les paramètres
         settingsBtn.addEventListener('click', () => {
           if (!currentUser) return;
           if (!currentUser.username) {
@@ -595,12 +611,14 @@
           }
         });
 
+        // Fermeture des modales par la croix
         if (profileModalCloseBtn) profileModalCloseBtn.addEventListener('click', closeAllModals);
         if (settingModalCloseBtn) settingModalCloseBtn.addEventListener('click', closeAllModals);
         if (renameModalCloseBtn) renameModalCloseBtn.addEventListener('click', closeAllModals);
         if (logoutModalCloseBtn) logoutModalCloseBtn.addEventListener('click', closeAllModals);
         if (playersModalCloseBtn) playersModalCloseBtn.addEventListener('click', closeAllModals);
 
+        // Bouton "Changer de nom"
         renameBtn.addEventListener('click', () => {
           closeAllModals();
           newNameInput.value = '';
@@ -612,6 +630,7 @@
           openModal(renameModal);
         });
 
+        // Confirmer le changement de nom
         confirmRenameBtn.addEventListener('click', () => {
           const newName = newNameInput.value.trim();
           const password = passwordConfirmInput.value.trim();
@@ -620,6 +639,7 @@
           }
         });
 
+        // Déconnexion
         signOutBtn.addEventListener('click', () => {
           closeAllModals();
           openModal(logoutConfirmModal);
@@ -628,14 +648,17 @@
         confirmLogoutBtn.addEventListener('click', logout);
         cancelLogoutBtn.addEventListener('click', closeAllModals);
         
+        // Bouton "Games" dans le profil (à implémenter)
         gameProfileBtn.addEventListener('click', () => {
           alert('Fonctionnalité à venir');
         });
 
+        // Bouton "Players" ouvre la modale correspondante
         document.getElementById('amisBtn').addEventListener('click', () => {
           openModal(document.getElementById('playersModal'));
         });
 
+        // Fermeture des modales en cliquant sur l'overlay
         document.querySelectorAll('.modal-overlay').forEach(overlay => {
           overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
@@ -644,7 +667,7 @@
           });
         });
 
-      })();
+      })(); // fin init
     })();
   </script>
 </body>
