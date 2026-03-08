@@ -92,7 +92,8 @@
     .modal-resend-btn:hover:not(:disabled) { background: #f1f5f9; color: #a777e3; }
     .modal-resend-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     
-    .modal-info-text { font-size: 13px; text-align: left; margin-top: 5px; }
+    .modal-info-text { font-size: 13px; text-align: left; margin-top: 5px; opacity: 0; max-height: 0; overflow: hidden; transition: opacity 0.5s ease, max-height 0.5s ease; }
+    .modal-info-text.visible { opacity: 1; max-height: 50px; } /* Ajustez la hauteur max selon le contenu */
     .modal-info-text.error { color: #ff4d4f; }
     .modal-info-text.success { color: #10b981; }
 
@@ -313,6 +314,11 @@
       function startCountdown(button, durationSeconds = 300) { // 5 minutes par défaut
         if (countdownInterval) clearInterval(countdownInterval);
         
+        // Sauvegarder le texte original si ce n'est pas déjà fait
+        if (!button.dataset.originalText) {
+          button.dataset.originalText = button.textContent;
+        }
+        
         countdownEndTime = Date.now() + durationSeconds * 1000;
         
         const updateButton = () => {
@@ -321,7 +327,7 @@
           
           if (remaining <= 0) {
             button.disabled = false;
-            button.textContent = button.dataset.originalText || 'Resend';
+            button.textContent = button.dataset.originalText;
             clearInterval(countdownInterval);
             countdownInterval = null;
           } else {
@@ -329,7 +335,7 @@
             const minutes = Math.floor(remaining / 60);
             const seconds = remaining % 60;
             const timeStr = minutes > 0 ? `${minutes}:${seconds.toString().padStart(2, '0')}` : `${seconds}s`;
-            button.textContent = `${button.dataset.originalText || 'Resend'} (${timeStr})`;
+            button.textContent = timeStr; // Seulement le temps
           }
         };
         
@@ -337,11 +343,23 @@
         countdownInterval = setInterval(updateButton, 1000);
       }
       
+      // Fonction pour afficher un message dans un élément .modal-info-text avec transition
+      function setModalMessage(element, message, type) {
+        element.textContent = message;
+        element.className = `modal-info-text ${type} visible`;
+      }
+      
+      // Fonction pour effacer un message
+      function clearModalMessage(element) {
+        element.textContent = '';
+        element.className = 'modal-info-text';
+        element.classList.remove('visible', 'error', 'success');
+      }
+      
       // Réinitialiser les modales
       function resetOtpModal() {
         otpCodeInput.value = '';
-        otpMessageDiv.innerHTML = '';
-        otpMessageDiv.className = 'modal-info-text';
+        clearModalMessage(otpMessageDiv);
         resendOtpBtn.disabled = false;
         resendOtpBtn.textContent = 'Resend';
         if (countdownInterval) clearInterval(countdownInterval);
@@ -352,10 +370,8 @@
         forgotOtp.value = '';
         forgotNewPass.value = '';
         forgotConfirmPass.value = '';
-        forgotError1.innerHTML = '';
-        forgotError1.className = 'modal-info-text';
-        forgotError2.innerHTML = '';
-        forgotError2.className = 'modal-info-text';
+        clearModalMessage(forgotError1);
+        clearModalMessage(forgotError2);
         forgotSendBtn.disabled = false;
         forgotSendBtn.textContent = 'Send';
         forgotStep1.classList.add('active');
@@ -380,13 +396,9 @@
           const data = await callApi('register', { email, password });
           if (data.success && data.emailVerificationRequired) {
             currentEmail = email;
-            // Afficher le message de succès dans la modale OTP
-            otpMessageDiv.textContent = 'Inscription réussie ! Un code de vérification a été envoyé par email.';
-            otpMessageDiv.className = 'modal-info-text success';
-            // Ouvrir la modale OTP
-            resetOtpModal(); // Attention: reset efface le message, donc on le remet après
-            otpMessageDiv.textContent = 'Inscription réussie ! Un code de vérification a été envoyé par email.';
-            otpMessageDiv.className = 'modal-info-text success';
+            // Réinitialiser la modale OTP puis afficher le message
+            resetOtpModal();
+            setModalMessage(otpMessageDiv, 'Inscription réussie ! Un code de vérification a été envoyé par email.', 'success');
             otpModal.classList.add('active');
             // Démarrer le compte à rebours sur le bouton Resend
             resendOtpBtn.dataset.originalText = 'Resend';
@@ -418,8 +430,7 @@
             // On récupère l'email depuis le formulaire et on ouvre la modale OTP
             currentEmail = identifier;
             resetOtpModal();
-            otpMessageDiv.textContent = 'Veuillez vérifier votre email.';
-            otpMessageDiv.className = 'modal-info-text error';
+            setModalMessage(otpMessageDiv, 'Veuillez vérifier votre email.', 'error');
             otpModal.classList.add('active');
             startCountdown(resendOtpBtn, 300);
           } else {
@@ -439,16 +450,14 @@
       verifyOtpBtn.addEventListener('click', async () => {
         const otp = otpCodeInput.value.trim();
         if (!otp || otp.length !== 6) {
-          otpMessageDiv.textContent = 'Veuillez entrer un code à 6 chiffres.';
-          otpMessageDiv.className = 'modal-info-text error';
+          setModalMessage(otpMessageDiv, 'Veuillez entrer un code à 6 chiffres.', 'error');
           return;
         }
         
         try {
           const data = await callApi('verify-otp', { identifier: currentEmail, otp });
           if (data.success) {
-            otpMessageDiv.textContent = 'Email vérifié avec succès !';
-            otpMessageDiv.className = 'modal-info-text success';
+            setModalMessage(otpMessageDiv, 'Email vérifié avec succès !', 'success');
             setTimeout(() => {
               otpModal.classList.remove('active');
               resetOtpModal();
@@ -457,8 +466,7 @@
             }, 1500);
           }
         } catch (err) {
-          otpMessageDiv.textContent = err.message;
-          otpMessageDiv.className = 'modal-info-text error';
+          setModalMessage(otpMessageDiv, err.message, 'error');
         }
       });
       
@@ -469,14 +477,12 @@
         try {
           const data = await callApi('resend-otp', { identifier: currentEmail });
           if (data.success) {
-            otpMessageDiv.textContent = 'Nouveau code envoyé.';
-            otpMessageDiv.className = 'modal-info-text success';
+            setModalMessage(otpMessageDiv, 'Nouveau code envoyé.', 'success');
             // Redémarrer le compte à rebours
             startCountdown(resendOtpBtn, 300);
           }
         } catch (err) {
-          otpMessageDiv.textContent = err.message;
-          otpMessageDiv.className = 'modal-info-text error';
+          setModalMessage(otpMessageDiv, err.message, 'error');
         }
       });
       
@@ -497,8 +503,7 @@
       forgotSendBtn.addEventListener('click', async () => {
         const identifier = forgotIdentifier.value.trim();
         if (!identifier) {
-          forgotError1.textContent = 'Veuillez entrer votre email.';
-          forgotError1.className = 'modal-info-text error';
+          setModalMessage(forgotError1, 'Veuillez entrer votre email.', 'error');
           return;
         }
         
@@ -506,15 +511,13 @@
           const data = await callApi('forgot-password-request', { identifier });
           if (data.success) {
             forgotEmail = identifier;
-            forgotError1.textContent = 'Code envoyé ! Vérifiez votre email.';
-            forgotError1.className = 'modal-info-text success';
+            setModalMessage(forgotError1, 'Code envoyé ! Vérifiez votre email.', 'success');
             // Démarrer le compte à rebours sur le bouton Send
             forgotSendBtn.dataset.originalText = 'Send';
             startCountdown(forgotSendBtn, 300);
           }
         } catch (err) {
-          forgotError1.textContent = err.message;
-          forgotError1.className = 'modal-info-text error';
+          setModalMessage(forgotError1, err.message, 'error');
         }
       });
       
@@ -522,8 +525,7 @@
       forgotVerifyBtn.addEventListener('click', async () => {
         const otp = forgotOtp.value.trim();
         if (!otp || otp.length !== 6) {
-          forgotError1.textContent = 'Code à 6 chiffres requis.';
-          forgotError1.className = 'modal-info-text error';
+          setModalMessage(forgotError1, 'Code à 6 chiffres requis.', 'error');
           return;
         }
         
@@ -539,13 +541,11 @@
         const otp = forgotOtp.value.trim();
         
         if (!newPass || newPass.length < 6) {
-          forgotError2.textContent = 'Le mot de passe doit contenir au moins 6 caractères.';
-          forgotError2.className = 'modal-info-text error';
+          setModalMessage(forgotError2, 'Le mot de passe doit contenir au moins 6 caractères.', 'error');
           return;
         }
         if (newPass !== confirmPass) {
-          forgotError2.textContent = 'Les mots de passe ne correspondent pas.';
-          forgotError2.className = 'modal-info-text error';
+          setModalMessage(forgotError2, 'Les mots de passe ne correspondent pas.', 'error');
           return;
         }
         
@@ -556,8 +556,7 @@
             newPassword: newPass
           });
           if (data.success) {
-            forgotError2.textContent = 'Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter.';
-            forgotError2.className = 'modal-info-text success';
+            setModalMessage(forgotError2, 'Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter.', 'success');
             setTimeout(() => {
               forgotModal.classList.remove('active');
               resetForgotModal();
@@ -565,8 +564,7 @@
             }, 2000);
           }
         } catch (err) {
-          forgotError2.textContent = err.message;
-          forgotError2.className = 'modal-info-text error';
+          setModalMessage(forgotError2, err.message, 'error');
         }
       });
       
