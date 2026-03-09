@@ -395,71 +395,85 @@
         if (countdownInterval) clearInterval(countdownInterval);
       }
       
-      // ==================== INSCRIPTION ====================
-      inscriptionForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const email = document.getElementById('regEmail').value.trim();
-        const password = document.getElementById('regPass').value;
-        const termsAccepted = document.getElementById('termsCheck').checked;
-        
-        if (!termsAccepted) {
-          showStatus('Vous devez accepter les conditions.', 'error', 'left');
-          return;
-        }
-        
-        setLoading(registerBtn, true);
-        
-        try {
-          const data = await callApi('register', { email, password });
-          if (data.success && data.emailVerificationRequired) {
-            currentEmail = email;
-            resetOtpModal();
-            setModalMessage(otpMessageDiv, 'Inscription réussie ! Un code de vérification a été envoyé par email.', 'success');
-            otpModal.classList.add('active');
-            resendOtpBtn.dataset.originalText = 'Resend';
-            startCountdown(resendOtpBtn, 300);
-          } else {
-            showStatus('Réponse inattendue du serveur.', 'error', 'left');
-          }
-        } catch (err) {
-          showStatus(err.message, 'error', 'left');
-        } finally {
-          setLoading(registerBtn, false);
-        }
-      });
+// ==================== INSCRIPTION ====================
+inscriptionForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPass').value;
+  const termsAccepted = document.getElementById('termsCheck').checked;
+  
+  if (!termsAccepted) {
+    showStatus('Vous devez accepter les conditions.', 'error', 'left');
+    return;
+  }
+  
+  setLoading(registerBtn, true);
+  
+  try {
+    const data = await callApi('register', { email, password });
+    
+    if (data.success && data.emailVerificationRequired) {
+      currentEmail = email; // Tehirizina vonjimaika ny email ho an'ny OTP
       
-      // ==================== CONNEXION ====================
-      loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const identifier = document.getElementById('loginEmail').value.trim();
-        const password = document.getElementById('loginPass').value;
-        
-        setLoading(loginBtn, true);
-        
-        try {
-          const data = await callApi('login', { identifier, password });
-          if (data.success) {
-            showStatus('Login successful! Redirecting...', 'success', 'right');
-            setTimeout(() => {
-              window.location.href = 'dashboard.html';
-            }, 1500);
-          }
-        } catch (err) {
-          if (err.message.includes('Email not verified') || err.message.includes('emailNotVerified')) {
-            currentEmail = identifier;
-            resetOtpModal();
-            setModalMessage(otpMessageDiv, 'Veuillez vérifier votre email.', 'error');
-            otpModal.classList.add('active');
-            startCountdown(resendOtpBtn, 300);
-          } else {
-            showStatus(err.message, 'error', 'right');
-          }
-        } finally {
-          setLoading(loginBtn, false);
-        }
-      });
+      resetOtpModal();
+      setModalMessage(otpMessageDiv, 'Inscription réussie ! Kaody nalefa any amin\'ny email-nao.', 'success');
+      otpModal.classList.add('active');
+      
+      resendOtpBtn.dataset.originalText = 'Resend';
+      startCountdown(resendOtpBtn, 300);
+    }
+  } catch (err) {
+    showStatus(err.message, 'error', 'left');
+  } finally {
+    setLoading(registerBtn, false);
+  }
+});
+      
+// ==================== CONNEXION ====================
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const identifier = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPass').value;
+  
+  setLoading(loginBtn, true);
+  
+  try {
+    const data = await callApi('login', { identifier, password });
+    
+    if (data.success) {
+      showStatus('Login successful! Redirecting...', 'success', 'right');
+
+      // TENA ZAVA-DEHIBE: Tehirizina ny data mba ho hitan'ny dashboard
+      const userData = {
+        uid: data.user.uid,
+        email: data.user.email,
+        username: data.user.username || "" // Raha mbola tsy nifidy pseudo izy
+      };
+      localStorage.setItem('user', JSON.stringify(userData));
+
+      setTimeout(() => {
+        // Hamarino tsara fa mitovy amin'ny anaran'ny rakitra (file) dashboard-nao ity
+        window.location.href = 'dashboard.html'; 
+      }, 1500);
+    }
+  } catch (err) {
+    // Raha mbola tsy voamarina ny email
+    if (err.message.includes('Email not verified') || err.message.includes('emailNotVerified')) {
+      currentEmail = identifier;
+      resetOtpModal();
+      setModalMessage(otpMessageDiv, 'Veuillez vérifier votre email.', 'error');
+      otpModal.classList.add('active');
+      startCountdown(resendOtpBtn, 300);
+    } else {
+      showStatus(err.message, 'error', 'right');
+    }
+  } finally {
+    setLoading(loginBtn, false);
+  }
+});
+
       
       // ==================== OTP MODAL ====================
       // Fermeture
@@ -468,31 +482,39 @@
         resetOtpModal();
       });
       
-      verifyOtpBtn.addEventListener('click', async () => {
-        const otp = otpCodeInput.value.trim();
-        if (!otp || otp.length !== 6) {
-          setModalMessage(otpMessageDiv, 'Veuillez entrer un code à 6 chiffres.', 'error');
-          return;
-        }
-        
-        setLoading(verifyOtpBtn, true);
-        
-        try {
-          const data = await callApi('verify-otp', { identifier: currentEmail, otp });
-          if (data.success) {
-            setModalMessage(otpMessageDiv, 'Email vérifié avec succès !', 'success');
-            setTimeout(() => {
-              otpModal.classList.remove('active');
-              resetOtpModal();
-              window.location.href = 'dashboard.html';
-            }, 1500);
-          }
-        } catch (err) {
-          setModalMessage(otpMessageDiv, err.message, 'error');
-        } finally {
-          setLoading(verifyOtpBtn, false);
-        }
-      });
+verifyOtpBtn.addEventListener('click', async () => {
+  const otp = otpCodeInput.value.trim();
+  if (!otp || otp.length !== 6) {
+    setModalMessage(otpMessageDiv, 'Veuillez entrer un code à 6 chiffres.', 'error');
+    return;
+  }
+  
+  setLoading(verifyOtpBtn, true);
+  
+  try {
+    const data = await callApi('verify-otp', { identifier: currentEmail, otp });
+    
+    if (data.success) {
+      setModalMessage(otpMessageDiv, 'Email vérifié avec succès !', 'success');
+
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+      } else {
+        localStorage.setItem('user', JSON.stringify({ email: currentEmail }));
+      }
+
+      setTimeout(() => {
+        otpModal.classList.remove('active');
+        resetOtpModal();
+        window.location.href = 'dashboard.html';
+      }, 1500);
+    }
+  } catch (err) {
+    setModalMessage(otpMessageDiv, err.message, 'error');
+  } finally {
+    setLoading(verifyOtpBtn, false);
+  }
+});
       
       resendOtpBtn.addEventListener('click', async () => {
         if (resendOtpBtn.disabled) return;
