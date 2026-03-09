@@ -25,12 +25,10 @@ const db = admin.firestore();
 const usersCollection = db.collection("users");
 
 /* ================= CONFIG ================= */
-const EMAIL_OTP_VALIDITY = 5 * 60 * 1000; // 5 minitra
+const EMAIL_OTP_VALIDITY = 5 * 60 * 1000; 
 const RESET_OTP_VALIDITY = 5 * 60 * 1000; 
 const MAX_ATTEMPTS = 5;
-const LOCK_TIME = 24 * 60 * 60 * 1000; // 24 ora
-const MAX_LOGIN_ATTEMPTS = 10;
-const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const LOCK_TIME = 24 * 60 * 60 * 1000; 
 
 /* ================= HELPERS ================= */
 async function generateUID() {
@@ -53,7 +51,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // CORS check
   if (allowedOrigin && req.headers.origin !== allowedOrigin) {
     return res.status(403).json({ error: "Forbidden" });
   }
@@ -101,7 +98,8 @@ async function handleRegister(body, res) {
     otp: otp,
     otpExpires: Date.now() + EMAIL_OTP_VALIDITY,
     otpAttempts: 0,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    username: "" // Foana aloa amin'ny voalohany
   });
 
   await sendOTPEmail(emailLower, otp);
@@ -118,9 +116,8 @@ async function handleLogin(body, res) {
   const userDoc = snap.docs[0];
   const userData = userDoc.data();
 
-  // Jereko raha voasakana (Locked)
   if (userData.otpLockUntil && Date.now() < userData.otpLockUntil) {
-    return res.status(429).json({ error: "Voasakana ny kaontinao aloa (24h). Manandrama indray avy eo." });
+    return res.status(429).json({ error: "Voasakana ny kaontinao (24h). Manandrama indray avy eo." });
   }
 
   const isMatch = await bcrypt.compare(password, userData.password);
@@ -130,10 +127,8 @@ async function handleLogin(body, res) {
     return res.status(403).json({ error: "Mbola tsy voamarina ny email-nao", emailNotVerified: true });
   }
 
-  // Famoronana Token
   const token = jwt.sign({ uid: userData.uid, email: userData.email }, SECRET, { expiresIn: "7d" });
 
-  // fametrahana ny Cookie (Zava-dehibe ny Path=/)
   const cookieOptions = [
     `token=${token}`,
     "HttpOnly",
@@ -145,7 +140,15 @@ async function handleLogin(body, res) {
   
   res.setHeader("Set-Cookie", cookieOptions.join("; "));
 
-  return res.status(200).json({ success: true, user: { uid: userData.uid, email: userData.email } });
+  // NAMBOARINA: Averina miaraka amin'ny user data ho an'ny LocalStorage
+  return res.status(200).json({ 
+    success: true, 
+    user: { 
+      uid: userData.uid, 
+      email: userData.email,
+      username: userData.username || "" 
+    } 
+  });
 }
 
 async function handleVerifyOtp(body, res) {
@@ -159,6 +162,7 @@ async function handleVerifyOtp(body, res) {
   const userData = userDoc.data();
 
   if (userData.otpExpires < Date.now()) return res.status(400).json({ error: "Lany daty ny kaody" });
+  
   if (userData.otp !== otp.toString().trim()) {
     let attempts = (userData.otpAttempts || 0) + 1;
     await userDoc.ref.update({ otpAttempts: attempts });
@@ -169,8 +173,18 @@ async function handleVerifyOtp(body, res) {
     return res.status(400).json({ error: "Kaody diso" });
   }
 
+  // Update verification status
   await userDoc.ref.update({ emailVerified: true, otp: null, otpExpires: null, otpAttempts: 0 });
-  return res.status(200).json({ success: true });
+
+  // NAMBOARINA: Averina ny user data mba hahafahan'ny frontend mitahiry azy avy hatrany
+  return res.status(200).json({ 
+    success: true,
+    user: {
+      uid: userData.uid,
+      email: userData.email,
+      username: userData.username || ""
+    }
+  });
 }
 
 async function handleResendOtp(body, res) {
