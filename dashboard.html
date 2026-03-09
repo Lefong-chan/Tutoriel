@@ -144,9 +144,43 @@
       .players-modal-header { border-top-left-radius: 0; border-top-right-radius: 0; }
       .friend-actions-modal-content { max-width: 95%; }
     }
+
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.9);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .loading-overlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+    .loading-spinner-large {
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #6C00BF;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+    }
   </style>
 </head>
 <body>
+  <!-- Loading overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner-large"></div>
+  </div>
+
   <div class="header">
     <div class="user-info">
       <div class="profile-box" id="profileBox"> 
@@ -364,28 +398,47 @@
 
   <script>
     (function() {
-      // ==================== GESTION DES DONNÉES UTILISATEUR ====================
-      // On suppose que la page de login stocke les infos dans localStorage sous la clé "user"
-      // avec les propriétés : uid (string 9 chiffres), email, username (optionnel)
+      // ==================== CONSTANTES ====================
+      const SESSION_API_URL = '/api/session';
+      const AUTH_API_URL = '/api/auth';
       
+      // ==================== ÉTAT GLOBAL ====================
       let currentUser = null;
+      let isLoading = false;
 
-      function loadUserFromStorage() {
-        const stored = localStorage.getItem('user');
-        if (stored) {
-          try {
-            currentUser = JSON.parse(stored);
-          } catch (e) {
-            console.error('Erreur parsing user data', e);
-            currentUser = null;
-          }
+      // ==================== ÉLÉMENTS DOM ====================
+      const loadingOverlay = document.getElementById('loadingOverlay');
+      const profileModal = document.getElementById('userProfileModal');
+      const settingModal = document.getElementById('userSettingModal');
+      const profileBox = document.getElementById('profileBox');
+      const settingsBtn = document.getElementById('settingsBtn');
+      const closeButtons = document.querySelectorAll('.modal-close-btn');
+      
+      // ==================== FONCTIONS UTILITAIRES ====================
+      function setLoading(loading) {
+        isLoading = loading;
+        if (loading) {
+          loadingOverlay.classList.add('active');
+        } else {
+          loadingOverlay.classList.remove('active');
         }
-        return currentUser;
       }
 
-      function saveUserToStorage(user) {
-        localStorage.setItem('user', JSON.stringify(user));
-        currentUser = user;
+      function showError(message) {
+        // Utilise le status alert existant ou crée un simple alert
+        alert(message);
+      }
+
+      function openModal(modal) {
+        if (modal) {
+          modal.classList.add('active');
+        }
+      }
+
+      function closeModal(modal) {
+        if (modal) {
+          modal.classList.remove('active');
+        }
       }
 
       function updateUIDisplay() {
@@ -406,34 +459,171 @@
         }
       }
 
+      // ==================== API CALLS ====================
+      async function callSessionApi(action, payload) {
+        const response = await fetch(SESSION_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, ...payload })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Session error');
+        }
+        return data;
+      }
+
+      async function callAuthApi(action, payload) {
+        const response = await fetch(AUTH_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, ...payload })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Auth error');
+        }
+        return data;
+      }
+
+      // ==================== CHARGEMENT DE LA SESSION ====================
+      async function loadSession() {
+        setLoading(true);
+        
+        try {
+          // Récupérer l'UID depuis le localStorage
+          const stored = localStorage.getItem('user');
+          if (!stored) {
+            throw new Error('No session found');
+          }
+
+          const localUser = JSON.parse(stored);
+          if (!localUser || !localUser.uid) {
+            throw new Error('Invalid session data');
+          }
+
+          // Vérifier la session auprès du backend
+          const data = await callSessionApi('get-session', { uid: localUser.uid });
+          
+          if (data.success && data.user) {
+            currentUser = data.user;
+            
+            // Mettre à jour le localStorage avec les données fraîches
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            
+            // Mettre à jour l'affichage
+            updateUsernameDisplay();
+            updateUIDisplay();
+
+            // Vérifier si l'utilisateur a un username
+            if (!currentUser.username) {
+              // Ouvrir la modale de choix de pseudo
+              setTimeout(() => {
+                openModal(document.getElementById('setUsernameModal'));
+              }, 500);
+            }
+          } else {
+            throw new Error('Failed to load session');
+          }
+        } catch (error) {
+          console.error('Session error:', error);
+          
+          // En cas d'erreur, rediriger vers la page de login
+          localStorage.removeItem('user');
+          window.location.href = 'login.html';
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      // ==================== GESTION DU PSEUDO ====================
+      const setUsernameModal = document.getElementById('setUsernameModal');
+      const setUsernameInput = document.getElementById('setUsernameInput');
+      const confirmSetUsernameBtn = document.getElementById('confirmSetUsernameBtn');
+      const setUsernameError = document.getElementById('setUsernameError');
+      const setUsernameLoadingSpinner = document.getElementById('setUsernameLoadingSpinner');
+
+      // Validation en temps réel
+      setUsernameInput.addEventListener('input', async () => {
+        const val = setUsernameInput.value.trim();
+        
+        // Validation de base
+        if (val.length >= 3 && val.length <= 20 && /^[a-zA-Z0-9_]+$/.test(val)) {
+          confirmSetUsernameBtn.disabled = false;
+          setUsernameError.style.display = 'none';
+          
+          // Vérifier la disponibilité (debounce)
+          clearTimeout(window.usernameCheckTimeout);
+          window.usernameCheckTimeout = setTimeout(async () => {
+            try {
+              const data = await callSessionApi('check-username', { username: val });
+              if (!data.available) {
+                setUsernameError.textContent = 'Username already taken';
+                setUsernameError.style.display = 'block';
+                confirmSetUsernameBtn.disabled = true;
+              }
+            } catch (error) {
+              console.error('Error checking username:', error);
+            }
+          }, 500);
+        } else {
+          confirmSetUsernameBtn.disabled = true;
+          if (val.length > 0) {
+            setUsernameError.textContent = '3-20 characters, letters, numbers, underscores only';
+            setUsernameError.style.display = 'block';
+          }
+        }
+      });
+
+      // Confirmation du pseudo
+      confirmSetUsernameBtn.addEventListener('click', async () => {
+        const newUsername = setUsernameInput.value.trim();
+        if (!newUsername || !currentUser) return;
+
+        setUsernameLoadingSpinner.style.display = 'block';
+        confirmSetUsernameBtn.disabled = true;
+
+        try {
+          const data = await callSessionApi('set-username', {
+            uid: currentUser.uid,
+            username: newUsername
+          });
+
+          if (data.success && data.user) {
+            currentUser = data.user;
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            updateUsernameDisplay();
+            
+            // Fermer la modale
+            closeModal(setUsernameModal);
+            
+            // Afficher un message de succès (optionnel)
+            alert('Username set successfully!');
+          }
+        } catch (error) {
+          setUsernameError.textContent = error.message;
+          setUsernameError.style.display = 'block';
+        } finally {
+          setUsernameLoadingSpinner.style.display = 'none';
+          confirmSetUsernameBtn.disabled = false;
+        }
+      });
+
       // ==================== OUVERTURE/FERMETURE DES MODALES ====================
-      const profileModal = document.getElementById('userProfileModal');
-      const settingModal = document.getElementById('userSettingModal');
-      const profileBox = document.getElementById('profileBox');
-      const settingsBtn = document.getElementById('settingsBtn');
-      const closeButtons = document.querySelectorAll('.modal-close-btn');
-
-      function openModal(modal) {
-        if (modal) {
-          modal.classList.add('active');
-        }
-      }
-
-      function closeModal(modal) {
-        if (modal) {
-          modal.classList.remove('active');
-        }
-      }
-
+      
       // Ouvrir modale profil
       profileBox.addEventListener('click', () => {
-        updateUIDisplay(); // mettre à jour l'UID avant affichage
-        openModal(profileModal);
+        if (currentUser) {
+          updateUIDisplay(); // mettre à jour l'UID avant affichage
+          openModal(profileModal);
+        }
       });
 
       // Ouvrir modale paramètres
       settingsBtn.addEventListener('click', () => {
-        openModal(settingModal);
+        if (currentUser) {
+          openModal(settingModal);
+        }
       });
 
       // Fermeture par les boutons X
@@ -453,100 +643,121 @@
         });
       });
 
-      // ==================== CHARGEMENT INITIAL ====================
-      function init() {
-        loadUserFromStorage();
-        
-        // Si pas d'utilisateur en storage, rediriger vers login
-        if (!currentUser) {
-          window.location.href = 'login.html'; // adapter selon votre page de login
-          return;
-        }
-
-        updateUsernameDisplay();
-        updateUIDisplay();
-
-        // Vérifier si l'utilisateur a déjà un pseudo, sinon ouvrir la modale de choix
-        if (!currentUser.username) {
-          // On ouvre la modale setUsername
-          const setUsernameModal = document.getElementById('setUsernameModal');
-          openModal(setUsernameModal);
-        }
-
-        // Autres initialisations (boutons rename, signout, etc.)
-        // (Le code existant pour ces fonctionnalités peut être ajouté ici)
-      }
-
-      // ==================== EXEMPLE : BOUTON RENAME (à compléter) ====================
+      // ==================== GESTION DU RENAME (à compléter) ====================
       const renameBtn = document.getElementById('renameBtn');
       const renameModal = document.getElementById('renameModal');
+      const newNameInput = document.getElementById('newNameInput');
+      const passwordConfirmInput = document.getElementById('passwordConfirmInput');
+      const confirmRenameBtn = document.getElementById('confirmRenameBtn');
+      const usernameError = document.getElementById('UsernameError');
+      const passwordErrorMessage = document.getElementById('passwordErrorMessage');
+      const renameSuccessMessage = document.getElementById('renameSuccessMessage');
+      const renameLoadingSpinner = document.getElementById('renameLoadingSpinner');
+
       renameBtn.addEventListener('click', () => {
+        // Reset form
+        newNameInput.value = '';
+        passwordConfirmInput.value = '';
+        usernameError.style.display = 'none';
+        passwordErrorMessage.style.display = 'none';
+        renameSuccessMessage.style.display = 'none';
+        confirmRenameBtn.disabled = true;
         openModal(renameModal);
       });
 
-      // ==================== EXEMPLE : DÉCONNEXION ====================
+      // Validation du nouveau nom
+      newNameInput.addEventListener('input', () => {
+        const val = newNameInput.value.trim();
+        if (val.length >= 3 && val.length <= 20 && /^[a-zA-Z0-9_]+$/.test(val)) {
+          usernameError.style.display = 'none';
+          // Activer le bouton si le mot de passe est aussi rempli
+          confirmRenameBtn.disabled = !passwordConfirmInput.value;
+        } else {
+          confirmRenameBtn.disabled = true;
+        }
+      });
+
+      passwordConfirmInput.addEventListener('input', () => {
+        const nameValid = newNameInput.value.trim().length >= 3;
+        confirmRenameBtn.disabled = !(nameValid && passwordConfirmInput.value);
+      });
+
+      confirmRenameBtn.addEventListener('click', async () => {
+        const newUsername = newNameInput.value.trim();
+        const password = passwordConfirmInput.value;
+
+        renameLoadingSpinner.style.display = 'block';
+        confirmRenameBtn.disabled = true;
+
+        try {
+          // D'abord vérifier le mot de passe via l'API auth
+          // Note: Il faudrait ajouter une action "verify-password" dans auth.js
+          // Pour l'instant, on simule
+          
+          // Vérifier disponibilité du nouveau nom
+          const checkData = await callSessionApi('check-username', { username: newUsername });
+          if (!checkData.available) {
+            usernameError.style.display = 'block';
+            throw new Error('Username already taken');
+          }
+
+          // Mettre à jour le nom
+          const data = await callSessionApi('set-username', {
+            uid: currentUser.uid,
+            username: newUsername
+          });
+
+          if (data.success) {
+            currentUser = data.user;
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            updateUsernameDisplay();
+            
+            renameSuccessMessage.style.display = 'block';
+            setTimeout(() => {
+              closeModal(renameModal);
+            }, 1500);
+          }
+        } catch (error) {
+          if (error.message.includes('already taken')) {
+            usernameError.style.display = 'block';
+          } else {
+            passwordErrorMessage.textContent = error.message;
+            passwordErrorMessage.style.display = 'block';
+          }
+        } finally {
+          renameLoadingSpinner.style.display = 'none';
+          confirmRenameBtn.disabled = false;
+        }
+      });
+
+      // ==================== DÉCONNEXION ====================
       const signOutBtn = document.getElementById('signOutBtn');
       const logoutConfirmModal = document.getElementById('logoutConfirmModal');
+
       signOutBtn.addEventListener('click', () => {
         openModal(logoutConfirmModal);
       });
 
       document.getElementById('confirmLogoutBtn').addEventListener('click', () => {
         localStorage.removeItem('user');
-        window.location.href = 'login.html'; // redirection vers login
+        window.location.href = 'login.html';
       });
 
       document.getElementById('cancelLogoutBtn').addEventListener('click', () => {
         closeModal(logoutConfirmModal);
       });
 
-      // ==================== CHOIX DU PSEUDO (première connexion) ====================
-      const setUsernameInput = document.getElementById('setUsernameInput');
-      const confirmSetUsernameBtn = document.getElementById('confirmSetUsernameBtn');
-      const setUsernameError = document.getElementById('setUsernameError');
-      const setUsernameModal = document.getElementById('setUsernameModal');
-
-      setUsernameInput.addEventListener('input', () => {
-        const val = setUsernameInput.value.trim();
-        if (val.length >= 3 && val.length <= 20 && /^[a-zA-Z0-9_]+$/.test(val)) {
-          confirmSetUsernameBtn.disabled = false;
-          setUsernameError.style.display = 'none';
-        } else {
-          confirmSetUsernameBtn.disabled = true;
+      // ==================== FERMETURE DES MODALES AVEC ECHAP ====================
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+            closeModal(modal);
+          });
         }
       });
 
-      confirmSetUsernameBtn.addEventListener('click', async () => {
-        const newUsername = setUsernameInput.value.trim();
-        if (!newUsername) return;
-
-        // Ici, il faudrait appeler une API pour vérifier la disponibilité et enregistrer
-        // Exemple simulé :
-        confirmSetUsernameBtn.disabled = true;
-        document.getElementById('setUsernameLoadingSpinner').style.display = 'block';
-
-        try {
-          // Simulation d'une requête API (à remplacer par votre endpoint)
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Si succès, on met à jour currentUser et localStorage
-          if (currentUser) {
-            currentUser.username = newUsername;
-            saveUserToStorage(currentUser);
-            updateUsernameDisplay();
-            closeModal(setUsernameModal);
-          }
-        } catch (error) {
-          setUsernameError.textContent = 'Erreur lors de l\'enregistrement.';
-          setUsernameError.style.display = 'block';
-        } finally {
-          document.getElementById('setUsernameLoadingSpinner').style.display = 'none';
-          confirmSetUsernameBtn.disabled = false;
-        }
-      });
-
-      // Lancer l'initialisation au chargement
-      window.addEventListener('DOMContentLoaded', init);
+      // ==================== INITIALISATION ====================
+      window.addEventListener('DOMContentLoaded', loadSession);
     })();
   </script>
 </body>
