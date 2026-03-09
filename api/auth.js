@@ -47,6 +47,16 @@ function generateOTP() {
 
 /* ================= MAIN HANDLER ================= */
 export default async function handler(req, res) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -66,6 +76,7 @@ export default async function handler(req, res) {
       case "resend-otp": return await handleResendOtp(payload, res);
       case "forgot-password-request": return await handleForgotPasswordRequest(payload, res);
       case "forgot-password-reset": return await handleForgotPasswordReset(payload, res);
+      case "verify-password": return await handleVerifyPassword(payload, res);
       default: return res.status(400).json({ error: "Invalid action" });
     }
   } catch (err) {
@@ -99,7 +110,7 @@ async function handleRegister(body, res) {
     otpExpires: Date.now() + EMAIL_OTP_VALIDITY,
     otpAttempts: 0,
     createdAt: Date.now(),
-    username: "" // Foana aloa amin'ny voalohany
+    username: "" // Vide au départ
   });
 
   await sendOTPEmail(emailLower, otp);
@@ -140,7 +151,7 @@ async function handleLogin(body, res) {
   
   res.setHeader("Set-Cookie", cookieOptions.join("; "));
 
-  // NAMBOARINA: Averina miaraka amin'ny user data ho an'ny LocalStorage
+  // Retourne les données utilisateur pour le localStorage
   return res.status(200).json({ 
     success: true, 
     user: { 
@@ -173,10 +184,10 @@ async function handleVerifyOtp(body, res) {
     return res.status(400).json({ error: "Kaody diso" });
   }
 
-  // Update verification status
+  // Met à jour le statut de vérification
   await userDoc.ref.update({ emailVerified: true, otp: null, otpExpires: null, otpAttempts: 0 });
 
-  // NAMBOARINA: Averina ny user data mba hahafahan'ny frontend mitahiry azy avy hatrany
+  // Retourne les données utilisateur
   return res.status(200).json({ 
     success: true,
     user: {
@@ -239,4 +250,38 @@ async function handleForgotPasswordReset(body, res) {
   });
 
   return res.status(200).json({ success: true });
+}
+
+/**
+ * Vérifie si le mot de passe fourni correspond à celui de l'utilisateur
+ * Utilisé pour confirmer l'identité avant de changer le pseudo
+ * 
+ * @param {Object} body - Contient uid et password
+ * @param {Object} res - Réponse HTTP
+ */
+async function handleVerifyPassword(body, res) {
+  const { uid, password } = body;
+  
+  if (!uid || !password) {
+    return res.status(400).json({ error: "UID sy password ilaina" });
+  }
+
+  try {
+    const userDoc = await usersCollection.doc(uid).get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "Tsy hita ny mpampiasa" });
+    }
+
+    const userData = userDoc.data();
+    const isMatch = await bcrypt.compare(password, userData.password);
+    
+    return res.status(200).json({
+      success: true,
+      valid: isMatch
+    });
+  } catch (error) {
+    console.error("Error verifying password:", error);
+    return res.status(500).json({ error: "Tsy nahomby ny fanamarinana ny password" });
+  }
 }
