@@ -207,16 +207,6 @@
     #setUsernameModal .loading-spinner { 
       margin: 15px auto 0; 
     }
-    #setUsernameModal .username-preview {
-      font-size: 1.2em;
-      font-weight: bold;
-      color: #6C00BF;
-      margin: 10px 0;
-      display: none;
-    }
-    #setUsernameModal .username-preview.visible {
-      display: block;
-    }
     
     .uid-display { background: rgba(108, 0, 191, 0.1); border-radius: 8px; padding: 10px; margin: 15px 0 10px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid rgba(108, 0, 191, 0.3); font-size: 1.1em; color: #4A008F; }
     .uid-display i { color: #6C00BF; font-size: 1.2em; }
@@ -396,12 +386,8 @@
         <span class="error-message" id="setUsernameError"></span>
       </div>
       
-      <div class="username-preview" id="usernamePreview">
-        Your username: <span></span>
-      </div>
-      
       <div class="loading-spinner" id="setUsernameLoadingSpinner"></div>
-      <button class="confirm-btn" id="confirmSetUsernameBtn" disabled>Confirm</button>
+      <button class="confirm-btn" id="confirmSetUsernameBtn">Confirm</button>
     </div>
   </div>
   
@@ -615,9 +601,6 @@
               setTimeout(() => {
                 const setUsernameModal = document.getElementById('setUsernameModal');
                 openModal(setUsernameModal);
-                
-                // Empêcher la fermeture en cliquant à l'extérieur
-                setUsernameModal.style.pointerEvents = 'auto';
               }, 500);
             }
           } else {
@@ -639,36 +622,28 @@
       const setUsernameError = document.getElementById('setUsernameError');
       const setUsernameLoadingSpinner = document.getElementById('setUsernameLoadingSpinner');
       const usernameInfo = document.getElementById('usernameInfo');
-      const usernamePreview = document.getElementById('usernamePreview');
-      const previewSpan = usernamePreview.querySelector('span');
 
       // Empêcher la fermeture en cliquant à l'extérieur
       setUsernameModal.addEventListener('click', (e) => {
         if (e.target === setUsernameModal) {
+          e.preventDefault();
           e.stopPropagation();
           return false;
         }
       });
 
-      // Validation en temps réel (sans afficher d'erreur)
+      // Activer le bouton Confirm quand l'input n'est pas vide
       setUsernameInput.addEventListener('input', () => {
         const val = setUsernameInput.value.trim();
+        
+        // Activer/désactiver le bouton en fonction de la présence de texte
+        confirmSetUsernameBtn.disabled = val.length === 0;
         
         // Cacher les messages d'erreur pendant la saisie
         setUsernameError.classList.remove('visible');
         setUsernameError.style.display = 'none';
         setUsernameInput.classList.remove('error');
-        
-        if (val.length > 0) {
-          // Afficher un aperçu du nom
-          usernamePreview.classList.add('visible');
-          previewSpan.textContent = val;
-        } else {
-          usernamePreview.classList.remove('visible');
-        }
-        
-        // Désactiver le bouton par défaut
-        confirmSetUsernameBtn.disabled = true;
+        usernameInfo.classList.remove('visible');
       });
 
       // Validation au moment du clic sur Confirm
@@ -733,7 +708,6 @@
             setUsernameError.style.display = 'none';
             setUsernameInput.classList.remove('error');
             usernameInfo.classList.remove('visible');
-            usernamePreview.classList.remove('visible');
           }
         } catch (error) {
           setUsernameError.textContent = error.message;
