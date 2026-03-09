@@ -107,7 +107,7 @@
     .rename-form { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; text-align: left; }
     .input-group { display: flex; flex-direction: column; gap: 5px; }
     .rename-form input { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1em; width: 100%; }
-    .error-message { color: #e74c3c; font-size: 0.85em; font-weight: bold; display: none; }
+    .error-message { color: #e74c3c; font-size: 0.85em; font-weight: bold; display: none; margin-top: 5px; text-align: left; }
     .success-message { color: #2ecc71; font-size: 1em; font-weight: bold; margin-top: 10px; display: none; text-align: center; }
     .password-error-message { color: #e74c3c; font-size: 1em; font-weight: bold; margin-top: 10px; display: none; text-align: center; }
     #confirmRenameBtn { background-color: #2ecc71; color: white; padding: 12px; border: none; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: background-color 0.2s; margin-top: 10px; }
@@ -119,15 +119,109 @@
     #confirmLogoutBtn:hover { background-color: #c0392b; }
     #cancelLogoutBtn { background-color: #bdc3c7; color: #333; padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; flex-grow: 1; }
     #cancelLogoutBtn:hover { background-color: #95a5a6; }
-    #setUsernameModal .modal-content { max-width: 350px; }
-    #setUsernameModal h2 { color: #6C00BF; margin-bottom: 20px; }
-    #setUsernameModal .input-group { margin-bottom: 15px; }
-    #setUsernameModal .confirm-btn { background-color: #2ecc71; color: white; padding: 12px; border: none; border-radius: 8px; font-size: 1.2em; font-weight: bold; cursor: pointer; transition: background-color 0.2s; width: 100%; margin-top: 10px; }
-    #setUsernameModal .confirm-btn:hover { background-color: #27ad60; }
-    #setUsernameModal .error-message { margin-top: 10px; text-align: center; }
+    
+    /* ========== MODAL CHOIX PSEUDO AMÉLIORÉ ========== */
+    #setUsernameModal .modal-content { 
+      max-width: 380px; 
+      padding: 30px 25px;
+      position: relative;
+      border-radius: 20px;
+    }
+    #setUsernameModal h2 { 
+      color: #6C00BF; 
+      margin-bottom: 15px; 
+      font-size: 1.8em;
+    }
+    #setUsernameModal .input-group { 
+      margin-bottom: 10px; 
+      width: 100%;
+    }
+    #setUsernameModal .input-group input {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      font-size: 1.1em;
+      transition: all 0.3s ease;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+    #setUsernameModal .input-group input:focus {
+      border-color: #6C00BF;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(108, 0, 191, 0.1);
+    }
+    #setUsernameModal .input-group input.error {
+      border-color: #e74c3c;
+    }
+    #setUsernameModal .error-message { 
+      margin-top: 8px; 
+      text-align: center;
+      font-size: 0.9em;
+      padding: 8px;
+      background-color: #fee;
+      border-radius: 8px;
+      display: none;
+    }
+    #setUsernameModal .error-message.visible {
+      display: block;
+    }
+    #setUsernameModal .info-text {
+      font-size: 0.9em;
+      color: #666;
+      margin: 10px 0;
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 8px;
+      display: none;
+    }
+    #setUsernameModal .info-text.visible {
+      display: block;
+    }
+    #setUsernameModal .confirm-btn { 
+      background-color: #2ecc71; 
+      color: white; 
+      padding: 14px; 
+      border: none; 
+      border-radius: 12px; 
+      font-size: 1.2em; 
+      font-weight: bold; 
+      cursor: pointer; 
+      transition: all 0.3s ease; 
+      width: 100%; 
+      margin-top: 15px;
+      opacity: 0.7;
+    }
+    #setUsernameModal .confirm-btn:not(:disabled) {
+      opacity: 1;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3);
+    }
+    #setUsernameModal .confirm-btn:hover:not(:disabled) { 
+      background-color: #27ad60; 
+    }
+    #setUsernameModal .confirm-btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    #setUsernameModal .loading-spinner { 
+      margin: 15px auto 0; 
+    }
+    #setUsernameModal .username-preview {
+      font-size: 1.2em;
+      font-weight: bold;
+      color: #6C00BF;
+      margin: 10px 0;
+      display: none;
+    }
+    #setUsernameModal .username-preview.visible {
+      display: block;
+    }
+    
     .uid-display { background: rgba(108, 0, 191, 0.1); border-radius: 8px; padding: 10px; margin: 15px 0 10px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid rgba(108, 0, 191, 0.3); font-size: 1.1em; color: #4A008F; }
     .uid-display i { color: #6C00BF; font-size: 1.2em; }
     #uidDisplay { font-weight: bold; font-family: monospace; background: white; padding: 2px 8px; border-radius: 4px; border: 1px solid #ddd; }
+    
     @media (max-width: 768px) {
       .game-options-container { flex-direction: column; gap: 15px; }
       .game-option { max-width: 100%; min-height: 120px; }
@@ -288,15 +382,24 @@
     </div>
   </div>
   
-  <!-- MODAL CHOIX DU PSEUDO (première connexion) -->
+  <!-- MODAL CHOIX DU PSEUDO (première connexion) - AMÉLIORÉ -->
   <div class="modal-overlay" id="setUsernameModal">
     <div class="modal-content">
       <h2><i class="fas fa-signature"></i> Choose your username</h2>
       <p style="margin-bottom: 15px; color:#333;">This name will be visible to other players.</p>
+      
       <div class="input-group">
-        <input type="text" id="setUsernameInput" placeholder="Username (3-20 characters, _ allowed)" required>
+        <input type="text" id="setUsernameInput" placeholder="Enter your username" required>
+        <div class="info-text" id="usernameInfo">
+          <i class="fas fa-info-circle"></i> 3-20 characters, letters, numbers, and underscores only
+        </div>
         <span class="error-message" id="setUsernameError"></span>
       </div>
+      
+      <div class="username-preview" id="usernamePreview">
+        Your username: <span></span>
+      </div>
+      
       <div class="loading-spinner" id="setUsernameLoadingSpinner"></div>
       <button class="confirm-btn" id="confirmSetUsernameBtn" disabled>Confirm</button>
     </div>
@@ -425,7 +528,6 @@
       }
 
       function showError(message) {
-        // Utilise le status alert existant ou crée un simple alert
         alert(message);
       }
 
@@ -491,7 +593,6 @@
         setLoading(true);
         
         try {
-          // Récupérer l'UID depuis le localStorage
           const stored = localStorage.getItem('user');
           if (!stored) {
             throw new Error('No session found');
@@ -502,24 +603,21 @@
             throw new Error('Invalid session data');
           }
 
-          // Vérifier la session auprès du backend
           const data = await callSessionApi('get-session', { uid: localUser.uid });
           
           if (data.success && data.user) {
             currentUser = data.user;
-            
-            // Mettre à jour le localStorage avec les données fraîches
             localStorage.setItem('user', JSON.stringify(currentUser));
-            
-            // Mettre à jour l'affichage
             updateUsernameDisplay();
             updateUIDisplay();
 
-            // Vérifier si l'utilisateur a un username
             if (!currentUser.username) {
-              // Ouvrir la modale de choix de pseudo
               setTimeout(() => {
-                openModal(document.getElementById('setUsernameModal'));
+                const setUsernameModal = document.getElementById('setUsernameModal');
+                openModal(setUsernameModal);
+                
+                // Empêcher la fermeture en cliquant à l'extérieur
+                setUsernameModal.style.pointerEvents = 'auto';
               }, 500);
             }
           } else {
@@ -527,8 +625,6 @@
           }
         } catch (error) {
           console.error('Session error:', error);
-          
-          // En cas d'erreur, rediriger vers la page de login
           localStorage.removeItem('user');
           window.location.href = 'login.html';
         } finally {
@@ -536,54 +632,88 @@
         }
       }
 
-      // ==================== GESTION DU PSEUDO ====================
+      // ==================== GESTION DU PSEUDO AMÉLIORÉE ====================
       const setUsernameModal = document.getElementById('setUsernameModal');
       const setUsernameInput = document.getElementById('setUsernameInput');
       const confirmSetUsernameBtn = document.getElementById('confirmSetUsernameBtn');
       const setUsernameError = document.getElementById('setUsernameError');
       const setUsernameLoadingSpinner = document.getElementById('setUsernameLoadingSpinner');
+      const usernameInfo = document.getElementById('usernameInfo');
+      const usernamePreview = document.getElementById('usernamePreview');
+      const previewSpan = usernamePreview.querySelector('span');
 
-      // Validation en temps réel
-      setUsernameInput.addEventListener('input', async () => {
-        const val = setUsernameInput.value.trim();
-        
-        // Validation de base
-        if (val.length >= 3 && val.length <= 20 && /^[a-zA-Z0-9_]+$/.test(val)) {
-          confirmSetUsernameBtn.disabled = false;
-          setUsernameError.style.display = 'none';
-          
-          // Vérifier la disponibilité (debounce)
-          clearTimeout(window.usernameCheckTimeout);
-          window.usernameCheckTimeout = setTimeout(async () => {
-            try {
-              const data = await callSessionApi('check-username', { username: val });
-              if (!data.available) {
-                setUsernameError.textContent = 'Username already taken';
-                setUsernameError.style.display = 'block';
-                confirmSetUsernameBtn.disabled = true;
-              }
-            } catch (error) {
-              console.error('Error checking username:', error);
-            }
-          }, 500);
-        } else {
-          confirmSetUsernameBtn.disabled = true;
-          if (val.length > 0) {
-            setUsernameError.textContent = '3-20 characters, letters, numbers, underscores only';
-            setUsernameError.style.display = 'block';
-          }
+      // Empêcher la fermeture en cliquant à l'extérieur
+      setUsernameModal.addEventListener('click', (e) => {
+        if (e.target === setUsernameModal) {
+          e.stopPropagation();
+          return false;
         }
       });
 
-      // Confirmation du pseudo
+      // Validation en temps réel (sans afficher d'erreur)
+      setUsernameInput.addEventListener('input', () => {
+        const val = setUsernameInput.value.trim();
+        
+        // Cacher les messages d'erreur pendant la saisie
+        setUsernameError.classList.remove('visible');
+        setUsernameError.style.display = 'none';
+        setUsernameInput.classList.remove('error');
+        
+        if (val.length > 0) {
+          // Afficher un aperçu du nom
+          usernamePreview.classList.add('visible');
+          previewSpan.textContent = val;
+        } else {
+          usernamePreview.classList.remove('visible');
+        }
+        
+        // Désactiver le bouton par défaut
+        confirmSetUsernameBtn.disabled = true;
+      });
+
+      // Validation au moment du clic sur Confirm
       confirmSetUsernameBtn.addEventListener('click', async () => {
         const newUsername = setUsernameInput.value.trim();
-        if (!newUsername || !currentUser) return;
+        
+        // Validation au moment du clic
+        if (newUsername.length < 3 || newUsername.length > 20) {
+          setUsernameError.textContent = 'Username must be between 3 and 20 characters';
+          setUsernameError.classList.add('visible');
+          setUsernameError.style.display = 'block';
+          setUsernameInput.classList.add('error');
+          usernameInfo.classList.add('visible');
+          return;
+        }
+
+        const usernameRegex = /^[a-zA-Z0-9_]+$/;
+        if (!usernameRegex.test(newUsername)) {
+          setUsernameError.textContent = 'Username can only contain letters, numbers, and underscores';
+          setUsernameError.classList.add('visible');
+          setUsernameError.style.display = 'block';
+          setUsernameInput.classList.add('error');
+          usernameInfo.classList.add('visible');
+          return;
+        }
+
+        if (!currentUser) return;
 
         setUsernameLoadingSpinner.style.display = 'block';
         confirmSetUsernameBtn.disabled = true;
 
         try {
+          // Vérifier la disponibilité
+          const checkData = await callSessionApi('check-username', { username: newUsername });
+          
+          if (!checkData.available) {
+            setUsernameError.textContent = 'Username already taken';
+            setUsernameError.classList.add('visible');
+            setUsernameError.style.display = 'block';
+            setUsernameInput.classList.add('error');
+            usernameInfo.classList.add('visible');
+            return;
+          }
+
+          // Enregistrer le username
           const data = await callSessionApi('set-username', {
             uid: currentUser.uid,
             username: newUsername
@@ -597,12 +727,20 @@
             // Fermer la modale
             closeModal(setUsernameModal);
             
-            // Afficher un message de succès (optionnel)
-            alert('Username set successfully!');
+            // Réinitialiser pour la prochaine fois
+            setUsernameInput.value = '';
+            setUsernameError.classList.remove('visible');
+            setUsernameError.style.display = 'none';
+            setUsernameInput.classList.remove('error');
+            usernameInfo.classList.remove('visible');
+            usernamePreview.classList.remove('visible');
           }
         } catch (error) {
           setUsernameError.textContent = error.message;
+          setUsernameError.classList.add('visible');
           setUsernameError.style.display = 'block';
+          setUsernameInput.classList.add('error');
+          usernameInfo.classList.add('visible');
         } finally {
           setUsernameLoadingSpinner.style.display = 'none';
           confirmSetUsernameBtn.disabled = false;
@@ -614,7 +752,7 @@
       // Ouvrir modale profil
       profileBox.addEventListener('click', () => {
         if (currentUser) {
-          updateUIDisplay(); // mettre à jour l'UID avant affichage
+          updateUIDisplay();
           openModal(profileModal);
         }
       });
@@ -626,24 +764,29 @@
         }
       });
 
-      // Fermeture par les boutons X
+      // Fermeture par les boutons X (sauf pour setUsernameModal)
       closeButtons.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const modal = e.target.closest('.modal-overlay');
-          if (modal) closeModal(modal);
-        });
+        const modal = btn.closest('.modal-overlay');
+        if (modal && modal.id !== 'setUsernameModal') {
+          btn.addEventListener('click', (e) => {
+            const modal = e.target.closest('.modal-overlay');
+            if (modal) closeModal(modal);
+          });
+        }
       });
 
-      // Fermeture en cliquant sur l'overlay
+      // Fermeture en cliquant sur l'overlay (sauf pour setUsernameModal)
       document.querySelectorAll('.modal-overlay').forEach(overlay => {
-        overlay.addEventListener('click', (e) => {
-          if (e.target === overlay) {
-            closeModal(overlay);
-          }
-        });
+        if (overlay.id !== 'setUsernameModal') {
+          overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+              closeModal(overlay);
+            }
+          });
+        }
       });
 
-      // ==================== GESTION DU RENAME (à compléter) ====================
+      // ==================== GESTION DU RENAME ====================
       const renameBtn = document.getElementById('renameBtn');
       const renameModal = document.getElementById('renameModal');
       const newNameInput = document.getElementById('newNameInput');
@@ -655,7 +798,6 @@
       const renameLoadingSpinner = document.getElementById('renameLoadingSpinner');
 
       renameBtn.addEventListener('click', () => {
-        // Reset form
         newNameInput.value = '';
         passwordConfirmInput.value = '';
         usernameError.style.display = 'none';
@@ -665,12 +807,10 @@
         openModal(renameModal);
       });
 
-      // Validation du nouveau nom
       newNameInput.addEventListener('input', () => {
         const val = newNameInput.value.trim();
         if (val.length >= 3 && val.length <= 20 && /^[a-zA-Z0-9_]+$/.test(val)) {
           usernameError.style.display = 'none';
-          // Activer le bouton si le mot de passe est aussi rempli
           confirmRenameBtn.disabled = !passwordConfirmInput.value;
         } else {
           confirmRenameBtn.disabled = true;
@@ -690,15 +830,22 @@
         confirmRenameBtn.disabled = true;
 
         try {
-          // D'abord vérifier le mot de passe via l'API auth
-          // Note: Il faudrait ajouter une action "verify-password" dans auth.js
-          // Pour l'instant, on simule
-          
-          // Vérifier disponibilité du nouveau nom
+          // Vérifier le mot de passe
+          const verifyData = await callAuthApi('verify-password', {
+            uid: currentUser.uid,
+            password: password
+          });
+
+          if (!verifyData.valid) {
+            passwordErrorMessage.style.display = 'block';
+            return;
+          }
+
+          // Vérifier disponibilité
           const checkData = await callSessionApi('check-username', { username: newUsername });
           if (!checkData.available) {
             usernameError.style.display = 'block';
-            throw new Error('Username already taken');
+            return;
           }
 
           // Mettre à jour le nom
@@ -747,11 +894,13 @@
         closeModal(logoutConfirmModal);
       });
 
-      // ==================== FERMETURE DES MODALES AVEC ECHAP ====================
+      // ==================== FERMETURE DES MODALES AVEC ECHAP (sauf setUsernameModal) ====================
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           document.querySelectorAll('.modal-overlay.active').forEach(modal => {
-            closeModal(modal);
+            if (modal.id !== 'setUsernameModal') {
+              closeModal(modal);
+            }
           });
         }
       });
