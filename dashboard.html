@@ -105,34 +105,31 @@
     #gameProfileBtn:hover { background-color: #FFC700; }
     .rename-form { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; text-align: left; }
     .input-group { display: flex; flex-direction: column; gap: 5px; }
-/* Style vaovao ho an'ny input rehetra */
-.rename-form input,
-#setUsernameModal input {
-  width: 100%;
-  padding: 14px;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  font-size: 16px;
-  outline: none;
-  background: #f8f9fa;
-  transition: all 0.3s ease;
-  color: #333;
-}
-
-.rename-form input:focus,
-#setUsernameModal input:focus {
-  border-color: #6e8efb;
-  box-shadow: 0 0 0 4px rgba(110, 142, 251, 0.1);
-  background: #fff;
-}
-
-.input-group label {
-  font-weight: 600;
-  font-size: 0.9em;
-  color: #555;
-  margin-bottom: 8px;
-  display: block;
-}
+    .rename-form input,
+    #setUsernameModal input {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      font-size: 16px;
+      outline: none;
+      background: #f8f9fa;
+      transition: all 0.3s ease;
+      color: #333;
+    }
+    .rename-form input:focus,
+    #setUsernameModal input:focus {
+      border-color: #6e8efb;
+      box-shadow: 0 0 0 4px rgba(110, 142, 251, 0.1);
+      background: #fff;
+    }
+    .input-group label {
+      font-weight: 600;
+      font-size: 0.9em;
+      color: #555;
+      margin-bottom: 8px;
+      display: block;
+    }
     .error-message { color: #e74c3c; font-size: 0.85em; font-weight: bold; display: none; }
     .success-message { color: #2ecc71; font-size: 1em; font-weight: bold; margin-top: 10px; display: none; text-align: center; }
     .password-error-message { color: #e74c3c; font-size: 1em; font-weight: bold; margin-top: 10px; display: none; text-align: center; }
@@ -171,7 +168,6 @@
       .friend-actions-modal-content { max-width: 95%; }
     }
 
-    /* Loading overlay */
     .loading-overlay {
       position: fixed;
       top: 0;
@@ -341,7 +337,7 @@
     </div>
   </div>
 
-  <!-- MODAL PLAYERS (fonctionnalité à venir) -->
+  <!-- MODAL PLAYERS -->
   <div class="modal-overlay" id="playersModal">
     <div class="modal-content">
       <div class="players-modal-header">
@@ -394,7 +390,7 @@
     </div>
   </div>
   
-  <!-- MODAL ACTIONS AMI (non utilisé actuellement) -->
+  <!-- MODAL ACTIONS AMI -->
   <div class="friend-actions-modal-overlay" id="friendActionsModal">
     <div class="friend-actions-modal-content">
       <i class="fas fa-times modal-close-btn" id="friendActionsCloseBtn"></i>
@@ -554,133 +550,114 @@
         }
       }
 
-      // ==================== GESTION DU PSEUDO ====================
+      // ==================== GESTION DU PSEUDO (MODIFIÉ) ====================
       const setUsernameModal = document.getElementById('setUsernameModal');
       const setUsernameInput = document.getElementById('setUsernameInput');
       const confirmSetUsernameBtn = document.getElementById('confirmSetUsernameBtn');
       const setUsernameError = document.getElementById('setUsernameError');
       const setUsernameLoadingSpinner = document.getElementById('setUsernameLoadingSpinner');
 
-setUsernameInput.addEventListener('input', () => {
-  
-  const val = setUsernameInput.value.trim();
-  
-  // manafina error rehefa manoratra
-  setUsernameError.style.display = 'none';
-  
-  // raha mbola latsaky ny 3 caractères dia tsy manao check
-  if (val.length < 3) {
-    return;
-  }
-  
-  // raha mihoatra ny 20 na caractères tsy valide
-  if (!/^[a-zA-Z0-9_]+$/.test(val) || val.length > 20) {
-    return;
-  }
-  
-  // debounce check username
-  clearTimeout(window.usernameCheckTimeout);
-  
-  window.usernameCheckTimeout = setTimeout(async () => {
-    
-    try {
-      
-      const data = await callSessionApi('check-username', {
-        username: val
-      });
-      
-      if (!data.available) {
-        
-        setUsernameError.textContent = 'Username already taken';
-        setUsernameError.style.display = 'block';
-        
+      // Fonction de validation du username
+      function validateUsername(username) {
+        if (username.length < 3 || username.length > 20) {
+          return { valid: false, message: '3-20 characters, letters, numbers, underscores only' };
+        }
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+          return { valid: false, message: '3-20 characters, letters, numbers, underscores only' };
+        }
+        return { valid: true };
       }
-      
-    } catch (error) {
-      
-      console.error('Error checking username:', error);
-      
-    }
-    
-  }, 500);
-  
-});
 
-confirmSetUsernameBtn.addEventListener('click', async () => {
-  
-  const newUsername = setUsernameInput.value.trim();
-  
-  if (!currentUser) return;
-  
-  // validation format rehefa confirm
-  if (
-    newUsername.length < 3 ||
-    newUsername.length > 20 ||
-    !/^[a-zA-Z0-9_]+$/.test(newUsername)
-  ) {
-    
-    setUsernameError.textContent = '3-20 characters, letters, numbers, underscores only';
-    setUsernameError.style.display = 'block';
-    
-    return;
-    
-  }
-  
-  setUsernameLoadingSpinner.style.display = 'block';
-  confirmSetUsernameBtn.disabled = true;
-  
-  try {
-    
-    // check indray sao efa nisy naka
-    const check = await callSessionApi('check-username', {
-      username: newUsername
-    });
-    
-    if (!check.available) {
-      
-      setUsernameError.textContent = 'Username already taken';
-      setUsernameError.style.display = 'block';
-      
-      throw new Error('Username already taken');
-      
-    }
-    
-    const data = await callSessionApi('set-username', {
-      uid: currentUser.uid,
-      username: newUsername
-    });
-    
-    if (data.success && data.user) {
-      
-      currentUser = data.user;
-      
-      localStorage.setItem('user', JSON.stringify(currentUser));
-      
-      updateUsernameDisplay();
-      
-      closeModal(setUsernameModal);
-      
-      alert('Username set successfully!');
-      
-    }
-    
-  } catch (error) {
-    
-    if (!error.message.includes('taken')) {
-      
-      setUsernameError.textContent = error.message;
-      setUsernameError.style.display = 'block';
-      
-    }
-    
-  } finally {
-    
-    setUsernameLoadingSpinner.style.display = 'none';
-    confirmSetUsernameBtn.disabled = false;
-    
-  }
-  
-});
+      setUsernameInput.addEventListener('input', () => {
+        const val = setUsernameInput.value.trim();
+        
+        // Reset error
+        setUsernameError.style.display = 'none';
+        
+        // Toujours activer/désactiver le bouton en fonction de la validation
+        const validation = validateUsername(val);
+        
+        if (validation.valid) {
+          confirmSetUsernameBtn.disabled = false;
+        } else {
+          confirmSetUsernameBtn.disabled = true;
+          // Afficher l'erreur uniquement si l'utilisateur a tapé quelque chose
+          if (val.length > 0) {
+            setUsernameError.textContent = validation.message;
+            setUsernameError.style.display = 'block';
+          }
+        }
+        
+        // Check username availability (debounce) - uniquement si valide
+        clearTimeout(window.usernameCheckTimeout);
+        if (validation.valid) {
+          window.usernameCheckTimeout = setTimeout(async () => {
+            try {
+              const data = await callSessionApi('check-username', { username: val });
+              
+              if (!data.available) {
+                setUsernameError.textContent = 'Username already taken';
+                setUsernameError.style.display = 'block';
+                confirmSetUsernameBtn.disabled = true;
+              }
+            } catch (error) {
+              console.error('Error checking username:', error);
+            }
+          }, 500);
+        }
+      });
+
+      confirmSetUsernameBtn.addEventListener('click', async () => {
+        const newUsername = setUsernameInput.value.trim();
+        
+        if (!currentUser) return;
+        
+        // Double validation avant envoi
+        const validation = validateUsername(newUsername);
+        if (!validation.valid) {
+          setUsernameError.textContent = validation.message;
+          setUsernameError.style.display = 'block';
+          return;
+        }
+        
+        setUsernameLoadingSpinner.style.display = 'block';
+        confirmSetUsernameBtn.disabled = true;
+        
+        try {
+          // Check if username is still available
+          const check = await callSessionApi('check-username', { username: newUsername });
+          
+          if (!check.available) {
+            setUsernameError.textContent = 'Username already taken';
+            setUsernameError.style.display = 'block';
+            throw new Error('Username already taken');
+          }
+          
+          const data = await callSessionApi('set-username', {
+            uid: currentUser.uid,
+            username: newUsername
+          });
+          
+          if (data.success && data.user) {
+            currentUser = data.user;
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            
+            updateUsernameDisplay();
+            
+            closeModal(setUsernameModal);
+            
+            alert('Username set successfully!');
+          }
+        } catch (error) {
+          if (!error.message.includes('taken')) {
+            setUsernameError.textContent = error.message;
+            setUsernameError.style.display = 'block';
+          }
+        } finally {
+          setUsernameLoadingSpinner.style.display = 'none';
+          confirmSetUsernameBtn.disabled = false;
+        }
+      });
 
       // ==================== OUVERTURE/FERMETURE DES MODALES ====================
       
@@ -713,7 +690,7 @@ confirmSetUsernameBtn.addEventListener('click', async () => {
         });
       });
 
-      // ==================== GESTION DU RENAME (à compléter) ====================
+      // ==================== GESTION DU RENAME ====================
       const renameBtn = document.getElementById('renameBtn');
       const renameModal = document.getElementById('renameModal');
       const newNameInput = document.getElementById('newNameInput');
