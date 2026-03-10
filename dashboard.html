@@ -561,65 +561,99 @@
       const setUsernameError = document.getElementById('setUsernameError');
       const setUsernameLoadingSpinner = document.getElementById('setUsernameLoadingSpinner');
 
-      setUsernameInput.addEventListener('input', async () => {
-        const val = setUsernameInput.value.trim();
-        
-        if (val.length >= 3 && val.length <= 20 && /^[a-zA-Z0-9_]+$/.test(val)) {
-          confirmSetUsernameBtn.disabled = false;
-          setUsernameError.style.display = 'none';
-          
-          clearTimeout(window.usernameCheckTimeout);
-          window.usernameCheckTimeout = setTimeout(async () => {
-            try {
-              const data = await callSessionApi('check-username', { username: val });
-              if (!data.available) {
-                setUsernameError.textContent = 'Username already taken';
-                setUsernameError.style.display = 'block';
-                confirmSetUsernameBtn.disabled = true;
-              }
-            } catch (error) {
-              console.error('Error checking username:', error);
-            }
-          }, 500);
-        } else {
-          confirmSetUsernameBtn.disabled = true;
-          if (val.length > 0) {
-            setUsernameError.textContent = '3-20 characters, letters, numbers, underscores only';
-            setUsernameError.style.display = 'block';
-          }
-        }
-      });
-
-      confirmSetUsernameBtn.addEventListener('click', async () => {
-        const newUsername = setUsernameInput.value.trim();
-        if (!newUsername || !currentUser) return;
-
-        setUsernameLoadingSpinner.style.display = 'block';
+setUsernameInput.addEventListener('input', () => {
+  const val = setUsernameInput.value.trim();
+  
+  // reset error
+  setUsernameError.style.display = 'none';
+  
+  // raha mbola latsaky ny 3 caractères
+  if (val.length < 3) {
+    confirmSetUsernameBtn.disabled = true;
+    return;
+  }
+  
+  // validation caractères
+  if (!/^[a-zA-Z0-9_]+$/.test(val) || val.length > 20) {
+    confirmSetUsernameBtn.disabled = true;
+    return;
+  }
+  
+  confirmSetUsernameBtn.disabled = false;
+  
+  // check username availability (debounce)
+  clearTimeout(window.usernameCheckTimeout);
+  window.usernameCheckTimeout = setTimeout(async () => {
+    try {
+      const data = await callSessionApi('check-username', { username: val });
+      
+      if (!data.available) {
+        setUsernameError.textContent = 'Username already taken';
+        setUsernameError.style.display = 'block';
         confirmSetUsernameBtn.disabled = true;
+      }
+      
+    } catch (error) {
+      console.error('Error checking username:', error);
+    }
+  }, 500);
+});
 
-        try {
-          const data = await callSessionApi('set-username', {
-            uid: currentUser.uid,
-            username: newUsername
-          });
-
-          if (data.success && data.user) {
-            currentUser = data.user;
-            localStorage.setItem('user', JSON.stringify(currentUser));
-            updateUsernameDisplay();
-            
-            closeModal(setUsernameModal);
-            
-            alert('Username set successfully!');
-          }
-        } catch (error) {
-          setUsernameError.textContent = error.message;
-          setUsernameError.style.display = 'block';
-        } finally {
-          setUsernameLoadingSpinner.style.display = 'none';
-          confirmSetUsernameBtn.disabled = false;
-        }
-      });
+confirmSetUsernameBtn.addEventListener('click', async () => {
+  const newUsername = setUsernameInput.value.trim();
+  
+  if (!currentUser) return;
+  
+  // validation rehefa confirm
+  if (newUsername.length < 3 || newUsername.length > 20 || !/^[a-zA-Z0-9_]+$/.test(newUsername)) {
+    setUsernameError.textContent = '3-20 characters, letters, numbers, underscores only';
+    setUsernameError.style.display = 'block';
+    return;
+  }
+  
+  setUsernameLoadingSpinner.style.display = 'block';
+  confirmSetUsernameBtn.disabled = true;
+  
+  try {
+    
+    // check indray sao misy naka ilay username
+    const check = await callSessionApi('check-username', { username: newUsername });
+    
+    if (!check.available) {
+      setUsernameError.textContent = 'Username already taken';
+      setUsernameError.style.display = 'block';
+      throw new Error('Username already taken');
+    }
+    
+    const data = await callSessionApi('set-username', {
+      uid: currentUser.uid,
+      username: newUsername
+    });
+    
+    if (data.success && data.user) {
+      
+      currentUser = data.user;
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      
+      updateUsernameDisplay();
+      
+      closeModal(setUsernameModal);
+      
+      alert('Username set successfully!');
+    }
+    
+  } catch (error) {
+    
+    if (!error.message.includes('taken')) {
+      setUsernameError.textContent = error.message;
+      setUsernameError.style.display = 'block';
+    }
+    
+  } finally {
+    setUsernameLoadingSpinner.style.display = 'none';
+    confirmSetUsernameBtn.disabled = false;
+  }
+});
 
       // ==================== OUVERTURE/FERMETURE DES MODALES ====================
       
