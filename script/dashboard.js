@@ -174,7 +174,19 @@
     upmRelation.innerHTML = '<i class="fas fa-user"></i> My Profile';
     upmActions.innerHTML = '';
     var hBtn = document.createElement('button'); hBtn.className = 'upm-btn upm-btn-history'; hBtn.innerHTML = '<i class="fas fa-history"></i> Game History'; hBtn.addEventListener('click', function () { showToast('Game history coming soon.', 'info'); });
-    var fBtn = document.createElement('button'); fBtn.className = 'upm-btn upm-btn-friends-list'; fBtn.innerHTML = '<i class="fas fa-users"></i> My Friends List'; fBtn.addEventListener('click', function () { showToast('Friends list feature coming soon.', 'info'); });
+    var fBtn = document.createElement('button'); fBtn.className = 'upm-btn upm-btn-friends-list'; fBtn.innerHTML = '<i class="fas fa-users"></i> My Friends List';
+    fBtn.addEventListener('click', function () {
+      closeModal(userProfileModal);
+      // Ouvrir playersModal sur l'onglet friends
+      _friendsFirstLoad = true;
+      document.querySelectorAll('.sidebar-item').forEach(function(s){ s.classList.remove('active'); });
+      var fsi = document.querySelector('.sidebar-item[data-panel="friends-panel"]');
+      if (fsi) fsi.classList.add('active');
+      document.querySelectorAll('.content-panel').forEach(function(p){ p.classList.remove('active-panel'); });
+      document.getElementById('friends-panel').classList.add('active-panel');
+      openModal(playersModal);
+      loadFriendsPanel(); loadRequestsBadge(); loadSentBadge();
+    });
     var eBtn = document.createElement('button'); eBtn.className = 'upm-btn'; eBtn.style.cssText = 'background:#f0f9ff;color:#0369a1;border:1.5px solid #bae6fd;'; eBtn.innerHTML = '<i class="fas fa-envelope"></i> View My Email'; eBtn.addEventListener('click', function () { openEmailModal(); });
     upmActions.appendChild(hBtn); upmActions.appendChild(fBtn); upmActions.appendChild(eBtn);
     openModal(userProfileModal);
@@ -304,13 +316,16 @@
 
   // ── Players Modal ─────────────────────────────────────────
   var playersModal = document.getElementById('playersModal');
-  document.getElementById('amisBtn').addEventListener('click', function () { openModal(playersModal); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); updateFooterRequestsBadge(0); });
+  document.getElementById('amisBtn').addEventListener('click', function () {
+    _friendsFirstLoad = true; // reset pour animation au ré-ouverture
+    openModal(playersModal); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); updateFooterRequestsBadge(0);
+  });
   document.querySelectorAll('.sidebar-item').forEach(function (item) {
     item.addEventListener('click', function () {
       document.querySelectorAll('.sidebar-item').forEach(function (s) { s.classList.remove('active'); }); item.classList.add('active');
       var pid = item.dataset.panel;
       document.querySelectorAll('.content-panel').forEach(function (p) { p.classList.remove('active-panel'); }); document.getElementById(pid).classList.add('active-panel');
-      if (pid === 'friends-panel') loadFriendsPanel();
+      if (pid === 'friends-panel') { _friendsFirstLoad = true; loadFriendsPanel(); }
       if (pid === 'requests-panel') loadRequestsPanel();
       if (pid === 'sent-panel') loadSentPanel();
       if (pid === 'search-panel') document.getElementById('searchResultsContainer').innerHTML = '';
@@ -341,21 +356,70 @@
     var d = Math.floor(hr / 24); if (d < 365) return d + 'd ago'; return Math.floor(d / 365) + 'y ago';
   }
 
+  var _friendsFirstLoad = true;
+
   async function loadFriendsPanel() {
-    var container = document.getElementById('friendsListContainer'); container.innerHTML = '<div class="spinner-inline"></div>';
+    var container = document.getElementById('friendsListContainer');
+    var isFirstLoad = _friendsFirstLoad || container.innerHTML === '';
+    // Premier chargement seulement → spinner + scroll top
+    if (isFirstLoad) {
+      _friendsFirstLoad = false;
+      container.innerHTML = '<div class="spinner-inline"></div>';
+    }
     try {
-      var data = await callSessionApi('get-friends', { uid: currentUser.uid }); container.innerHTML = '';
+      var data = await callSessionApi('get-friends', { uid: currentUser.uid });
       var cb = document.getElementById('friendsCountBadge'); var fc = data.friendCount || 0;
       cb.textContent = fc + '/100'; cb.style.display = fc > 0 ? 'inline-block' : 'none';
-      if (!data.friends || data.friends.length === 0) { renderEmptyState(container, 'user-friends', 'You have no friends yet. Use "Add Friend" to get started.'); return; }
-      data.friends.forEach(function (fr) {
-        var div = document.createElement('div'); div.className = 'player-item';
-        var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
-        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst ? '<span class="last-seen">' + escapeHtml(lst) + '</span>' : '') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '"></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '"><i class="fas fa-ellipsis-v"></i></button></div>';
-        div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
-        container.appendChild(div);
-      });
-    } catch (err) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load friends. Please try again.'); }
+      if (!data.friends || data.friends.length === 0) {
+        container.innerHTML = '';
+        renderEmptyState(container, 'user-friends', 'You have no friends yet. Use "Add Friend" to get started.');
+        return;
+      }
+      if (isFirstLoad) {
+        // Construire la liste complète (premier chargement)
+        container.innerHTML = '';
+        data.friends.forEach(function (fr) {
+          var div = document.createElement('div'); div.className = 'player-item'; div.dataset.uid = fr.uid;
+          var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
+          div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst ? '<span class="last-seen" data-ls>' + escapeHtml(lst) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '"><i class="fas fa-ellipsis-v"></i></button></div>';
+          div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
+          container.appendChild(div);
+        });
+      } else {
+        // Refresh: mettre à jour uniquement status dots + lastSeen, sans toucher au DOM principal
+        var existingUids = new Set(Array.from(container.querySelectorAll('.player-item[data-uid]')).map(function(d){ return d.dataset.uid; }));
+        var newUids = new Set(data.friends.map(function(f){ return f.uid; }));
+        // Supprimer les items qui ne sont plus amis
+        existingUids.forEach(function(uid) {
+          if (!newUids.has(uid)) {
+            var el = container.querySelector('.player-item[data-uid="' + uid + '"]');
+            if (el) el.remove();
+          }
+        });
+        // Mettre à jour ou ajouter
+        data.friends.forEach(function (fr) {
+          var existing = container.querySelector('.player-item[data-uid="' + fr.uid + '"]');
+          if (existing) {
+            // Update status dot
+            var sd = existing.querySelector('[data-sd]');
+            if (sd) { sd.className = 'status-dot ' + (fr.online ? 'online' : 'offline'); sd.setAttribute('data-sd',''); }
+            // Update lastSeen
+            var ls = existing.querySelector('[data-ls]');
+            var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
+            if (ls) ls.textContent = lst;
+          } else {
+            // Nouvel ami → ajouter
+            var div = document.createElement('div'); div.className = 'player-item'; div.dataset.uid = fr.uid;
+            var lst2 = fr.online ? '' : formatLastSeen(fr.lastSeen);
+            div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst2 ? '<span class="last-seen" data-ls>' + escapeHtml(lst2) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '"><i class="fas fa-ellipsis-v"></i></button></div>';
+            div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
+            container.appendChild(div);
+          }
+        });
+      }
+    } catch (err) {
+      if (isFirstLoad) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load friends. Please try again.'); }
+    }
   }
 
   async function loadRequestsBadge() {
@@ -1085,8 +1149,16 @@
   ginAcceptBtn.addEventListener('click', async function() {
     if (!currentGinInviteId) return;
     var inviteId = currentGinInviteId;
-    acceptedInviteIds.add(inviteId); // marquer immédiatement → polling ne la réaffichera plus
+    acceptedInviteIds.add(inviteId);
     hideGameInviteNotif();
+    // Fermer tous les modals ouverts avant d'ouvrir la room
+    document.querySelectorAll('.modal-overlay.active').forEach(function(m) {
+      if (m.id !== 'gameSetupModal') closeModal(m);
+    });
+    // Fermer aussi les overlays spéciaux
+    if (document.getElementById('removeFriendOverlay').classList.contains('active')) {
+      document.getElementById('removeFriendOverlay').classList.remove('active');
+    }
     try {
       var res = await callSessionApi('accept-game-invite', { uid: currentUser.uid, inviteId: inviteId });
       if (res.success) {
