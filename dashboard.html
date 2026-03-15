@@ -147,9 +147,13 @@
     .gs-body-row.room-active .gs-body-left { display: flex; }
     .gs-body-settings { flex: 1; min-width: 0; }
     .gs-body-row.room-active .gs-body-settings {
-      border-left: 1.5px solid #f0ebff;
       padding-left: 12px;
-      margin-left: 12px;
+      margin-left: 0;
+    }
+    .gs-body-row.room-active .gs-body-left {
+      border-right: 1.5px solid #f0ebff;
+      margin-right: 12px;
+      padding-right: 0;
     }
     /* Panneau amis enligne (avant matchup) */
     .gs-room-friends {
@@ -636,19 +640,7 @@
         <button class="gsh-quit" id="gsQuitBtn" aria-label="Quit room"><i class="fas fa-sign-out-alt"></i> Quit</button>
       </div>
       <div class="game-setup-body">
-        <!-- Matchup strip — au-dessus du layout flex -->
-        <div class="gs-matchup" id="gsMatchup">
-          <div class="gs-matchup-name" id="gsMatchupSender">—</div>
-          <i class="fas fa-times gs-matchup-vs-icon"></i>
-          <div class="gs-matchup-name" id="gsMatchupReceiver">—</div>
-        </div>
-        <!-- Invite strip — visible quand pas de matchup mais room-active -->
-        <div class="gs-matchup-invite" id="gsMatchupInvite" style="display:none;">
-          <i class="fas fa-user-plus" style="color:#a78bfa;font-size:0.82em;"></i>
-          <span>Invite a friend to join your room</span>
-        </div>
-
-        <!-- Flex row: chat (ankavia) + settings (ankavanana) -->
+        <!-- Flex row: left panel (ankavia) + settings (ankavanana) -->
         <div class="gs-body-row" id="gsBodyRow">
 
           <!-- Colonne gauche: amis enligne (avant matchup) OU chat (après matchup) -->
@@ -677,6 +669,19 @@
 
           <!-- Colonne droite: Settings -->
           <div class="gs-body-settings" id="gsBodySettings">
+
+            <!-- Matchup strip — dans la colonne settings (width limitée) -->
+            <div class="gs-matchup" id="gsMatchup">
+              <div class="gs-matchup-name" id="gsMatchupSender">—</div>
+              <i class="fas fa-times gs-matchup-vs-icon"></i>
+              <div class="gs-matchup-name" id="gsMatchupReceiver">—</div>
+            </div>
+            <!-- Invite strip — dans la colonne settings -->
+            <div class="gs-matchup-invite" id="gsMatchupInvite" style="display:none;">
+              <i class="fas fa-user-plus" style="color:#a78bfa;font-size:0.82em;flex-shrink:0;"></i>
+              <span>Ready to invite a friend?</span>
+            </div>
+
             <div class="gs-section-label" id="gsSectionLabelPiece">Choose Your Piece</div>
             <div class="color-pick-row">
               <button class="color-pick-btn selected" data-color="green" id="cpGreen">
