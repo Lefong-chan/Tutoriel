@@ -499,8 +499,11 @@
     btn.addEventListener('click', function () {
       selectedGame = btn.dataset.game;
       closeModal(gameSelectModal);
-      // Si on revient depuis room avec un matchup existant (receiver déjà présent), le conserver
       if (gameOrigin === 'room' && matchupData) {
+        // Sync game immédiatement vers Firestore pour que le receiver voit le changement
+        if (matchupData.inviteId) {
+          callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
+        }
         openGameSetup(selectedGame, matchupData);
       } else {
         openGameSetup(selectedGame, null);
@@ -633,6 +636,8 @@
     if (!inviteId) return;
     if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
     // Polling toutes les 2s pour synchroniser les settings entre sender et receiver
+    // Sender: 2s (ready state), Receiver: 800ms (color/game sync rapide)
+    var pollInterval = isSender ? 2000 : 800;
     roomSyncTimer = setInterval(async function() {
       if (!gameSetupModal.classList.contains('active')) {
         clearInterval(roomSyncTimer); roomSyncTimer = null; return;
@@ -641,6 +646,7 @@
         var res = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
         if (res.status === 'accepted') {
           if (isSender) {
+            // Sender: vérifier ready state du receiver
             var rReady = (res.receiverReady !== false);
             receiverReady = rReady;
             var launchBtn = document.getElementById('gsLaunchBtn');
@@ -652,11 +658,12 @@
             }
             if (notReadyEl) notReadyEl.style.display = rReady ? 'none' : 'inline';
           } else {
-            // Receiver: sync les settings du sender
+            // Receiver: sync color, minutes ET game depuis le sender
+            var changed = false;
             if (res.color && res.color !== selectedColor) {
               selectedColor = res.color;
-              var myColor = selectedColor === 'green' ? 'red' : 'green';
-              applyReceiverColor(myColor);
+              applyReceiverColor(selectedColor === 'green' ? 'red' : 'green');
+              changed = true;
             }
             if (res.minutes && res.minutes !== selectedMinutes) {
               selectedMinutes = res.minutes;
@@ -667,6 +674,23 @@
                 var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none';
               });
             }
+            // FIX 3: sync game mode
+            if (res.game && res.game !== selectedGame) {
+              selectedGame = res.game;
+              // Mettre à jour le header
+              var label = gameLabels[selectedGame] || selectedGame;
+              var gsHeaderTitle = document.getElementById('gsHeaderTitle');
+              var gsHeaderImg = document.getElementById('gsHeaderImg');
+              if (gsHeaderTitle) gsHeaderTitle.textContent = label;
+              if (gsHeaderImg) {
+                gsHeaderImg.innerHTML = '';
+                var img = document.createElement('img');
+                img.src = gameImages[selectedGame] || '';
+                img.alt = label;
+                img.onerror = function() { gsHeaderImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
+                gsHeaderImg.appendChild(img);
+              }
+            }
           }
         } else if (res.status === 'cancelled' || res.status === 'not_found') {
           clearInterval(roomSyncTimer); roomSyncTimer = null;
@@ -674,7 +698,7 @@
           showToast('The room was cancelled.', 'info');
         }
       } catch(e) {}
-    }, 2000);
+    }, pollInterval);
   }
 
   document.getElementById('gameSetupBackBtn').addEventListener('click', function () {
@@ -699,7 +723,7 @@
       if (matchupData) document.getElementById('gsHeaderSub').textContent = 'Room · ' + selectedMinutes + ' min';
       // Sender: sync color vers Firestore pour que le receiver voit le changement
       if (roomIsSender && matchupData && matchupData.inviteId) {
-        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes }).catch(function(){});
+        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
       }
     });
   });
@@ -720,7 +744,7 @@
       closeGsDropdown();
       // Sender: sync minutes vers Firestore
       if (roomIsSender && matchupData && matchupData.inviteId) {
-        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes }).catch(function(){});
+        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
       }
     });
   });
@@ -892,6 +916,7 @@
   var ginTimer = null;
   var currentGinInviteId = null;
   var ginPollingTimer = null;
+  var acceptedInviteIds = new Set(); // IDs déjà acceptés → ne plus afficher
 
   function startGameInvitePolling() {
     if (ginPollingTimer) return;
@@ -900,9 +925,10 @@
       try {
         var res = await callSessionApi('check-game-invite', { uid: currentUser.uid });
         if (res.invite) {
-          // Nouvelle invitation ou invitation déjà affichée (même ID → ignorer)
-          if (res.invite.inviteId !== currentGinInviteId) {
-            currentGinInviteId = null; // reset avant show pour éviter le guard
+          var iid = res.invite.inviteId;
+          // Ignorer: déjà affiché OU déjà accepté/refusé
+          if (iid !== currentGinInviteId && !acceptedInviteIds.has(iid)) {
+            currentGinInviteId = null;
             showGameInviteNotif(res.invite);
           }
         } else {
@@ -961,7 +987,8 @@
   ginAcceptBtn.addEventListener('click', async function() {
     if (!currentGinInviteId) return;
     var inviteId = currentGinInviteId;
-    hideGameInviteNotif(); // currentGinInviteId = null après ça
+    acceptedInviteIds.add(inviteId); // marquer immédiatement → polling ne la réaffichera plus
+    hideGameInviteNotif();
     try {
       var res = await callSessionApi('accept-game-invite', { uid: currentUser.uid, inviteId: inviteId });
       if (res.success) {
@@ -972,8 +999,8 @@
         openGameSetup(res.game, {
           senderUsername: res.senderUsername,
           receiverUsername: res.receiverUsername,
-          isSender: false,      // je suis le receiver
-          inviteId: inviteId    // pour le sync polling
+          isSender: false,
+          inviteId: inviteId
         });
       }
     } catch(err) {
@@ -984,6 +1011,7 @@
   ginDeclineBtn.addEventListener('click', async function() {
     if (!currentGinInviteId) return;
     var inviteId = currentGinInviteId;
+    acceptedInviteIds.add(inviteId); // marquer → ne plus réafficher
     hideGameInviteNotif();
     try { await callSessionApi('decline-game-invite', { uid: currentUser.uid, inviteId: inviteId }); }
     catch(e) {}
