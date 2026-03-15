@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login & Register</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: linear-gradient(135deg, #6e8efb, #a777e3); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+    .container { position: relative; width: 800px; max-width: 100%; min-height: 350px; background-color: #fff; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); overflow: hidden; transition: all 0.5s ease; }
+    .container.active { box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
+    .forms-container { position: absolute; width: 100%; height: 100%; display: flex; }
+    .login-form, .inscription-form { position: absolute; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 40px; transition: all 0.8s ease-in-out; }
+    .login-form { transform: translateX(0); opacity: 1; }
+    .container.active .login-form { transform: translateX(-100%); opacity: 0; }
+    .inscription-form { right: 0; transform: translateX(100%); opacity: 0; }
+    .container.active .inscription-form { transform: translateX(0); opacity: 1; }
+    .form-title { font-size: 25px; color: #333; margin: 0 0 12px 0; text-align: center; }
+    .form-title span { color: #a777e3; }
+    .input-group { position: relative; width: 100%; margin-bottom: 15px; }
+    .form-input { width: 100%; padding: 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; background: none; transition: all 0.3s ease; }
+    .form-label { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); background-color: #fff; padding: 0 5px; color: #999; font-size: 16px; pointer-events: none; transition: all 0.5s ease; }
+    .form-input:focus, .form-input:not(:placeholder-shown) { border-color: #6e8efb; }
+    .form-input:focus + .form-label, .form-input:not(:placeholder-shown) + .form-label { top: 0; font-size: 12px; color: #6e8efb; font-weight: bold; }
+    .password-wrapper { position: relative; width: 100%; }
+    .toggle-password { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #666; z-index: 2; }
+    .btn { width: 100%; padding: 14px; margin-top: 10px; background: linear-gradient(to right, #6e8efb, #a777e3); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+    .btn:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(110,142,251,0.4); }
+    .toggle-container { position: absolute; top: 0; left: 50%; width: 50%; height: 100%; overflow: hidden; transition: transform 0.8s ease-in-out; z-index: 10; }
+    .container.active .toggle-container { transform: translateX(-100%); }
+    .toggle { background: linear-gradient(to right, #6e8efb, #a777e3); height: 100%; color: white; position: relative; left: -100%; width: 200%; transform: translateX(0); transition: transform 0.8s ease-in-out; }
+    .container.active .toggle { transform: translateX(50%); }
+    .toggle-panel { position: absolute; width: 50%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 40px; text-align: center; top: 0; transition: transform 0.8s ease-in-out; }
+    .toggle-panel h2 { font-size: 32px; margin-bottom: 20px; }
+    .toggle-panel p { margin-bottom: 30px; line-height: 1.5; }
+    .toggle-left { transform: translateX(-200%); }
+    .container.active .toggle-left { transform: translateX(0); }
+    .toggle-right { right: 0; }
+    .container.active .toggle-right { transform: translateX(200%); }
+    .toggle-btn { padding: 12px 45px; background-color: transparent; border: 2px solid white; color: white; border-radius: 25px; cursor: pointer; font-size: 14px; font-weight: 600; transition: background 0.2s; }
+    .toggle-btn:hover { background: rgba(255,255,255,0.15); }
+    .footer-text { margin-top: 10px; color: #666; font-size: 14px; text-align: center; }
+    .footer-text a { color: #a777e3; text-decoration: none; font-weight: 600; }
+    .terms-wrapper { display: flex; align-items: center; gap: 8px; width: 100%; margin: 2px 0; font-size: 13px; color: #666; }
+    .terms-wrapper input { cursor: pointer; }
+    @media (max-width: 768px) { .toggle-container { display: none; } .login-form, .inscription-form { width: 100%; } }
+
+    .status-alert { position: fixed; top: 24px; width: 300px; max-width: calc(100% - 40px); padding: 14px 16px; border-radius: 14px; z-index: 10000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease, transform 0.3s ease; background: white; box-shadow: 0 8px 30px rgba(0,0,0,0.15); transform: translateY(-8px); }
+    .status-alert.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+    .status-alert.error { border-left: 4px solid #ef4444; }
+    .status-alert.success { border-left: 4px solid #10b981; }
+    .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .status-title { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+    .status-title.error { color: #ef4444; }
+    .status-title.success { color: #10b981; }
+    .status-body { font-size: 13px; color: #555; line-height: 1.4; }
+    .status-close { background: none; border: none; cursor: pointer; color: #aaa; font-size: 18px; line-height: 1; padding: 0; transition: color 0.2s; }
+    .status-close:hover { color: #333; }
+    @media (max-width: 600px) { .status-alert { left: 50% !important; right: auto !important; transform: translateX(-50%) translateY(-8px); } .status-alert.show { transform: translateX(-50%) translateY(0); } }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.7); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 9999; padding: 15px; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+    .modal-overlay.active { opacity: 1; pointer-events: auto; }
+    .modal-card { position: relative; background: #fff; padding: 32px; width: 100%; max-width: 420px; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.2); text-align: center; }
+    .modal-close { position: absolute; top: 16px; right: 18px; cursor: pointer; font-size: 20px; color: #94a3b8; transition: color 0.2s; font-weight: bold; border: none; background: none; line-height: 1; }
+    .modal-close:hover { color: #1e293b; }
+    .modal-card-title { margin: 0 0 6px; font-size: 20px; font-weight: 800; color: #0f172a; }
+    .modal-card-subtitle { font-size: 13px; color: #64748b; margin: 0 0 20px; line-height: 1.5; }
+    .modal-input-group { display: flex; gap: 10px; margin-bottom: 12px; }
+    .modal-input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: #f8fafc; font-size: 14px; font-weight: 500; transition: all 0.3s; outline: none; box-sizing: border-box; color: #1e293b; }
+    .modal-input:focus { border-color: #6e8efb; background: #fff; box-shadow: 0 0 0 4px rgba(110,142,251,0.1); }
+    .modal-resend-btn { padding: 12px 15px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: transparent; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .modal-resend-btn:hover:not(:disabled) { background: #f1f5f9; color: #a777e3; border-color: #a777e3; }
+    .modal-resend-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .modal-info-text { font-size: 13px; text-align: left; margin-top: 6px; opacity: 0; max-height: 0; overflow: hidden; transition: opacity 0.4s ease, max-height 0.4s ease; display: flex; align-items: center; gap: 6px; }
+    .modal-info-text.visible { opacity: 1; max-height: 60px; }
+    .modal-info-text.error { color: #ef4444; }
+    .modal-info-text.success { color: #10b981; }
+    .modal-action-btn { width: 100%; padding: 13px; border: none; border-radius: 10px; background: linear-gradient(to right, #6e8efb, #a777e3); color: white; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.3s; margin-top: 12px; }
+    .modal-action-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(110,142,251,0.4); }
+    .modal-action-btn:active { transform: scale(0.98); }
+    .modal-action-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn.loading, .modal-action-btn.loading, .modal-resend-btn.loading { position: relative; color: transparent !important; pointer-events: none; }
+    .btn.loading::after, .modal-action-btn.loading::after, .modal-resend-btn.loading::after { content: ""; position: absolute; width: 18px; height: 18px; top: 50%; left: 50%; margin: -9px 0 0 -9px; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; border-radius: 50%; animation: spinner 0.7s linear infinite; }
+    @keyframes spinner { to { transform: rotate(360deg); } }
+    .modal-step { display: none; }
+    .modal-step.active { display: block; }
+  </style>
+</head>
+<body>
+  <div class="container" id="container">
+    <div class="forms-container">
+      <form class="login-form" id="loginForm">
+        <h1 class="form-title">Login <span>Now</span></h1>
+        <div class="input-group">
+          <input type="text" id="loginEmail" class="form-input" placeholder=" " autocomplete="email" required>
+          <label class="form-label">Email</label>
+        </div>
+        <div class="input-group" style="margin-bottom:13px;">
+          <div class="password-wrapper">
+            <input type="password" id="loginPass" class="form-input" placeholder=" " autocomplete="current-password" required>
+            <label class="form-label">Password</label>
+            <i class="fa-solid fa-eye-slash toggle-password"></i>
+          </div>
+        </div>
+        <div style="width:100%;text-align:center;margin-bottom:2px;">
+          <a href="#" id="forgotPasswordLink" style="text-decoration:none;font-weight:bold;color:#a777e3;font-size:14px;">Forgot password?</a>
+        </div>
+        <button type="submit" class="btn" id="loginBtn">Sign In</button>
+        <div class="footer-text">Don't have an account? <a href="#" id="toRegMobile">Sign up</a></div>
+      </form>
+
+      <form class="inscription-form" id="inscriptionForm">
+        <h1 class="form-title">Create <span>Account</span></h1>
+        <div class="input-group">
+          <input type="text" id="regEmail" class="form-input" placeholder=" " autocomplete="email" required>
+          <label class="form-label">Email</label>
+        </div>
+        <div class="input-group" style="margin-bottom:11px;">
+          <div class="password-wrapper">
+            <input type="password" id="regPass" class="form-input" placeholder=" " autocomplete="new-password" required>
+            <label class="form-label">Password</label>
+            <i class="fa-solid fa-eye-slash toggle-password"></i>
+          </div>
+        </div>
+        <div class="terms-wrapper">
+          <input type="checkbox" id="termsCheck" required>
+          <label for="termsCheck">I accept the <a href="#" style="color:#a777e3;">Terms and Conditions</a></label>
+        </div>
+        <button type="submit" class="btn" id="registerBtn">Sign up</button>
+        <p class="footer-text">Already have an account? <a href="#" id="mobileLoginBtn">Login</a></p>
+      </form>
+    </div>
+
+    <div class="toggle-container">
+      <div class="toggle">
+        <div class="toggle-panel toggle-left">
+          <h2>Return to the Board</h2>
+          <p>Continue your journey in the world of Malagasy strategy and wisdom</p>
+          <button type="button" class="toggle-btn" id="loginToggleBtn">Sign In</button>
+        </div>
+        <div class="toggle-panel toggle-right">
+          <h2>Join the Game!</h2>
+          <p>Join fellow players and experience the traditional Malagasy strategy game</p>
+          <button type="button" class="toggle-btn" id="inscriptionToggleBtn">Sign Up</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusModal" class="status-alert">
+    <div class="status-header">
+      <div class="status-title" id="modalTitle"></div>
+      <button class="status-close" id="closeStatusModal" aria-label="Close">×</button>
+    </div>
+    <div class="status-body" id="modalMessage"></div>
+  </div>
+
+  <div id="otpModal" class="modal-overlay">
+    <div class="modal-card">
+      <button class="modal-close" id="closeOtpModal" aria-label="Close">×</button>
+      <h2 class="modal-card-title">Verify Your Email</h2>
+      <p class="modal-card-subtitle">Enter the 6-digit code sent to your email address.</p>
+      <div class="modal-input-group">
+        <input type="text" id="otpCode" maxlength="6" class="modal-input" inputmode="numeric" placeholder="6-digit code" autocomplete="one-time-code">
+        <button type="button" class="modal-resend-btn" id="resendOtpBtn">Resend</button>
+      </div>
+      <div class="modal-info-text" id="otpMessage"></div>
+      <button type="button" class="modal-action-btn" id="verifyOtpBtn">Verify</button>
+    </div>
+  </div>
+
+  <div id="forgotModal" class="modal-overlay">
+    <div class="modal-card">
+      <button class="modal-close" id="closeForgotModal" aria-label="Close">×</button>
+      <h2 class="modal-card-title" style="margin-bottom:6px;">Reset Your Password</h2>
+      <div id="forgotStep1" class="modal-step active">
+        <p class="modal-card-subtitle">Enter your email to receive a verification code.</p>
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <input type="email" id="forgotIdentifier" class="modal-input" placeholder="Your email address" autocomplete="email">
+          <button type="button" id="forgotSendBtn" class="modal-resend-btn">Send</button>
+        </div>
+        <div style="margin-bottom:12px;">
+          <input type="text" id="forgotOtp" class="modal-input" maxlength="6" inputmode="numeric" placeholder="6-digit code" autocomplete="one-time-code">
+        </div>
+        <div id="forgotError1" class="modal-info-text"></div>
+        <button type="button" id="forgotVerifyBtn" class="modal-action-btn">Verify Code</button>
+      </div>
+      <div id="forgotStep2" class="modal-step">
+        <p class="modal-card-subtitle">Enter your new password below.</p>
+        <input type="password" id="forgotNewPass" class="modal-input" placeholder="New password (min. 6 characters)" style="margin-bottom:10px;" autocomplete="new-password">
+        <input type="password" id="forgotConfirmPass" class="modal-input" placeholder="Confirm new password" style="margin-bottom:12px;" autocomplete="new-password">
+        <div id="forgotError2" class="modal-info-text"></div>
+        <button type="button" id="forgotResetBtn" class="modal-action-btn">Reset Password</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var API_URL = '/api/auth';
+      var container = document.getElementById('container');
+      var loginForm = document.getElementById('loginForm');
+      var inscriptionForm = document.getElementById('inscriptionForm');
+      var statusModal = document.getElementById('statusModal');
+      var modalTitle = document.getElementById('modalTitle');
+      var modalMessage = document.getElementById('modalMessage');
+      var otpModal = document.getElementById('otpModal');
+      var otpCodeInput = document.getElementById('otpCode');
+      var resendOtpBtn = document.getElementById('resendOtpBtn');
+      var verifyOtpBtn = document.getElementById('verifyOtpBtn');
+      var otpMessageDiv = document.getElementById('otpMessage');
+      var forgotModal = document.getElementById('forgotModal');
+      var forgotStep1 = document.getElementById('forgotStep1');
+      var forgotStep2 = document.getElementById('forgotStep2');
+      var forgotIdentifier = document.getElementById('forgotIdentifier');
+      var forgotSendBtn = document.getElementById('forgotSendBtn');
+      var forgotOtp = document.getElementById('forgotOtp');
+      var forgotVerifyBtn = document.getElementById('forgotVerifyBtn');
+      var forgotError1 = document.getElementById('forgotError1');
+      var forgotNewPass = document.getElementById('forgotNewPass');
+      var forgotConfirmPass = document.getElementById('forgotConfirmPass');
+      var forgotResetBtn = document.getElementById('forgotResetBtn');
+      var forgotError2 = document.getElementById('forgotError2');
+      var loginBtn = document.getElementById('loginBtn');
+      var registerBtn = document.getElementById('registerBtn');
+
+      var currentEmail = '';
+      var forgotEmail = '';
+      var otpInterval = null;
+      var forgotInterval = null;
+      var statusTimeout = null;
+
+      function showStatus(message, type, position) {
+        if (statusTimeout) clearTimeout(statusTimeout);
+        var icon = type === 'success' ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-solid fa-circle-exclamation"></i>';
+        modalTitle.innerHTML = icon + ' ' + (type === 'success' ? 'Success' : 'Error');
+        modalTitle.className = 'status-title ' + type;
+        modalMessage.textContent = message;
+        statusModal.className = 'status-alert show ' + type;
+        statusModal.style.right = position === 'left' ? 'auto' : '20px';
+        statusModal.style.left = position === 'left' ? '20px' : 'auto';
+        statusTimeout = setTimeout(function () { statusModal.classList.remove('show'); }, 5000);
+      }
+
+      document.getElementById('closeStatusModal').addEventListener('click', function () {
+        if (statusTimeout) clearTimeout(statusTimeout);
+        statusModal.classList.remove('show');
+      });
+
+      async function callApi(action, payload) {
+        var response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Object.assign({ action: action }, payload))
+        });
+        var data = await response.json();
+        if (!response.ok) {
+          var err = new Error(data.error || 'An unexpected error occurred. Please try again.');
+          if (data.emailNotVerified) err.emailNotVerified = true;
+          throw err;
+        }
+        return data;
+      }
+
+      function setLoading(btn, on) {
+        btn.classList.toggle('loading', on);
+        btn.disabled = on;
+      }
+
+      function startCountdown(btn, seconds, getRef, setRef) {
+        var cur = getRef();
+        if (cur) clearInterval(cur);
+        if (!btn.dataset.originalText) btn.dataset.originalText = btn.textContent;
+        var end = Date.now() + seconds * 1000;
+        function tick() {
+          var rem = Math.max(0, Math.floor((end - Date.now()) / 1000));
+          if (rem <= 0) {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.originalText;
+            clearInterval(getRef());
+            setRef(null);
+          } else {
+            btn.disabled = true;
+            var m = Math.floor(rem / 60), s = rem % 60;
+            btn.textContent = m > 0 ? (m + ':' + String(s).padStart(2, '0')) : (s + 's');
+          }
+        }
+        tick();
+        setRef(setInterval(tick, 1000));
+      }
+      function startOtpCountdown(btn, sec) { startCountdown(btn, sec, function () { return otpInterval; }, function (v) { otpInterval = v; }); }
+      function startForgotCountdown(btn, sec) { startCountdown(btn, sec, function () { return forgotInterval; }, function (v) { forgotInterval = v; }); }
+
+      function setModalMessage(el, msg, type) {
+        var icon = type === 'success' ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-solid fa-circle-exclamation"></i>';
+        el.innerHTML = icon + ' <span>' + msg + '</span>';
+        el.className = 'modal-info-text ' + type + ' visible';
+      }
+      function clearModalMessage(el) { el.innerHTML = ''; el.className = 'modal-info-text'; }
+
+      function resetOtpModal() {
+        otpCodeInput.value = '';
+        clearModalMessage(otpMessageDiv);
+        resendOtpBtn.disabled = false;
+        resendOtpBtn.textContent = 'Resend';
+        if (otpInterval) { clearInterval(otpInterval); otpInterval = null; }
+      }
+      function resetForgotModal() {
+        forgotIdentifier.value = ''; forgotOtp.value = ''; forgotNewPass.value = ''; forgotConfirmPass.value = '';
+        clearModalMessage(forgotError1); clearModalMessage(forgotError2);
+        forgotSendBtn.disabled = false; forgotSendBtn.textContent = 'Send';
+        delete forgotSendBtn.dataset.originalText;
+        forgotStep1.classList.add('active'); forgotStep2.classList.remove('active');
+        if (forgotInterval) { clearInterval(forgotInterval); forgotInterval = null; }
+      }
+
+      inscriptionForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var email = document.getElementById('regEmail').value.trim();
+        var password = document.getElementById('regPass').value;
+        if (!document.getElementById('termsCheck').checked) { showStatus('You must accept the Terms and Conditions to continue.', 'error', 'left'); return; }
+        if (password.length < 6) { showStatus('Password must be at least 6 characters.', 'error', 'left'); return; }
+        setLoading(registerBtn, true);
+        try {
+          var data = await callApi('register', { email: email, password: password });
+          if (data.success && data.emailVerificationRequired) {
+            currentEmail = email;
+            resetOtpModal();
+            setModalMessage(otpMessageDiv, 'Account created! A verification code has been sent to your email.', 'success');
+            otpModal.classList.add('active');
+            resendOtpBtn.dataset.originalText = 'Resend';
+            startOtpCountdown(resendOtpBtn, 300);
+          } else {
+            showStatus('Registration failed. Please try again.', 'error', 'left');
+          }
+        } catch (err) {
+          showStatus(err.message, 'error', 'left');
+        } finally {
+          setLoading(registerBtn, false);
+        }
+      });
+
+      loginForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var identifier = document.getElementById('loginEmail').value.trim();
+        var password = document.getElementById('loginPass').value;
+        if (!identifier || !password) { showStatus('Please fill in all fields.', 'error', 'right'); return; }
+        setLoading(loginBtn, true);
+        try {
+          var data = await callApi('login', { identifier: identifier, password: password });
+          if (data.success) {
+            showStatus('Login successful! Redirecting\u2026', 'success', 'right');
+            localStorage.setItem('user', JSON.stringify({ uid: data.user.uid, email: data.user.email, username: data.user.username || '' }));
+            setTimeout(function () { window.location.href = 'dashboard.html'; }, 1500);
+          } else {
+            showStatus('Login failed. Please try again.', 'error', 'right');
+          }
+        } catch (err) {
+          if (err.emailNotVerified) {
+            currentEmail = identifier;
+            resetOtpModal();
+            setModalMessage(otpMessageDiv, 'Your email is not verified. Please enter the code sent to your inbox.', 'error');
+            otpModal.classList.add('active');
+            startOtpCountdown(resendOtpBtn, 300);
+          } else {
+            showStatus(err.message, 'error', 'right');
+          }
+        } finally {
+          setLoading(loginBtn, false);
+        }
+      });
+
+      document.getElementById('closeOtpModal').addEventListener('click', function () { otpModal.classList.remove('active'); resetOtpModal(); });
+      otpModal.addEventListener('click', function (e) { if (e.target === otpModal) { otpModal.classList.remove('active'); resetOtpModal(); } });
+
+      verifyOtpBtn.addEventListener('click', async function () {
+        var otp = otpCodeInput.value.trim();
+        if (!otp || otp.length !== 6) { setModalMessage(otpMessageDiv, 'Please enter a valid 6-digit code.', 'error'); return; }
+        setLoading(verifyOtpBtn, true);
+        try {
+          var data = await callApi('verify-otp', { identifier: currentEmail, otp: otp });
+          if (data.success) {
+            setModalMessage(otpMessageDiv, 'Email verified successfully! Redirecting\u2026', 'success');
+            var ud = data.user ? { uid: data.user.uid, email: data.user.email, username: data.user.username || '' } : { email: currentEmail };
+            localStorage.setItem('user', JSON.stringify(ud));
+            setTimeout(function () { otpModal.classList.remove('active'); resetOtpModal(); window.location.href = 'dashboard.html'; }, 1500);
+          } else {
+            setModalMessage(otpMessageDiv, 'Verification failed. Please try again.', 'error');
+          }
+        } catch (err) {
+          setModalMessage(otpMessageDiv, err.message, 'error');
+        } finally {
+          setLoading(verifyOtpBtn, false);
+        }
+      });
+
+      resendOtpBtn.addEventListener('click', async function () {
+        if (resendOtpBtn.disabled) return;
+        setLoading(resendOtpBtn, true);
+        try {
+          var data = await callApi('resend-otp', { identifier: currentEmail });
+          if (data.success) { setModalMessage(otpMessageDiv, 'A new code has been sent to your email.', 'success'); startOtpCountdown(resendOtpBtn, 300); }
+          else { setModalMessage(otpMessageDiv, 'Failed to resend code. Please try again.', 'error'); }
+        } catch (err) { setModalMessage(otpMessageDiv, err.message, 'error'); }
+        finally { setLoading(resendOtpBtn, false); }
+      });
+
+      document.getElementById('forgotPasswordLink').addEventListener('click', function (e) { e.preventDefault(); resetForgotModal(); forgotModal.classList.add('active'); });
+      document.getElementById('closeForgotModal').addEventListener('click', function () { forgotModal.classList.remove('active'); resetForgotModal(); });
+      forgotModal.addEventListener('click', function (e) { if (e.target === forgotModal) { forgotModal.classList.remove('active'); resetForgotModal(); } });
+
+      forgotSendBtn.addEventListener('click', async function () {
+        var identifier = forgotIdentifier.value.trim();
+        if (!identifier) { setModalMessage(forgotError1, 'Please enter your email address.', 'error'); return; }
+        setLoading(forgotSendBtn, true);
+        try {
+          var data = await callApi('forgot-password-request', { identifier: identifier });
+          if (data.success) {
+            forgotEmail = identifier;
+            setModalMessage(forgotError1, 'Code sent! Check your email inbox.', 'success');
+            forgotSendBtn.dataset.originalText = 'Resend';
+            startForgotCountdown(forgotSendBtn, 300);
+          } else { setModalMessage(forgotError1, 'Failed to send code. Please try again.', 'error'); }
+        } catch (err) { setModalMessage(forgotError1, err.message, 'error'); }
+        finally { setLoading(forgotSendBtn, false); }
+      });
+
+      forgotVerifyBtn.addEventListener('click', async function () {
+        var otp = forgotOtp.value.trim();
+        if (!otp || otp.length !== 6) { setModalMessage(forgotError1, 'Please enter a valid 6-digit code.', 'error'); return; }
+        if (!forgotEmail) { setModalMessage(forgotError1, 'Please request a code first.', 'error'); return; }
+        setLoading(forgotVerifyBtn, true);
+        try {
+          var data = await callApi('forgot-password-verify', { identifier: forgotEmail, otp: otp });
+          if (data.success) { clearModalMessage(forgotError1); forgotStep1.classList.remove('active'); forgotStep2.classList.add('active'); }
+          else { setModalMessage(forgotError1, 'Invalid or expired code. Please try again.', 'error'); }
+        } catch (err) { setModalMessage(forgotError1, err.message, 'error'); }
+        finally { setLoading(forgotVerifyBtn, false); }
+      });
+
+      forgotResetBtn.addEventListener('click', async function () {
+        var newPass = forgotNewPass.value;
+        var confirmPass = forgotConfirmPass.value;
+        var otp = forgotOtp.value.trim();
+        if (!newPass || newPass.length < 6) { setModalMessage(forgotError2, 'Password must be at least 6 characters.', 'error'); return; }
+        if (newPass !== confirmPass) { setModalMessage(forgotError2, 'Passwords do not match.', 'error'); return; }
+        setLoading(forgotResetBtn, true);
+        try {
+          var data = await callApi('forgot-password-reset', { identifier: forgotEmail, otp: otp, newPassword: newPass });
+          if (data.success) {
+            setModalMessage(forgotError2, 'Password reset successfully! You can now sign in.', 'success');
+            setTimeout(function () { forgotModal.classList.remove('active'); resetForgotModal(); }, 2000);
+          } else { setModalMessage(forgotError2, 'Reset failed. Please try again.', 'error'); }
+        } catch (err) { setModalMessage(forgotError2, err.message, 'error'); }
+        finally { setLoading(forgotResetBtn, false); }
+      });
+
+      document.getElementById('inscriptionToggleBtn').addEventListener('click', function () { container.classList.add('active'); });
+      document.getElementById('loginToggleBtn').addEventListener('click', function () { container.classList.remove('active'); });
+      document.getElementById('toRegMobile').addEventListener('click', function (e) { e.preventDefault(); container.classList.add('active'); });
+      document.getElementById('mobileLoginBtn').addEventListener('click', function (e) { e.preventDefault(); container.classList.remove('active'); });
+
+      document.querySelectorAll('.toggle-password').forEach(function (icon) {
+        icon.addEventListener('click', function () {
+          var input = this.closest('.password-wrapper').querySelector('input');
+          if (input) { input.type = input.type === 'password' ? 'text' : 'password'; this.classList.toggle('fa-eye-slash'); this.classList.toggle('fa-eye'); input.focus(); }
+        });
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          if (otpModal.classList.contains('active')) { otpModal.classList.remove('active'); resetOtpModal(); }
+          if (forgotModal.classList.contains('active')) { forgotModal.classList.remove('active'); resetForgotModal(); }
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
