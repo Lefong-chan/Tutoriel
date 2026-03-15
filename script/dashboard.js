@@ -631,10 +631,12 @@
       gsMatchup.classList.remove('visible');
     }
 
-    // Reset color/minutes SEULEMENT si ce n'est pas un retour room sender
-    // (quand receiver quitte ou est offline, le sender garde ses préférences)
-    var keepSettings = (gameOrigin === 'room' && !matchup && roomIsSender && (selectedColor !== 'green' || selectedMinutes !== 5));
-    if (!keepSettings) {
+    // Reset color/minutes SEULEMENT si pas en mode room
+    // - si matchup présent (sender vient d'avoir un accepté) : garder selectedColor/selectedMinutes déjà set
+    // - si gameOrigin=room sans matchup (sender retour après quitter receiver) : garder aussi
+    // - sinon (create ou mode normal) : reset à green/5min
+    var isRoomMode = (gameOrigin === 'room');
+    if (!isRoomMode) {
       selectedColor = 'green'; selectedMinutes = 5;
     }
     document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === selectedColor); });
@@ -727,11 +729,11 @@
 
   var receiverIsReady = true; // état local du receiver
 
+  var _handledRoomEvents = new Set(); // évite double traitement d'un même inviteId+event
+
   function startRoomSyncPolling(inviteId, isSender) {
     if (!inviteId) return;
     if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-    // Polling toutes les 2s pour synchroniser les settings entre sender et receiver
-    // Sender: 2s (ready state), Receiver: 800ms (color/game sync rapide)
     var pollInterval = isSender ? 800 : 400;
     roomSyncTimer = setInterval(async function() {
       if (!gameSetupModal.classList.contains('active')) {
@@ -752,11 +754,12 @@
                   : (matchupData && matchupData.senderUsername ? matchupData.senderUsername : 'Host');
                 if (isSender) {
                   // Sender: receiver offline → reset room, sender peut réinviter
-                  if (window._roomResetInProgress) return; window._roomResetInProgress = true;
+                  var offEvtKey = inviteId + ':offline';
+                  if (_handledRoomEvents.has(offEvtKey)) return;
+                  _handledRoomEvents.add(offEvtKey);
                   matchupData = null;
                   openGameSetup(selectedGame, null);
                   showToast(offlineName + ' went offline.', 'info', '⚠ Offline');
-                  setTimeout(function(){ window._roomResetInProgress = false; }, 500);
                 } else {
                   // Receiver: sender offline → fermer tout
                   closeModal(gameSetupModal);
@@ -819,14 +822,15 @@
           }
         } else if (res.status === 'declined' && isSender) {
           // Receiver a quitté → sender reste dans la room
+          var evtKey = inviteId + ':declined';
+          if (_handledRoomEvents.has(evtKey)) return;
+          _handledRoomEvents.add(evtKey);
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
-          if (window._roomResetInProgress) return; window._roomResetInProgress = true;
           var receiverName = (matchupData && matchupData.receiverUsername) ? matchupData.receiverUsername : 'Opponent';
           matchupData = null;
           openGameSetup(selectedGame, null);
           showToast(receiverName + ' has left the room.', 'info', '⚠ Player left');
-          setTimeout(function(){ window._roomResetInProgress = false; }, 500);
         } else if (res.status === 'cancelled' || res.status === 'not_found') {
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
@@ -982,6 +986,7 @@
     Object.keys(inviteTimers).forEach(function(uid) { clearInterval(inviteTimers[uid]); });
     Object.keys(inviteStatusTimers).forEach(function(id) { clearInterval(inviteStatusTimers[id]); });
     inviteTimers = {}; inviteStatusTimers = {}; activeInviteIds = {};
+    _handledRoomEvents.clear();
     openModal(inviteFriendsModal);
     loadOnlineFriendsForInvite();
   }
