@@ -370,32 +370,34 @@ async function handleCheckGameInvite(body, res) {
   if (!uid) return res.status(400).json({ error: "UID is required." });
 
   const now = Date.now();
+  // Pas de orderBy pour éviter l'exigence d'un index composite Firestore
   const snap = await gameInvitesCollection
     .where("toUid", "==", uid)
     .where("status", "==", "pending")
-    .orderBy("createdAt", "desc")
-    .limit(5)
+    .limit(10)
     .get();
 
   if (snap.empty) return res.status(200).json({ success: true, invite: null });
 
-  // Trouver la première invitation non expirée
+  // Trier manuellement par createdAt desc et séparer expired/valid
+  const docs = snap.docs.map(doc => ({ ref: doc.ref, data: { ...doc.data(), inviteId: doc.id } }));
+  docs.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
+
   let validInvite = null;
   const expiredIds = [];
-  for (const doc of snap.docs) {
-    const data = doc.data();
+  for (const { ref, data } of docs) {
     if (data.expiresAt < now) {
-      expiredIds.push(doc.ref);
+      expiredIds.push(ref);
     } else {
-      if (!validInvite) validInvite = { ...data, inviteId: doc.id };
+      if (!validInvite) validInvite = data;
     }
   }
 
-  // Expirer les anciennes
+  // Expirer les anciennes en arrière-plan
   if (expiredIds.length > 0) {
     const batch = db.batch();
     expiredIds.forEach(ref => batch.update(ref, { status: "expired" }));
-    await batch.commit();
+    batch.commit().catch(() => {});
   }
 
   return res.status(200).json({ success: true, invite: validInvite });
