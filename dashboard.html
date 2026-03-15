@@ -45,7 +45,7 @@
     .game-type-arrow { color: #c4b5fd; font-size: 0.85em; }
 
     /* ── Game Setup Modal ── */
-    .game-setup-modal .modal-content { max-width: 440px; padding: 0; overflow: hidden; }
+    .game-setup-modal .modal-content { max-width: 440px; padding: 0; overflow: hidden; width: 92%; }
     .game-setup-header { background: linear-gradient(135deg, #5b21b6, #7c3aed, #a78bfa); padding: 15px 18px 14px; color: white; display: flex; align-items: center; gap: 11px; }
     .game-setup-header-img { width: 40px; height: 40px; border-radius: 9px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
     .game-setup-header-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
@@ -57,6 +57,35 @@
     .game-setup-header .gsh-back:hover { background: rgba(255,255,255,0.34); }
     .game-setup-header .gsh-spacer { width: 30px; flex-shrink: 0; }
     .game-setup-body { padding: 18px 20px 20px; }
+
+    /* ── Room roles: receiver disabled, ready/waiting badges ── */
+    .gs-receiver-mode .color-pick-btn { pointer-events: none; cursor: default; }
+    .gs-receiver-mode .color-pick-btn:not(.selected) { opacity: 0.45; }
+    .gs-receiver-mode .gs-time-trigger { pointer-events: none; opacity: 0.6; cursor: default; }
+    .gs-ready-badge {
+      display: none; align-items: center; gap: 6px;
+      background: #d1fae5; color: #065f46; border: 1.5px solid #6ee7b7;
+      border-radius: 8px; padding: 7px 12px; font-size: 0.8em; font-weight: 700;
+      margin-bottom: 14px;
+    }
+    .gs-ready-badge.visible { display: flex; }
+    .gs-waiting-badge {
+      display: none; align-items: center; gap: 6px;
+      background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d;
+      border-radius: 8px; padding: 7px 12px; font-size: 0.8em; font-weight: 700;
+      margin-bottom: 14px;
+    }
+    .gs-waiting-badge.visible { display: flex; }
+    .gs-receiver-color-info {
+      display: none; align-items: center; gap: 8px;
+      background: #f5f0ff; border: 1.5px solid #ddd6fe;
+      border-radius: 10px; padding: 8px 12px; margin-bottom: 14px;
+      font-size: 0.82em; font-weight: 600; color: #5b21b6;
+    }
+    .gs-receiver-color-info.visible { display: flex; }
+    .gs-receiver-color-info .rci-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+    .gs-receiver-color-info .rci-dot.green { background: #10b981; }
+    .gs-receiver-color-info .rci-dot.red { background: #ef4444; }
 
     /* ── Matchup strip (miseho rehefa misy amis nanao accepté) ── */
     .gs-matchup {
@@ -499,7 +528,15 @@
           </div>
         </div>
 
-        <div class="gs-section-label">Choose Your Piece</div>
+        <!-- Ready badge (receiver) / Waiting badge (sender) -->
+        <div class="gs-ready-badge" id="gsReadyBadge"><i class="fas fa-check-circle"></i> Ready to play!</div>
+        <div class="gs-waiting-badge" id="gsWaitingBadge"><i class="fas fa-clock"></i> Waiting for opponent to confirm…</div>
+        <!-- Receiver color info -->
+        <div class="gs-receiver-color-info" id="gsReceiverColorInfo">
+          <div class="rci-dot green" id="gsRciDot"></div>
+          <span id="gsRciText">Your piece: Green</span>
+        </div>
+        <div class="gs-section-label" id="gsSectionLabelPiece">Choose Your Piece</div>
         <div class="color-pick-row">
           <button class="color-pick-btn selected" data-color="green" id="cpGreen">
             <img src="img/button-green.png" alt="Green" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
