@@ -631,12 +631,17 @@
       gsMatchup.classList.remove('visible');
     }
 
-    selectedColor = 'green'; selectedMinutes = 5;
-    document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === 'green'); });
-    document.getElementById('gsTimeDisplay').textContent = '5 min';
+    // Reset color/minutes SEULEMENT si ce n'est pas un retour room sender
+    // (quand receiver quitte ou est offline, le sender garde ses préférences)
+    var keepSettings = (gameOrigin === 'room' && !matchup && roomIsSender && (selectedColor !== 'green' || selectedMinutes !== 5));
+    if (!keepSettings) {
+      selectedColor = 'green'; selectedMinutes = 5;
+    }
+    document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === selectedColor); });
+    document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
     document.querySelectorAll('.gs-time-option').forEach(function (o) {
-      var is5 = parseInt(o.dataset.minutes) === 5; o.classList.toggle('selected', is5);
-      var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = is5 ? '' : 'none';
+      var sel = parseInt(o.dataset.minutes) === selectedMinutes; o.classList.toggle('selected', sel);
+      var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none';
     });
     closeGsDropdown();
 
@@ -747,9 +752,11 @@
                   : (matchupData && matchupData.senderUsername ? matchupData.senderUsername : 'Host');
                 if (isSender) {
                   // Sender: receiver offline → reset room, sender peut réinviter
+                  if (window._roomResetInProgress) return; window._roomResetInProgress = true;
                   matchupData = null;
                   openGameSetup(selectedGame, null);
                   showToast(offlineName + ' went offline.', 'info', '⚠ Offline');
+                  setTimeout(function(){ window._roomResetInProgress = false; }, 500);
                 } else {
                   // Receiver: sender offline → fermer tout
                   closeModal(gameSetupModal);
@@ -811,14 +818,15 @@
             }
           }
         } else if (res.status === 'declined' && isSender) {
-          // Receiver a quitté → sender reste dans la room, reset matchupData
+          // Receiver a quitté → sender reste dans la room
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
+          if (window._roomResetInProgress) return; window._roomResetInProgress = true;
           var receiverName = (matchupData && matchupData.receiverUsername) ? matchupData.receiverUsername : 'Opponent';
           matchupData = null;
-          // Remettre la room en mode "invite friends" (sans matchup)
           openGameSetup(selectedGame, null);
           showToast(receiverName + ' has left the room.', 'info', '⚠ Player left');
+          setTimeout(function(){ window._roomResetInProgress = false; }, 500);
         } else if (res.status === 'cancelled' || res.status === 'not_found') {
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
