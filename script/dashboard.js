@@ -621,12 +621,25 @@
     document.getElementById('gsHeaderTitle').textContent = label;
     document.getElementById('gsHeaderSub').textContent = matchup ? 'Room · ' + selectedMinutes + ' min' : 'Configure your game settings';
 
-    // Matchup strip
+    // Matchup strip — toujours visible en mode room
     var gsMatchup = document.getElementById('gsMatchup');
-    if (matchup) {
-      document.getElementById('gsMatchupSender').textContent = matchup.senderUsername;
-      document.getElementById('gsMatchupReceiver').textContent = matchup.receiverUsername;
+    var gsMatchupSender = document.getElementById('gsMatchupSender');
+    var gsMatchupReceiver = document.getElementById('gsMatchupReceiver');
+    if (gameOrigin === 'room') {
       gsMatchup.classList.add('visible');
+      if (matchup) {
+        // Olona roa ao — noms réels
+        gsMatchupSender.textContent = matchup.senderUsername;
+        gsMatchupSender.classList.remove('pending');
+        gsMatchupReceiver.textContent = matchup.receiverUsername;
+        gsMatchupReceiver.classList.remove('pending');
+      } else {
+        // Mbola tsy misy adversaire
+        gsMatchupSender.textContent = (currentUser && currentUser.username) ? currentUser.username : '—';
+        gsMatchupSender.classList.remove('pending');
+        gsMatchupReceiver.textContent = 'Invite a player';
+        gsMatchupReceiver.classList.add('pending');
+      }
     } else {
       gsMatchup.classList.remove('visible');
     }
@@ -716,7 +729,6 @@
     if (quitBtn) quitBtn.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
     // Layout flex quand room (na misy matchup na tsia)
     var bodyRow = document.getElementById('gsBodyRow');
-    var gsMatchupInvite = document.getElementById('gsMatchupInvite');
     var gsRoomFriends = document.getElementById('gsRoomFriends');
     var gsChatWrap = document.getElementById('gsChatWrap');
     var isRoom = (gameOrigin === 'room');
@@ -725,17 +737,16 @@
 
     if (isRoom && !matchup) {
       // Avant matchup: montrer amis enligne + invite strip
-      if (gsMatchupInvite) gsMatchupInvite.classList.add('visible');
       if (gsRoomFriends) { gsRoomFriends.style.display = 'flex'; loadRoomFriends(); }
       if (gsChatWrap) gsChatWrap.style.display = 'none';
     } else if (isRoom && matchup) {
       // Après matchup: montrer chat + cacher invite
-      if (gsMatchupInvite) gsMatchupInvite.classList.remove('visible');
+  
       if (gsRoomFriends) gsRoomFriends.style.display = 'none';
       if (gsChatWrap) gsChatWrap.style.display = 'flex';
     } else {
       // Mode normal: tout cacher
-      if (gsMatchupInvite) gsMatchupInvite.classList.remove('visible');
+  
       if (gsRoomFriends) gsRoomFriends.style.display = 'none';
       if (gsChatWrap) gsChatWrap.style.display = 'none';
     }
@@ -963,7 +974,7 @@
           if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
           var receiverName = (matchupData && matchupData.receiverUsername) ? matchupData.receiverUsername : 'Opponent';
           matchupData = null;
-          openGameSetup(selectedGame, null);
+          openGameSetup(selectedGame, null); // → matchupReceiver sera mis à "Invite a player"
           showToast(receiverName + ' has left the room.', 'info', '⚠ Player left');
         } else if (res.status === 'cancelled' || res.status === 'not_found') {
           clearInterval(roomSyncTimer); roomSyncTimer = null;
