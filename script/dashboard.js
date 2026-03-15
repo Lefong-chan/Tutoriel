@@ -340,6 +340,10 @@
     var left = rect.right - mw; if (left < 6) left = 6;
     var top = rect.bottom + 5; if (top + 180 > window.innerHeight) top = rect.top - 180;
     friendCtxMenu.style.left = left + 'px'; friendCtxMenu.style.top = top + 'px'; friendCtxMenu.style.minWidth = mw + 'px'; friendCtxMenu.classList.add('open');
+    // Cacher "Invite to Play" si l'ami est offline
+    var isOnline = triggerBtn.dataset.online === '1';
+    var playBtn = document.getElementById('ctxPlayBtn');
+    if (playBtn) playBtn.style.display = isOnline ? '' : 'none';
   }
   function closeCtxMenu() { friendCtxMenu.classList.remove('open'); activeCtxTrigger = null; }
   document.addEventListener('click', function (e) { if (!friendCtxMenu.classList.contains('open')) return; if (friendCtxMenu.contains(e.target)) return; if (activeCtxTrigger && activeCtxTrigger.contains(e.target)) return; closeCtxMenu(); });
@@ -381,7 +385,7 @@
         data.friends.forEach(function (fr) {
           var div = document.createElement('div'); div.className = 'player-item'; div.dataset.uid = fr.uid;
           var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
-          div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst ? '<span class="last-seen" data-ls>' + escapeHtml(lst) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '"><i class="fas fa-ellipsis-v"></i></button></div>';
+          div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst ? '<span class="last-seen" data-ls>' + escapeHtml(lst) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '" data-online="' + (fr.online ? '1' : '0') + '"><i class="fas fa-ellipsis-v"></i></button></div>';
           div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
           container.appendChild(div);
         });
@@ -403,6 +407,9 @@
             // Update status dot
             var sd = existing.querySelector('[data-sd]');
             if (sd) { sd.className = 'status-dot ' + (fr.online ? 'online' : 'offline'); sd.setAttribute('data-sd',''); }
+            // Mettre à jour data-online sur le ctx btn
+            var ctxB = existing.querySelector('.friend-ctx-btn');
+            if (ctxB) ctxB.dataset.online = fr.online ? '1' : '0';
             // Update lastSeen
             var ls = existing.querySelector('[data-ls]');
             var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
@@ -411,7 +418,7 @@
             // Nouvel ami → ajouter
             var div = document.createElement('div'); div.className = 'player-item'; div.dataset.uid = fr.uid;
             var lst2 = fr.online ? '' : formatLastSeen(fr.lastSeen);
-            div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst2 ? '<span class="last-seen" data-ls>' + escapeHtml(lst2) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '"><i class="fas fa-ellipsis-v"></i></button></div>';
+            div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst2 ? '<span class="last-seen" data-ls>' + escapeHtml(lst2) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '" data-online="' + (fr.online ? '1' : '0') + '"><i class="fas fa-ellipsis-v"></i></button></div>';
             div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
             container.appendChild(div);
           }
@@ -735,13 +742,21 @@
               window._roomOfflineTimer = setTimeout(function() {
                 window._roomOfflineTimer = null;
                 if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-                closeModal(gameSetupModal);
-                closeModal(gameSelectModal);
                 var offlineName = isSender
                   ? (matchupData && matchupData.receiverUsername ? matchupData.receiverUsername : 'Opponent')
                   : (matchupData && matchupData.senderUsername ? matchupData.senderUsername : 'Host');
-                matchupData = null;
-                showToast(offlineName + ' went offline. Room closed.', 'info', '⚠ Offline');
+                if (isSender) {
+                  // Sender: receiver offline → reset room, sender peut réinviter
+                  matchupData = null;
+                  openGameSetup(selectedGame, null);
+                  showToast(offlineName + ' went offline.', 'info', '⚠ Offline');
+                } else {
+                  // Receiver: sender offline → fermer tout
+                  closeModal(gameSetupModal);
+                  closeModal(gameSelectModal);
+                  matchupData = null;
+                  showToast(offlineName + ' went offline. Room closed.', 'info', '⚠ Offline');
+                }
               }, 15000);
             }
           } else {
@@ -795,14 +810,24 @@
               }
             }
           }
+        } else if (res.status === 'declined' && isSender) {
+          // Receiver a quitté → sender reste dans la room, reset matchupData
+          clearInterval(roomSyncTimer); roomSyncTimer = null;
+          if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
+          var receiverName = (matchupData && matchupData.receiverUsername) ? matchupData.receiverUsername : 'Opponent';
+          matchupData = null;
+          // Remettre la room en mode "invite friends" (sans matchup)
+          openGameSetup(selectedGame, null);
+          showToast(receiverName + ' has left the room.', 'info', '⚠ Player left');
         } else if (res.status === 'cancelled' || res.status === 'not_found') {
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
-          closeModal(gameSetupModal);
-          closeModal(gameSelectModal);
-          var senderName = (matchupData && matchupData.senderUsername) ? matchupData.senderUsername : 'The host';
           if (!isSender) {
-            showToast(senderName + ' has left the room.', 'info', '⚠ Room closed');
+            // Receiver: sender a annulé → fermer tout
+            closeModal(gameSetupModal);
+            closeModal(gameSelectModal);
+            var senderName2 = (matchupData && matchupData.senderUsername) ? matchupData.senderUsername : 'The host';
+            showToast(senderName2 + ' has left the room.', 'info', '⚠ Room closed');
           }
           matchupData = null;
         }
