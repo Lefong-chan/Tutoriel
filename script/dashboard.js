@@ -735,10 +735,18 @@
       if (!currentUser) return;
       try {
         var res = await callSessionApi('check-game-invite', { uid: currentUser.uid });
-        if (res.invite && res.invite.inviteId !== currentGinInviteId) {
-          // Nouvelle invitation
-          currentGinInviteId = res.invite.inviteId;
-          showGameInviteNotif(res.invite);
+        if (res.invite) {
+          // Nouvelle invitation ou invitation déjà affichée (même ID → ignorer)
+          if (res.invite.inviteId !== currentGinInviteId) {
+            currentGinInviteId = null; // reset avant show pour éviter le guard
+            showGameInviteNotif(res.invite);
+          }
+        } else {
+          // Pas d'invitation pending → si une notif est affichée pour une invite qui n'existe plus, cacher
+          // (cas: l'expéditeur a annulé pendant que le destinataire n'a pas encore répondu)
+          if (currentGinInviteId && ginNotif.classList.contains('gin-visible')) {
+            hideGameInviteNotif();
+          }
         }
       } catch(e) {}
     }, 3000);
@@ -749,17 +757,27 @@
     currentGinInviteId = invite.inviteId;
     ginUsernameEl.textContent = invite.fromUsername;
     ginCountdownEl.textContent = '10';
+
+    // Reset complet de l'état visuel
+    ginNotif.classList.remove('gin-expanded', 'gin-visible');
     ginProgressBar.style.transition = 'none';
     ginProgressBar.style.transform = 'scaleX(1)';
-    ginNotif.classList.remove('gin-expanded');
+
+    // Force reflow pour que le reset soit bien appliqué avant l'animation
+    void ginNotif.offsetHeight;
+
+    // Afficher la notification
     ginNotif.classList.add('gin-visible');
+
+    // Après 300ms, élargir et lancer la progress bar
     setTimeout(function() {
       ginNotif.classList.add('gin-expanded');
-      requestAnimationFrame(function() {
-        ginProgressBar.style.transition = 'transform 10s linear';
-        ginProgressBar.style.transform = 'scaleX(0)';
-      });
+      // Force reflow avant la transition de la progress bar
+      void ginProgressBar.offsetHeight;
+      ginProgressBar.style.transition = 'transform 10s linear';
+      ginProgressBar.style.transform = 'scaleX(0)';
     }, 300);
+
     var count = 10;
     ginTimer = setInterval(function() {
       count--;
@@ -771,13 +789,15 @@
   function hideGameInviteNotif() {
     if (ginTimer) { clearInterval(ginTimer); ginTimer = null; }
     ginNotif.classList.remove('gin-visible', 'gin-expanded');
+    ginProgressBar.style.transition = 'none';
+    ginProgressBar.style.transform = 'scaleX(1)';
     currentGinInviteId = null;
   }
 
   ginAcceptBtn.addEventListener('click', async function() {
     if (!currentGinInviteId) return;
     var inviteId = currentGinInviteId;
-    hideGameInviteNotif();
+    hideGameInviteNotif(); // currentGinInviteId = null après ça
     try {
       var res = await callSessionApi('accept-game-invite', { uid: currentUser.uid, inviteId: inviteId });
       if (res.success) {
