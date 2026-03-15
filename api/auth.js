@@ -92,6 +92,7 @@ async function handleRegister(body, res) {
     otpAttempts: 0,
     createdAt: Date.now(),
     username: "",
+    usernameLower: "",
     friends: [],
     friendRequests: [],
     sentRequests: []
