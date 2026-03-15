@@ -650,7 +650,7 @@
               launchBtn.disabled = !rReady;
               launchBtn.style.background = rReady ? '' : 'linear-gradient(to right, #94a3b8, #64748b)';
             }
-            if (notReadyEl) notReadyEl.style.display = rReady ? 'none' : 'flex';
+            if (notReadyEl) notReadyEl.style.display = rReady ? 'none' : 'inline';
           } else {
             // Receiver: sync les settings du sender
             if (res.color && res.color !== selectedColor) {
