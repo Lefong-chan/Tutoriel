@@ -496,7 +496,16 @@
   gameSelectModal.addEventListener('click', function (e) { if (e.target === gameSelectModal) closeModal(gameSelectModal); });
 
   document.querySelectorAll('.game-type-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () { selectedGame = btn.dataset.game; closeModal(gameSelectModal); openGameSetup(selectedGame, null); });
+    btn.addEventListener('click', function () {
+      selectedGame = btn.dataset.game;
+      closeModal(gameSelectModal);
+      // Si on revient depuis room avec un matchup existant (receiver déjà présent), le conserver
+      if (gameOrigin === 'room' && matchupData) {
+        openGameSetup(selectedGame, matchupData);
+      } else {
+        openGameSetup(selectedGame, null);
+      }
+    });
   });
 
   /**
@@ -566,7 +575,10 @@
         gsBody.classList.remove('gs-receiver-mode');
         if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Choose Your Piece';
         launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
+        launchBtn.style.background = '';
         launchBtn.disabled = false;
+        var notReadyEl = document.getElementById('gsOpponentNotReady');
+        if (notReadyEl) notReadyEl.style.display = 'none';
         startRoomSyncPolling(matchup.inviteId, true);
       } else {
         // Receiver
@@ -589,6 +601,10 @@
       launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
       launchBtn.disabled = false;
     }
+
+    // Cacher le bouton back pour le receiver
+    var backBtn = document.getElementById('gameSetupBackBtn');
+    if (backBtn) backBtn.classList.toggle('hidden', gameOrigin === 'room' && !!matchup && !roomIsSender);
 
     openModal(gameSetupModal);
   }
@@ -628,19 +644,13 @@
             var rReady = (res.receiverReady !== false);
             receiverReady = rReady;
             var launchBtn = document.getElementById('gsLaunchBtn');
+            var notReadyEl = document.getElementById('gsOpponentNotReady');
             if (launchBtn) {
-              if (rReady) {
-                launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
-                launchBtn.disabled = false;
-                launchBtn.title = '';
-                launchBtn.style.background = '';
-              } else {
-                launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game — Opponent not ready';
-                launchBtn.disabled = true;
-                launchBtn.title = 'Waiting for opponent to be ready';
-                launchBtn.style.background = 'linear-gradient(to right, #94a3b8, #64748b)';
-              }
+              launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
+              launchBtn.disabled = !rReady;
+              launchBtn.style.background = rReady ? '' : 'linear-gradient(to right, #94a3b8, #64748b)';
             }
+            if (notReadyEl) notReadyEl.style.display = rReady ? 'none' : 'flex';
           } else {
             // Receiver: sync les settings du sender
             if (res.color && res.color !== selectedColor) {
@@ -668,10 +678,15 @@
   }
 
   document.getElementById('gameSetupBackBtn').addEventListener('click', function () {
-    closeGsDropdown(); closeModal(gameSetupModal);
-    // Si matchup (via invitation), retour au menu principal seulement
-    if (!matchupData) openGameSelectModal(gameOrigin);
-    matchupData = null;
+    if (!roomIsSender) return; // receiver n'a pas de bouton retour
+    closeGsDropdown();
+    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+    closeModal(gameSetupModal);
+    gameOrigin = 'room';
+    // matchupData conservé si receiver déjà présent, pour que game-type-btn le réutilise
+    // matchupData = null seulement si pas encore de matchup
+    if (!matchupData) openGameSelectModal('room');
+    else openGameSelectModal('room');
   });
   gameSetupModal.addEventListener('click', function (e) { if (e.target === gameSetupModal) closeGsDropdown(); });
 
