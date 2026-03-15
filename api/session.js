@@ -532,7 +532,7 @@ async function handleUpdateRoomReady(body, res) {
  * Sender met à jour color/minutes dans Firestore pour que le receiver les voie
  */
 async function handleUpdateRoomSettings(body, res) {
-  const { uid, inviteId, color, minutes } = body;
+  const { uid, inviteId, color, minutes, game } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
   const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
@@ -545,6 +545,7 @@ async function handleUpdateRoomSettings(body, res) {
   const update = {};
   if (color) update.color = color;
   if (minutes) update.minutes = parseInt(minutes);
+  if (game) update.game = game;
   await inviteDoc.ref.update(update);
   return res.status(200).json({ success: true });
 }
