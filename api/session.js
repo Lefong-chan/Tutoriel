@@ -14,6 +14,8 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const usersCollection = db.collection("users");
 
+const FRIEND_LIMIT = 100;
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
   res.setHeader("Access-Control-Allow-Origin", allowedOrigin || "*");
@@ -109,6 +111,7 @@ async function handleSearchUsers(body, res) {
   const friends = currentData.friends || [];
   const sentRequests = currentData.sentRequests || [];
   const receivedRequests = currentData.friendRequests || [];
+  const currentTotal = friends.length + sentRequests.length;
 
   const seenIds = new Set();
   const users = [];
@@ -124,7 +127,12 @@ async function handleSearchUsers(body, res) {
     if (friends.includes(doc.id)) relation = "friend";
     else if (sentRequests.includes(doc.id)) relation = "pending_sent";
     else if (receivedRequests.includes(doc.id)) relation = "pending_received";
-    users.push({ uid: doc.id, username: data.username, relation });
+
+    const targetFriends = data.friends || [];
+    const targetTotal = targetFriends.length + (data.friendRequests || []).length;
+    const targetFull = targetTotal >= FRIEND_LIMIT;
+
+    users.push({ uid: doc.id, username: data.username, relation, targetFull });
   }
 
   const searches = [
@@ -136,19 +144,13 @@ async function handleSearchUsers(body, res) {
   ];
 
   const isUid = /^\d{9}$/.test(q);
-  if (isUid) {
-    searches.push(usersCollection.doc(q).get());
-  }
+  if (isUid) searches.push(usersCollection.doc(q).get());
 
   const results = await Promise.all(searches);
-
   results[0].docs.forEach(addDoc);
+  if (isUid && results[1]) addDoc(results[1]);
 
-  if (isUid && results[1]) {
-    addDoc(results[1]);
-  }
-
-  return res.status(200).json({ success: true, users });
+  return res.status(200).json({ success: true, users, currentTotal, friendLimit: FRIEND_LIMIT });
 }
 
 async function handleSendFriendRequest(body, res) {
@@ -166,8 +168,24 @@ async function handleSendFriendRequest(body, res) {
   const senderData = senderDoc.data();
   const receiverData = receiverDoc.data();
 
-  if ((senderData.friends || []).includes(toUid)) return res.status(400).json({ error: "You are already friends with this user." });
-  if ((senderData.sentRequests || []).includes(toUid)) return res.status(400).json({ error: "A friend request has already been sent to this user." });
+  const senderFriends = senderData.friends || [];
+  const senderSent = senderData.sentRequests || [];
+  const senderTotal = senderFriends.length + senderSent.length;
+
+  if (senderTotal >= FRIEND_LIMIT) {
+    return res.status(400).json({ error: `You have reached the maximum of ${FRIEND_LIMIT} friends and pending requests.` });
+  }
+
+  const receiverFriends = receiverData.friends || [];
+  const receiverReceived = receiverData.friendRequests || [];
+  const receiverTotal = receiverFriends.length + receiverReceived.length;
+
+  if (receiverTotal >= FRIEND_LIMIT) {
+    return res.status(400).json({ error: "This player's friend list is full." });
+  }
+
+  if (senderFriends.includes(toUid)) return res.status(400).json({ error: "You are already friends with this user." });
+  if (senderSent.includes(toUid)) return res.status(400).json({ error: "A friend request has already been sent to this user." });
   if ((senderData.friendRequests || []).includes(toUid)) return res.status(400).json({ error: "This user has already sent you a friend request. Accept it instead." });
 
   const batch = db.batch();
@@ -175,7 +193,13 @@ async function handleSendFriendRequest(body, res) {
   batch.update(receiverDoc.ref, { friendRequests: admin.firestore.FieldValue.arrayUnion(uid) });
   await batch.commit();
 
-  return res.status(200).json({ success: true });
+  const updatedSender = await usersCollection.doc(uid).get();
+  const sd = updatedSender.data();
+  return res.status(200).json({
+    success: true,
+    friendCount: (sd.friends || []).length,
+    currentTotal: (sd.friends || []).length + (sd.sentRequests || []).length
+  });
 }
 
 async function handleAcceptFriendRequest(body, res) {
@@ -194,6 +218,19 @@ async function handleAcceptFriendRequest(body, res) {
     return res.status(400).json({ error: "No pending friend request from this user." });
   }
 
+  const accepterFriends = accepterData.friends || [];
+  const accepterTotal = accepterFriends.length + (accepterData.friendRequests || []).length;
+  if (accepterTotal > FRIEND_LIMIT) {
+    return res.status(400).json({ error: "Your friend list is full." });
+  }
+
+  const senderData = senderDoc.data();
+  const senderFriends = senderData.friends || [];
+  const senderTotal = senderFriends.length + (senderData.sentRequests || []).length;
+  if (senderTotal > FRIEND_LIMIT) {
+    return res.status(400).json({ error: "This player's friend list is full." });
+  }
+
   const batch = db.batch();
   batch.update(accepterDoc.ref, {
     friends: admin.firestore.FieldValue.arrayUnion(fromUid),
@@ -205,7 +242,13 @@ async function handleAcceptFriendRequest(body, res) {
   });
   await batch.commit();
 
-  return res.status(200).json({ success: true });
+  const updatedAccepter = await usersCollection.doc(uid).get();
+  const ad = updatedAccepter.data();
+  return res.status(200).json({
+    success: true,
+    friendCount: (ad.friends || []).length,
+    currentTotal: (ad.friends || []).length + (ad.sentRequests || []).length
+  });
 }
 
 async function handleRejectFriendRequest(body, res) {
@@ -243,7 +286,13 @@ async function handleCancelFriendRequest(body, res) {
   batch.update(receiverDoc.ref, { friendRequests: admin.firestore.FieldValue.arrayRemove(uid) });
   await batch.commit();
 
-  return res.status(200).json({ success: true });
+  const updatedSender = await usersCollection.doc(uid).get();
+  const sd = updatedSender.data();
+  return res.status(200).json({
+    success: true,
+    friendCount: (sd.friends || []).length,
+    currentTotal: (sd.friends || []).length + (sd.sentRequests || []).length
+  });
 }
 
 async function handleRemoveFriend(body, res) {
@@ -262,7 +311,13 @@ async function handleRemoveFriend(body, res) {
   batch.update(friendDoc.ref, { friends: admin.firestore.FieldValue.arrayRemove(uid) });
   await batch.commit();
 
-  return res.status(200).json({ success: true });
+  const updatedUser = await usersCollection.doc(uid).get();
+  const ud = updatedUser.data();
+  return res.status(200).json({
+    success: true,
+    friendCount: (ud.friends || []).length,
+    currentTotal: (ud.friends || []).length + (ud.sentRequests || []).length
+  });
 }
 
 async function handleGetFriends(body, res) {
@@ -272,8 +327,13 @@ async function handleGetFriends(body, res) {
   const userDoc = await usersCollection.doc(uid).get();
   if (!userDoc.exists) return res.status(404).json({ error: "User not found." });
 
-  const friendUids = userDoc.data().friends || [];
-  if (friendUids.length === 0) return res.status(200).json({ success: true, friends: [] });
+  const userData = userDoc.data();
+  const friendUids = userData.friends || [];
+  const currentTotal = friendUids.length + (userData.sentRequests || []).length;
+
+  if (friendUids.length === 0) {
+    return res.status(200).json({ success: true, friends: [], friendCount: 0, currentTotal, friendLimit: FRIEND_LIMIT });
+  }
 
   const chunks = [];
   for (let i = 0; i < friendUids.length; i += 10) chunks.push(friendUids.slice(i, i + 10));
@@ -281,12 +341,12 @@ async function handleGetFriends(body, res) {
   const friends = [];
   for (const chunk of chunks) {
     const snap = await usersCollection.where(admin.firestore.FieldPath.documentId(), "in", chunk).get();
-    snap.docs.forEach(function (doc) {
-      friends.push({ uid: doc.id, username: doc.data().username || doc.id });
+    snap.docs.forEach(doc => {
+      friends.push({ uid: doc.id, username: doc.data().username || doc.id, online: false });
     });
   }
 
-  return res.status(200).json({ success: true, friends });
+  return res.status(200).json({ success: true, friends, friendCount: friendUids.length, currentTotal, friendLimit: FRIEND_LIMIT });
 }
 
 async function handleGetFriendRequests(body, res) {
@@ -305,7 +365,7 @@ async function handleGetFriendRequests(body, res) {
   const requests = [];
   for (const chunk of chunks) {
     const snap = await usersCollection.where(admin.firestore.FieldPath.documentId(), "in", chunk).get();
-    snap.docs.forEach(function (doc) {
+    snap.docs.forEach(doc => {
       requests.push({ uid: doc.id, username: doc.data().username || doc.id });
     });
   }
@@ -329,7 +389,7 @@ async function handleGetSentRequests(body, res) {
   const sent = [];
   for (const chunk of chunks) {
     const snap = await usersCollection.where(admin.firestore.FieldPath.documentId(), "in", chunk).get();
-    snap.docs.forEach(function (doc) {
+    snap.docs.forEach(doc => {
       sent.push({ uid: doc.id, username: doc.data().username || doc.id });
     });
   }
