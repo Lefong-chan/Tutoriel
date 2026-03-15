@@ -77,7 +77,7 @@ async function handleSetUsername(body, res) {
     return res.status(400).json({ error: "This username is already taken." });
   }
 
-  await usersCollection.doc(uid).update({ username, updatedAt: Date.now() });
+  await usersCollection.doc(uid).update({ username, usernameLower: username.toLowerCase(), updatedAt: Date.now() });
   const updated = await usersCollection.doc(uid).get();
   const userData = updated.data();
   return res.status(200).json({
@@ -100,13 +100,8 @@ async function handleSearchUsers(body, res) {
   if (!uid) return res.status(400).json({ error: "UID is required." });
   if (!query || query.trim().length < 3) return res.status(400).json({ error: "Search query must be at least 3 characters." });
 
-  const q = query.trim().toLowerCase();
-
-  const snap = await usersCollection
-    .where("username", ">=", q)
-    .where("username", "<=", q + "\uf8ff")
-    .limit(20)
-    .get();
+  const q = query.trim();
+  const qLower = q.toLowerCase();
 
   const currentDoc = await usersCollection.doc(uid).get();
   if (!currentDoc.exists) return res.status(404).json({ error: "User not found." });
@@ -115,19 +110,43 @@ async function handleSearchUsers(body, res) {
   const sentRequests = currentData.sentRequests || [];
   const receivedRequests = currentData.friendRequests || [];
 
+  const seenIds = new Set();
   const users = [];
-  snap.docs.forEach(function (doc) {
+
+  function addDoc(doc) {
+    if (!doc || !doc.exists) return;
     if (doc.id === uid) return;
+    if (seenIds.has(doc.id)) return;
     const data = doc.data();
     if (!data.username) return;
-
+    seenIds.add(doc.id);
     let relation = "none";
     if (friends.includes(doc.id)) relation = "friend";
     else if (sentRequests.includes(doc.id)) relation = "pending_sent";
     else if (receivedRequests.includes(doc.id)) relation = "pending_received";
-
     users.push({ uid: doc.id, username: data.username, relation });
-  });
+  }
+
+  const searches = [
+    usersCollection
+      .where("usernameLower", ">=", qLower)
+      .where("usernameLower", "<=", qLower + "\uf8ff")
+      .limit(20)
+      .get()
+  ];
+
+  const isUid = /^\d{9}$/.test(q);
+  if (isUid) {
+    searches.push(usersCollection.doc(q).get());
+  }
+
+  const results = await Promise.all(searches);
+
+  results[0].docs.forEach(addDoc);
+
+  if (isUid && results[1]) {
+    addDoc(results[1]);
+  }
 
   return res.status(200).json({ success: true, users });
 }
