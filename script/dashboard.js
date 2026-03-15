@@ -143,6 +143,8 @@
     o.addEventListener('click', function (e) {
       if (e.target !== o) return;
       if (o.id === 'gameSetupModal' || o.id === 'inviteFriendsModal') return;
+      // Room+matchup: bloquer fermeture gameSelectModal par clic extérieur
+      if (o.id === 'gameSelectModal' && gameOrigin === 'room' && matchupData) return;
       if (o === userProfileModal) syncUpmStateToSearch();
       closeModal(o);
     });
@@ -153,6 +155,8 @@
       if (userProfileModal.classList.contains('active')) syncUpmStateToSearch();
       document.querySelectorAll('.modal-overlay.active').forEach(function (m) {
         if (m.id === 'gameSetupModal' || m.id === 'inviteFriendsModal') return;
+        // Bloquer fermeture gameSelectModal si room avec matchup
+        if (m.id === 'gameSelectModal' && gameOrigin === 'room' && matchupData) return;
         closeModal(m);
       });
       closeCtxMenu(); closeRemoveOverlay();
@@ -492,8 +496,20 @@
   }
   document.getElementById('searchAdversariesBtn').addEventListener('click', function () { openGameSelectModal('create'); });
   document.getElementById('roomBtn').addEventListener('click', function () { openGameSelectModal('room'); });
-  document.getElementById('gameSelectCloseBtn').addEventListener('click', function () { closeModal(gameSelectModal); });
-  gameSelectModal.addEventListener('click', function (e) { if (e.target === gameSelectModal) closeModal(gameSelectModal); });
+  document.getElementById('gameSelectCloseBtn').addEventListener('click', function () {
+    if (gameOrigin === 'room' && matchupData) {
+      // En room avec joueur connecté → confirmation avant quitter
+      openRoomQuitConfirm();
+    } else {
+      closeModal(gameSelectModal);
+    }
+  });
+  gameSelectModal.addEventListener('click', function (e) {
+    if (e.target !== gameSelectModal) return;
+    // En room avec matchup → ignorer le clic extérieur
+    if (gameOrigin === 'room' && matchupData) return;
+    closeModal(gameSelectModal);
+  });
 
   document.querySelectorAll('.game-type-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -608,6 +624,9 @@
     // Cacher le bouton back pour le receiver
     var backBtn = document.getElementById('gameSetupBackBtn');
     if (backBtn) backBtn.classList.toggle('hidden', gameOrigin === 'room' && !!matchup && !roomIsSender);
+    // Afficher Quit seulement quand room+matchup
+    var quitBtn = document.getElementById('gsQuitBtn');
+    if (quitBtn) quitBtn.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
 
     openModal(gameSetupModal);
   }
@@ -695,11 +714,68 @@
         } else if (res.status === 'cancelled' || res.status === 'not_found') {
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           closeModal(gameSetupModal);
-          showToast('The room was cancelled.', 'info');
+          closeModal(gameSelectModal);
+          var senderName = (matchupData && matchupData.senderUsername) ? matchupData.senderUsername : 'The host';
+          if (!isSender) {
+            showToast(senderName + ' has left the room.', 'info', '⚠ Room closed');
+          }
+          matchupData = null;
         }
       } catch(e) {}
     }, pollInterval);
   }
+
+  // ── Room Quit Confirm ──────────────────────────────────────
+  var roomQuitOverlay = document.getElementById('roomQuitOverlay');
+
+  function openRoomQuitConfirm() {
+    var opponentName = '—';
+    if (matchupData) {
+      opponentName = roomIsSender ? matchupData.receiverUsername : matchupData.senderUsername;
+    }
+    document.getElementById('rqTitle').textContent = 'Leave the room?';
+    document.getElementById('rqMessage').textContent =
+      'Are you sure you want to leave the room with ' + opponentName + '? Your opponent will also be removed.';
+    roomQuitOverlay.classList.add('active');
+  }
+
+  function closeRoomQuitConfirm() {
+    roomQuitOverlay.classList.remove('active');
+  }
+
+  async function quitRoom() {
+    closeRoomQuitConfirm();
+    // Annuler l'invitation → l'autre joueur sera notifié via polling (cancelled)
+    if (matchupData && matchupData.inviteId) {
+      try {
+        // Sender annule, receiver decline — les deux marquent cancelled
+        if (roomIsSender) {
+          await callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: matchupData.inviteId });
+        } else {
+          await callSessionApi('decline-game-invite', { uid: currentUser.uid, inviteId: matchupData.inviteId });
+        }
+      } catch(e) {}
+    }
+    // Stopper sync polling
+    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+    // Fermer tout
+    closeGsDropdown();
+    closeModal(gameSetupModal);
+    closeModal(gameSelectModal);
+    // Reset matchupData → sender peut réinviter
+    matchupData = null;
+    // Sender retourne au dashboard principal
+    // Receiver: juste fermer, le toast d'info vient du polling de l'autre côté
+  }
+
+  document.getElementById('rqCancelBtn').addEventListener('click', closeRoomQuitConfirm);
+  document.getElementById('rqConfirmBtn').addEventListener('click', quitRoom);
+  roomQuitOverlay.addEventListener('click', function(e) { if (e.target === roomQuitOverlay) closeRoomQuitConfirm(); });
+
+  // Bouton Quit dans le game-setup-header
+  document.getElementById('gsQuitBtn').addEventListener('click', function() {
+    openRoomQuitConfirm();
+  });
 
   document.getElementById('gameSetupBackBtn').addEventListener('click', function () {
     if (!roomIsSender) return; // receiver n'a pas de bouton retour
