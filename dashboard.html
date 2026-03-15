@@ -54,6 +54,7 @@
     .game-setup-header-title { font-size: 0.98em; font-weight: 800; margin-bottom: 1px; }
     .game-setup-header-sub { font-size: 0.72em; opacity: 0.75; }
     .game-setup-header .gsh-back { background: rgba(255,255,255,0.18); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9em; transition: background 0.15s; flex-shrink: 0; }
+    .game-setup-header .gsh-back.hidden { visibility: hidden; pointer-events: none; }
     .game-setup-header .gsh-back:hover { background: rgba(255,255,255,0.34); }
     .game-setup-header .gsh-spacer { width: 30px; flex-shrink: 0; }
     .game-setup-body { padding: 18px 20px 20px; }
@@ -68,28 +69,23 @@
     .gs-matchup {
       display: none;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
       background: #f5f0ff;
       border: 1.5px solid #ddd6fe;
       border-radius: 12px;
       padding: 10px 14px;
       margin-bottom: 16px;
-      gap: 8px;
+      gap: 10px;
     }
     .gs-matchup.visible { display: flex; }
-    .gs-matchup-player {
-      display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; min-width: 0;
-    }
-    .gs-matchup-label { font-size: 0.62em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
-    .gs-matchup-name { font-size: 0.85em; font-weight: 800; color: #5b21b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-    .gs-matchup-vs {
-      font-size: 0.75em; font-weight: 800; color: #a78bfa;
-      background: white; border-radius: 50%; width: 26px; height: 26px;
-      display: flex; align-items: center; justify-content: center;
-      border: 1.5px solid #ddd6fe; flex-shrink: 0;
-    }
+    .gs-matchup-name { font-size: 0.85em; font-weight: 800; color: #5b21b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+    .gs-matchup-vs-text { font-size: 0.75em; font-weight: 800; color: #a78bfa; flex-shrink: 0; }
+    .gs-section-label { font-size: 0.73em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 9px; text-align: left; }
+    .gs-time-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+    .gs-time-header-row .gs-section-label { margin-bottom: 0; }
+    .gs-opponent-not-ready { font-size: 0.72em; font-weight: 700; color: #92400e; background: #fef3c7; border: 1.5px solid #fcd34d; border-radius: 6px; padding: 3px 8px; display: flex; align-items: center; gap: 4px; }
 
-    .gs-section-label { font-size: 0.73em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 9px; }
+
     .color-pick-row { display: flex; gap: 11px; margin-bottom: 18px; }
     .color-pick-btn { flex: 1; border: 2px solid #e2e8f0; border-radius: 11px; padding: 10px 8px; background: white; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: border-color 0.18s, background 0.18s; }
     .color-pick-btn:hover { border-color: #a78bfa; background: #faf5ff; }
@@ -494,15 +490,9 @@
       <div class="game-setup-body">
         <!-- Matchup strip — visible seulement quand invitation acceptée -->
         <div class="gs-matchup" id="gsMatchup">
-          <div class="gs-matchup-player">
-            <div class="gs-matchup-label">You</div>
-            <div class="gs-matchup-name" id="gsMatchupSender">—</div>
-          </div>
-          <div class="gs-matchup-vs">VS</div>
-          <div class="gs-matchup-player">
-            <div class="gs-matchup-label">Opponent</div>
-            <div class="gs-matchup-name" id="gsMatchupReceiver">—</div>
-          </div>
+          <div class="gs-matchup-name" id="gsMatchupSender">—</div>
+          <div class="gs-matchup-vs-text">VS</div>
+          <div class="gs-matchup-name" id="gsMatchupReceiver">—</div>
         </div>
 
         <div class="gs-section-label" id="gsSectionLabelPiece">Choose Your Piece</div>
@@ -518,7 +508,10 @@
             <span class="cpb-label">Red</span>
           </button>
         </div>
-        <div class="gs-section-label">Time per player</div>
+        <div class="gs-time-header-row">
+          <div class="gs-section-label" style="margin-bottom:0;">Time per player</div>
+          <div class="gs-opponent-not-ready" id="gsOpponentNotReady" style="display:none;"><i class="fas fa-clock"></i> Opponent not ready</div>
+        </div>
         <div class="gs-time-row">
           <button class="gs-time-trigger" id="gsTimeTrigger">
             <span class="gs-time-val"><i class="fas fa-clock"></i><span id="gsTimeDisplay">5 min</span></span>
