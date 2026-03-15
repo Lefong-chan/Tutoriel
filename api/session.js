@@ -15,7 +15,7 @@ const db = admin.firestore();
 const usersCollection = db.collection("users");
 
 const FRIEND_LIMIT = 100;
-const ONLINE_THRESHOLD = 5 * 60 * 1000;
+const ONLINE_THRESHOLD = 35 * 1000;
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
