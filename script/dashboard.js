@@ -651,8 +651,17 @@
     var gsBody = document.querySelector('.game-setup-body');
     var gsSectionLabelPiece = document.getElementById('gsSectionLabelPiece');
 
-    // Stop any previous room sync polling
+    // Stop any previous room sync polling + room friend invite timers
     if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+    if (!matchup) {
+      // Reset room friend invite timers quand on revient sans matchup
+      Object.keys(roomFriendInviteTimers).forEach(function(u) { clearInterval(roomFriendInviteTimers[u]); });
+      Object.keys(roomFriendStatusTimers).forEach(function(i) { clearInterval(roomFriendStatusTimers[i]); });
+      Object.keys(roomFriendInviteIds).forEach(function(u) {
+        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: roomFriendInviteIds[u] }).catch(function(){});
+      });
+      roomFriendInviteTimers = {}; roomFriendStatusTimers = {}; roomFriendInviteIds = {};
+    }
     // Reset launch btn style
     launchBtn.style.background = '';
 
@@ -705,9 +714,31 @@
     // Afficher Quit seulement quand room+matchup
     var quitBtn = document.getElementById('gsQuitBtn');
     if (quitBtn) quitBtn.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
-    // Afficher chat + layout flex quand room+matchup
+    // Layout flex quand room (na misy matchup na tsia)
     var bodyRow = document.getElementById('gsBodyRow');
-    if (bodyRow) bodyRow.classList.toggle('room-active', gameOrigin === 'room' && !!matchup);
+    var gsMatchupInvite = document.getElementById('gsMatchupInvite');
+    var gsRoomFriends = document.getElementById('gsRoomFriends');
+    var gsChatWrap = document.getElementById('gsChatWrap');
+    var isRoom = (gameOrigin === 'room');
+
+    if (bodyRow) bodyRow.classList.toggle('room-active', isRoom);
+
+    if (isRoom && !matchup) {
+      // Avant matchup: montrer amis enligne + invite strip
+      if (gsMatchupInvite) gsMatchupInvite.classList.add('visible');
+      if (gsRoomFriends) { gsRoomFriends.style.display = 'flex'; loadRoomFriends(); }
+      if (gsChatWrap) gsChatWrap.style.display = 'none';
+    } else if (isRoom && matchup) {
+      // Après matchup: montrer chat + cacher invite
+      if (gsMatchupInvite) gsMatchupInvite.classList.remove('visible');
+      if (gsRoomFriends) gsRoomFriends.style.display = 'none';
+      if (gsChatWrap) gsChatWrap.style.display = 'flex';
+    } else {
+      // Mode normal: tout cacher
+      if (gsMatchupInvite) gsMatchupInvite.classList.remove('visible');
+      if (gsRoomFriends) gsRoomFriends.style.display = 'none';
+      if (gsChatWrap) gsChatWrap.style.display = 'none';
+    }
 
     openModal(gameSetupModal);
   }
@@ -732,7 +763,107 @@
 
   var receiverIsReady = true; // état local du receiver
 
-  var _handledRoomEvents = new Set(); // évite double traitement d'un même inviteId+event
+  var _handledRoomEvents = new Set();
+
+  // Timers pour les invitations dans le panneau room friends
+  var roomFriendInviteTimers = {};   // uid → intervalId
+  var roomFriendInviteIds = {};      // uid → inviteId
+
+  async function loadRoomFriends() {
+    var list = document.getElementById('gsRoomFriendsList');
+    if (!list) return;
+    list.innerHTML = '<div class="gs-room-empty">Loading…</div>';
+    try {
+      var data = await callSessionApi('get-friends', { uid: currentUser.uid });
+      var online = (data.friends || []).filter(function(f) { return f.online; });
+      list.innerHTML = '';
+      if (!data.friends || data.friends.length === 0) {
+        list.innerHTML = '<div class="gs-room-empty">You have no friends yet.</div>';
+        return;
+      }
+      if (online.length === 0) {
+        list.innerHTML = '<div class="gs-room-empty">No friends online right now.</div>';
+        return;
+      }
+      online.forEach(function(friend) {
+        var item = document.createElement('div'); item.className = 'gs-room-friend-item';
+        var nameEl = document.createElement('div'); nameEl.className = 'gs-room-friend-name'; nameEl.textContent = friend.username;
+        var invBtn = document.createElement('button'); invBtn.className = 'gs-room-invite-btn'; invBtn.title = 'Invite ' + friend.username;
+        invBtn.innerHTML = '<i class="fas fa-gamepad"></i>';
+        // Si déjà en countdown
+        if (roomFriendInviteTimers[friend.uid]) {
+          invBtn.disabled = true; invBtn.classList.add('counting');
+        }
+        invBtn.addEventListener('click', (function(btn, f) {
+          return function() {
+            if (roomFriendInviteTimers[f.uid] || btn.disabled) return;
+            startRoomFriendInvite(btn, f);
+          };
+        })(invBtn, friend));
+        item.appendChild(nameEl); item.appendChild(invBtn); list.appendChild(item);
+      });
+    } catch(e) {
+      list.innerHTML = '<div class="gs-room-empty">Failed to load.</div>';
+    }
+  }
+
+  async function startRoomFriendInvite(btn, friend) {
+    btn.disabled = true; btn.classList.add('counting');
+    var inviteId = null;
+    try {
+      var res = await callSessionApi('send-game-invite', {
+        uid: currentUser.uid, toUid: friend.uid,
+        game: selectedGame, color: selectedColor, minutes: selectedMinutes
+      });
+      inviteId = res.inviteId;
+      roomFriendInviteIds[friend.uid] = inviteId;
+    } catch(err) {
+      btn.disabled = false; btn.classList.remove('counting'); btn.innerHTML = '<i class="fas fa-gamepad"></i>';
+      showToast(err.message || 'Failed to send invitation.', 'error');
+      return;
+    }
+    // Countdown sur le bouton (chiffre)
+    var count = 10;
+    btn.innerHTML = ''; btn.textContent = count;
+    var btnIvl = setInterval(function() {
+      count--;
+      if (count <= 0) {
+        clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
+        btn.classList.remove('counting'); btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-gamepad"></i>';
+        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: inviteId }).catch(function(){});
+        if (roomFriendStatusTimers[inviteId]) { clearInterval(roomFriendStatusTimers[inviteId]); delete roomFriendStatusTimers[inviteId]; }
+        delete roomFriendInviteIds[friend.uid];
+      } else {
+        btn.textContent = count;
+      }
+    }, 1000);
+    roomFriendInviteTimers[friend.uid] = btnIvl;
+    // Polling accepté
+    var statusIvl = setInterval(async function() {
+      try {
+        var sRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
+        if (sRes.status === 'accepted') {
+          clearInterval(statusIvl); delete roomFriendStatusTimers[inviteId];
+          clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
+          delete roomFriendInviteIds[friend.uid];
+          selectedGame = sRes.game; selectedMinutes = sRes.minutes; selectedColor = sRes.color;
+          openGameSetup(selectedGame, {
+            senderUsername: sRes.senderUsername, receiverUsername: sRes.receiverUsername,
+            isSender: true, inviteId: inviteId
+          });
+        } else if (sRes.status === 'declined' || sRes.status === 'expired' || sRes.status === 'cancelled' || sRes.status === 'not_found') {
+          clearInterval(statusIvl); delete roomFriendStatusTimers[inviteId];
+          clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
+          delete roomFriendInviteIds[friend.uid];
+          btn.disabled = false; btn.classList.remove('counting'); btn.innerHTML = '<i class="fas fa-gamepad"></i>';
+          if (sRes.status === 'declined') showToast(friend.username + ' declined your invitation.', 'info');
+        }
+      } catch(e) {}
+    }, 500);
+    roomFriendStatusTimers[inviteId] = statusIvl;
+  }
+  var roomFriendStatusTimers = {};
 
   function startRoomSyncPolling(inviteId, isSender) {
     if (!inviteId) return;
