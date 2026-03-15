@@ -705,9 +705,9 @@
     // Afficher Quit seulement quand room+matchup
     var quitBtn = document.getElementById('gsQuitBtn');
     if (quitBtn) quitBtn.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
-    // Afficher chat seulement quand room+matchup (olona roa ao amin'ny room)
-    var chatWrap = document.getElementById('gsChatWrap');
-    if (chatWrap) chatWrap.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
+    // Afficher chat + layout flex quand room+matchup
+    var bodyRow = document.getElementById('gsBodyRow');
+    if (bodyRow) bodyRow.classList.toggle('room-active', gameOrigin === 'room' && !!matchup);
 
     openModal(gameSetupModal);
   }
