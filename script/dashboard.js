@@ -504,6 +504,13 @@
    * @param {string} game
    * @param {object|null} matchup — { senderUsername, receiverUsername } si invitation acceptée
    */
+  // isSender = true → mpamorona room (sender), false → invité (receiver)
+  var roomIsSender = true;
+  // polling timer pour sync des settings depuis le sender vers le receiver
+  var roomSyncTimer = null;
+  // ready state du receiver (lu par sender via polling)
+  var receiverReady = true; // par défaut true
+
   function openGameSetup(game, matchup) {
     matchupData = matchup || null;
     var label = gameLabels[game] || game;
@@ -535,13 +542,151 @@
     closeGsDropdown();
 
     var launchBtn = document.getElementById('gsLaunchBtn');
+    var gsBody = document.querySelector('.game-setup-body');
+    var gsReadyBadge = document.getElementById('gsReadyBadge');
+    var gsWaitingBadge = document.getElementById('gsWaitingBadge');
+    var gsReceiverColorInfo = document.getElementById('gsReceiverColorInfo');
+    var gsSectionLabelPiece = document.getElementById('gsSectionLabelPiece');
+
+    // Stop any previous room sync polling
+    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+
     if (gameOrigin === 'room' && !matchup) {
+      // ── Mode: Sender, pas encore de matchup (avant que qqun accepte) ──
+      roomIsSender = true;
+      gsBody.classList.remove('gs-receiver-mode');
+      gsReadyBadge.classList.remove('visible');
+      gsWaitingBadge.classList.remove('visible');
+      gsReceiverColorInfo.classList.remove('visible');
+      if (gsSectionLabelPiece) gsSectionLabelPiece.style.display = '';
       launchBtn.innerHTML = '<i class="fas fa-user-plus"></i> Invite Friends';
+      launchBtn.disabled = false;
+    } else if (gameOrigin === 'room' && matchup) {
+      // ── Mode Room avec matchup ──
+      // Déterminer si on est sender ou receiver
+      // matchup.isSender est passé depuis l'appelant
+      roomIsSender = matchup.isSender !== false; // true par défaut (sender)
+      receiverReady = true;
+
+      if (roomIsSender) {
+        // Sender: peut modifier, Start Game activé si receiverReady
+        gsBody.classList.remove('gs-receiver-mode');
+        gsReadyBadge.classList.remove('visible');
+        gsWaitingBadge.classList.remove('visible');
+        gsReceiverColorInfo.classList.remove('visible');
+        if (gsSectionLabelPiece) gsSectionLabelPiece.style.display = '';
+        launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
+        launchBtn.disabled = false;
+        // Polling pour voir si le receiver change son état ready
+        startRoomSyncPolling(matchup.inviteId, true);
+      } else {
+        // Receiver: disabled, pret badge visible, pas de section piece label
+        gsBody.classList.add('gs-receiver-mode');
+        gsReadyBadge.classList.add('visible');
+        gsWaitingBadge.classList.remove('visible');
+        if (gsSectionLabelPiece) gsSectionLabelPiece.style.display = 'none';
+        // Afficher couleur assignée (inverse du sender)
+        var myColor = selectedColor === 'green' ? 'red' : 'green';
+        applyReceiverColor(myColor);
+        gsReceiverColorInfo.classList.add('visible');
+        // Bouton: Prêt / Pas prêt
+        updateReceiverReadyBtn(true);
+        launchBtn.disabled = false;
+        // Polling pour voir si le sender change ses settings
+        startRoomSyncPolling(matchup.inviteId, false);
+      }
     } else {
+      // Mode normal (create a game)
+      roomIsSender = true;
+      gsBody.classList.remove('gs-receiver-mode');
+      gsReadyBadge.classList.remove('visible');
+      gsWaitingBadge.classList.remove('visible');
+      gsReceiverColorInfo.classList.remove('visible');
+      if (gsSectionLabelPiece) gsSectionLabelPiece.style.display = '';
       launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
+      launchBtn.disabled = false;
     }
 
     openModal(gameSetupModal);
+  }
+
+  function applyReceiverColor(color) {
+    // Mettre à jour les boutons couleur pour le receiver (son propre highlight)
+    document.querySelectorAll('.color-pick-btn').forEach(function (b) {
+      b.classList.toggle('selected', b.dataset.color === color);
+    });
+    // Mettre à jour l'info badge
+    var dot = document.getElementById('gsRciDot');
+    var txt = document.getElementById('gsRciText');
+    if (dot) { dot.className = 'rci-dot ' + color; }
+    if (txt) { txt.textContent = 'Your piece: ' + (color === 'green' ? 'Green' : 'Red'); }
+  }
+
+  function updateReceiverReadyBtn(isReady) {
+    var launchBtn = document.getElementById('gsLaunchBtn');
+    if (isReady) {
+      launchBtn.innerHTML = '<i class="fas fa-check-circle"></i> Ready';
+      launchBtn.style.background = 'linear-gradient(to right, #059669, #10b981)';
+    } else {
+      launchBtn.innerHTML = '<i class="fas fa-times-circle"></i> Not Ready';
+      launchBtn.style.background = 'linear-gradient(to right, #dc2626, #ef4444)';
+    }
+    launchBtn.disabled = false;
+  }
+
+  // receiverReadyState: true = ready, false = not ready (stocké côté sender dans l'inviteId status)
+  // Pour simplifier sans changer l'API, on stocke l'état localement + on le synchronise
+  // via l'existing check-game-invite-status polling (on ajoute un champ receiverReady)
+  // NOTE: Pour cette implémentation, le ready/not-ready est purement local au receiver,
+  //       le sender poll le statut toutes les 2s déjà — on l'utilise pour sync les settings.
+  var receiverIsReady = true; // état local du receiver
+
+  function startRoomSyncPolling(inviteId, isSender) {
+    if (!inviteId) return;
+    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+    // Polling toutes les 2s pour synchroniser les settings entre sender et receiver
+    roomSyncTimer = setInterval(async function() {
+      if (!gameSetupModal.classList.contains('active')) {
+        clearInterval(roomSyncTimer); roomSyncTimer = null; return;
+      }
+      try {
+        var res = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
+        if (res.status === 'accepted') {
+          if (isSender) {
+            // Sender: sync les settings depuis Firestore (au cas où)
+            // et vérifier si receiver est ready (via champ receiverReady si dispo)
+            var rReady = (res.receiverReady !== false); // true si absent
+            receiverReady = rReady;
+            var gsWaiting = document.getElementById('gsWaitingBadge');
+            var launchBtn = document.getElementById('gsLaunchBtn');
+            if (gsWaiting) gsWaiting.classList.toggle('visible', !rReady);
+            if (launchBtn && launchBtn.innerHTML.indexOf('Start Game') >= 0) {
+              launchBtn.disabled = !rReady;
+            }
+          } else {
+            // Receiver: sync les settings du sender
+            if (res.color && res.color !== selectedColor) {
+              selectedColor = res.color;
+              var myColor = selectedColor === 'green' ? 'red' : 'green';
+              applyReceiverColor(myColor);
+            }
+            if (res.minutes && res.minutes !== selectedMinutes) {
+              selectedMinutes = res.minutes;
+              document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
+              document.querySelectorAll('.gs-time-option').forEach(function(o) {
+                var sel = parseInt(o.dataset.minutes) === selectedMinutes;
+                o.classList.toggle('selected', sel);
+                var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none';
+              });
+            }
+          }
+        } else if (res.status === 'cancelled' || res.status === 'not_found') {
+          clearInterval(roomSyncTimer); roomSyncTimer = null;
+          closeModal(gameSetupModal);
+          showToast('The room was cancelled.', 'info');
+        }
+      } catch(e) {}
+    }, 2000);
   }
 
   document.getElementById('gameSetupBackBtn').addEventListener('click', function () {
@@ -553,7 +698,17 @@
   gameSetupModal.addEventListener('click', function (e) { if (e.target === gameSetupModal) closeGsDropdown(); });
 
   document.querySelectorAll('.color-pick-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () { selectedColor = btn.dataset.color; document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === selectedColor); }); });
+    btn.addEventListener('click', function () {
+      // Receiver ne peut pas modifier
+      if (!roomIsSender && matchupData) return;
+      selectedColor = btn.dataset.color;
+      document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === selectedColor); });
+      if (matchupData) document.getElementById('gsHeaderSub').textContent = 'Room · ' + selectedMinutes + ' min';
+      // Sender: sync color vers Firestore pour que le receiver voit le changement
+      if (roomIsSender && matchupData && matchupData.inviteId) {
+        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes }).catch(function(){});
+      }
+    });
   });
 
   var gsTimeTrigger = document.getElementById('gsTimeTrigger');
@@ -570,14 +725,30 @@
       e.stopPropagation(); selectedMinutes = parseInt(opt.dataset.minutes); document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
       document.querySelectorAll('.gs-time-option').forEach(function (o) { var sel = parseInt(o.dataset.minutes) === selectedMinutes; o.classList.toggle('selected', sel); var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none'; });
       closeGsDropdown();
+      // Sender: sync minutes vers Firestore
+      if (roomIsSender && matchupData && matchupData.inviteId) {
+        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes }).catch(function(){});
+      }
     });
   });
   document.addEventListener('click', function (e) { if (gsDropdownOpen && gsTimeDropdownOverlay && !gsTimeDropdownOverlay.contains(e.target)) closeGsDropdown(); });
 
   document.getElementById('gsLaunchBtn').addEventListener('click', function () {
     if (gameOrigin === 'room' && !matchupData) {
+      // Sender sans matchup → ouvrir invite modal
       closeGsDropdown(); closeModal(gameSetupModal); openInviteFriendsModal();
+    } else if (gameOrigin === 'room' && matchupData && !roomIsSender) {
+      // Receiver → toggle ready/not ready
+      receiverIsReady = !receiverIsReady;
+      updateReceiverReadyBtn(receiverIsReady);
+      var badge = document.getElementById('gsReadyBadge');
+      if (badge) badge.classList.toggle('visible', receiverIsReady);
+      // Sync ready state vers Firestore
+      if (matchupData && matchupData.inviteId) {
+        callSessionApi('update-room-ready', { uid: currentUser.uid, inviteId: matchupData.inviteId, ready: receiverIsReady }).catch(function(){});
+      }
     } else {
+      // Sender avec matchup → Start Game
       showToast('Game launch coming soon.', 'info');
     }
   });
@@ -688,7 +859,9 @@
           selectedColor = statusRes.color;
           openGameSetup(statusRes.game, {
             senderUsername: statusRes.senderUsername,
-            receiverUsername: statusRes.receiverUsername
+            receiverUsername: statusRes.receiverUsername,
+            isSender: true,       // je suis le sender
+            inviteId: inviteId    // pour le sync polling
           });
         } else if (statusRes.status === 'declined' || statusRes.status === 'expired' || statusRes.status === 'cancelled' || statusRes.status === 'not_found') {
           clearInterval(statusIvl); delete inviteStatusTimers[inviteId];
@@ -801,15 +974,15 @@
     try {
       var res = await callSessionApi('accept-game-invite', { uid: currentUser.uid, inviteId: inviteId });
       if (res.success) {
-        // Ouvrir gameSetupModal avec matchup (destinataire = moi)
-        // Le destinataire est à droite (receiver), l'expéditeur à gauche (sender)
         selectedGame = res.game;
         selectedMinutes = res.minutes;
         selectedColor = res.color;
         gameOrigin = 'room';
         openGameSetup(res.game, {
           senderUsername: res.senderUsername,
-          receiverUsername: res.receiverUsername
+          receiverUsername: res.receiverUsername,
+          isSender: false,      // je suis le receiver
+          inviteId: inviteId    // pour le sync polling
         });
       }
     } catch(err) {
