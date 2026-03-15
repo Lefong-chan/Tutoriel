@@ -2,12 +2,6 @@
 // dashboard.js — Script principal du tableau de bord Fanorona
 // =============================================================
 
-// -------------------------------------------------------------
-// SECTION 1 : LOGIQUE UI / ANIMATIONS / INTERACTIONS
-// Ce bloc gère l'affichage, les modales, les animations,
-// les événements DOM et toute la logique visuelle du dashboard.
-// -------------------------------------------------------------
-
 (function () {
   var SESSION_API_URL = '/api/session';
   var AUTH_API_URL = '/api/auth';
@@ -51,9 +45,7 @@
     if (toastTimeout) clearTimeout(toastTimeout);
   });
 
-  function setPageLoading(on) {
-    loadingOverlay.classList.toggle('active', on);
-  }
+  function setPageLoading(on) { loadingOverlay.classList.toggle('active', on); }
   function openModal(modal) { if (modal) modal.classList.add('active'); }
   function closeModal(modal) { if (modal) modal.classList.remove('active'); }
 
@@ -61,14 +53,6 @@
     var el = document.getElementById('UsernameDisplay');
     if (el) el.textContent = (currentUser && currentUser.username) ? currentUser.username : '____';
   }
-
-
-
-// -------------------------------------------------------------
-// SECTION 2 : CONNEXION À L'API (Appels serveur / backend)
-// Ce bloc gère toutes les communications avec le serveur :
-// sessions, authentification, amis, recherche d'utilisateurs.
-// -------------------------------------------------------------
 
   async function callSessionApi(action, payload) {
     var response = await fetch(SESSION_API_URL, {
@@ -112,9 +96,7 @@
           if (currentUser) callSessionApi('ping', { uid: currentUser.uid }).catch(function(){});
         }, 30000);
         setInterval(function () {
-          if (currentUser && !playersModal.classList.contains('active')) {
-            loadRequestsBadge();
-          }
+          if (currentUser && !playersModal.classList.contains('active')) loadRequestsBadge();
           if (currentUser && playersModal.classList.contains('active')) {
             var activePanel = document.querySelector('.content-panel.active-panel');
             if (activePanel && activePanel.id === 'friends-panel') loadFriendsPanel();
@@ -180,9 +162,7 @@
     } finally { setUsernameLoadingSpinner.style.display = 'none'; confirmSetUsernameBtn.disabled = false; }
   });
 
-  profileBox.addEventListener('click', function () {
-    if (currentUser) openMyProfileModal();
-  });
+  profileBox.addEventListener('click', function () { if (currentUser) openMyProfileModal(); });
   settingsBtn.addEventListener('click', function () { if (currentUser) openModal(settingModal); });
 
   document.querySelectorAll('.modal-close-btn').forEach(function (btn) {
@@ -194,9 +174,7 @@
   document.querySelectorAll('.modal-overlay').forEach(function (overlay) {
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) {
-        // gameSetupModal cannot be closed by backdrop — back button only
         if (overlay.id === 'gameSetupModal') return;
-        // inviteFriendsModal cannot be closed by backdrop — back button only
         if (overlay.id === 'inviteFriendsModal') return;
         if (overlay === userProfileModal) syncUpmStateToSearch();
         closeModal(overlay);
@@ -230,52 +208,41 @@
     upmRelation.className = 'upm-relation-badge none';
     upmRelation.innerHTML = '<i class="fas fa-user"></i> My Profile';
     upmActions.innerHTML = '';
-
     var histBtn = document.createElement('button');
     histBtn.className = 'upm-btn upm-btn-history';
     histBtn.innerHTML = '<i class="fas fa-history"></i> Game History';
     histBtn.addEventListener('click', function () { showToast('Game history coming soon.', 'info'); });
-
     var flBtn = document.createElement('button');
     flBtn.className = 'upm-btn upm-btn-friends-list';
     flBtn.innerHTML = '<i class="fas fa-users"></i> My Friends List';
     flBtn.addEventListener('click', function () { showToast('Friends list feature coming soon.', 'info'); });
-
     var emailBtn = document.createElement('button');
     emailBtn.className = 'upm-btn';
     emailBtn.style.cssText = 'background:#f0f9ff;color:#0369a1;border:1.5px solid #bae6fd;';
     emailBtn.innerHTML = '<i class="fas fa-envelope"></i> View My Email';
     emailBtn.addEventListener('click', function () { openEmailModal(); });
-
     upmActions.appendChild(histBtn);
     upmActions.appendChild(flBtn);
     upmActions.appendChild(emailBtn);
     openModal(userProfileModal);
   }
 
-  function setUpmLoading(btn, on) {
-    btn.classList.toggle('loading', on);
-    btn.disabled = on;
-  }
+  function setUpmLoading(btn, on) { btn.classList.toggle('loading', on); btn.disabled = on; }
 
   function syncUpmStateToSearch() {
     if (!upmCurrentUid || !upmCurrentRelation) return;
     syncSearchListRelation(upmCurrentUid, upmCurrentRelation);
-    upmCurrentUid = null;
-    upmCurrentRelation = null;
+    upmCurrentUid = null; upmCurrentRelation = null;
   }
 
   function openUserProfileModal(uid, username, relation) {
-    upmCurrentUid = uid;
-    upmCurrentRelation = relation;
+    upmCurrentUid = uid; upmCurrentRelation = relation;
     var upmUsername = document.getElementById('upmUsername');
     var upmUid = document.getElementById('upmUid');
     var upmRelation = document.getElementById('upmRelationBadge');
     var upmActions = document.getElementById('upmActions');
-
     upmUsername.textContent = username;
     upmUid.textContent = 'UID: ' + uid;
-
     var badgeClass = 'none', badgeHtml = '';
     if (relation === 'friend') { badgeClass = 'friend'; badgeHtml = '<i class="fas fa-user-check"></i> Friends'; }
     else if (relation === 'pending_sent') { badgeClass = 'pending'; badgeHtml = '<i class="fas fa-clock"></i> Request Sent'; }
@@ -283,30 +250,22 @@
     else { badgeClass = 'none'; badgeHtml = '<i class="fas fa-user"></i> Not Friends'; }
     upmRelation.className = 'upm-relation-badge ' + badgeClass;
     upmRelation.innerHTML = badgeHtml;
-
     upmActions.innerHTML = '';
-
     var histBtn = document.createElement('button');
     histBtn.className = 'upm-btn upm-btn-history';
     histBtn.innerHTML = '<i class="fas fa-history"></i> Game History';
     histBtn.addEventListener('click', function () { showToast('Game history coming soon.', 'info'); });
     upmActions.appendChild(histBtn);
-
     var flBtn = document.createElement('button');
     flBtn.className = 'upm-btn upm-btn-friends-list';
     flBtn.innerHTML = '<i class="fas fa-users"></i> Friends List';
     flBtn.addEventListener('click', function () { showToast('Friends list feature coming soon.', 'info'); });
     upmActions.appendChild(flBtn);
-
     if (relation === 'friend') {
       var removeBtn = document.createElement('button');
       removeBtn.className = 'upm-btn upm-btn-remove';
       removeBtn.innerHTML = '<i class="fas fa-user-times"></i> Remove Friend';
-      removeBtn.addEventListener('click', function () {
-        upmCurrentRelation = 'friend';
-        closeModal(userProfileModal);
-        openRemoveOverlay(uid, username);
-      });
+      removeBtn.addEventListener('click', function () { upmCurrentRelation = 'friend'; closeModal(userProfileModal); openRemoveOverlay(uid, username); });
       upmActions.insertBefore(removeBtn, upmActions.children[1]);
     } else if (relation === 'pending_sent') {
       var cancelBtn = document.createElement('button');
@@ -316,46 +275,32 @@
         setUpmLoading(cancelBtn, true);
         try {
           await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid });
-          upmRelation.className = 'upm-relation-badge none';
-          upmRelation.innerHTML = '<i class="fas fa-user"></i> Not Friends';
-          upmCurrentRelation = 'none';
-          cancelBtn.remove();
-          var addB = document.createElement('button');
-          addB.className = 'upm-btn upm-btn-add';
-          addB.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend';
+          upmRelation.className = 'upm-relation-badge none'; upmRelation.innerHTML = '<i class="fas fa-user"></i> Not Friends';
+          upmCurrentRelation = 'none'; cancelBtn.remove();
+          var addB = document.createElement('button'); addB.className = 'upm-btn upm-btn-add'; addB.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend';
           addB.addEventListener('click', makeUpmAddHandler(addB, uid, username, upmRelation, upmActions));
           upmActions.insertBefore(addB, upmActions.children[1]);
-          syncSearchListRelation(uid, 'none');
-          showToast('Friend request cancelled.', 'info');
-          loadSentPanel();
+          syncSearchListRelation(uid, 'none'); showToast('Friend request cancelled.', 'info'); loadSentPanel();
         } catch (err) { showToast(err.message, 'error'); setUpmLoading(cancelBtn, false); }
       });
       upmActions.insertBefore(cancelBtn, upmActions.children[1]);
     } else if (relation === 'pending_received') {
-      var acceptB = document.createElement('button');
-      acceptB.className = 'upm-btn upm-btn-add';
-      acceptB.innerHTML = '<i class="fas fa-check-circle"></i> Accept Request';
+      var acceptB = document.createElement('button'); acceptB.className = 'upm-btn upm-btn-add'; acceptB.innerHTML = '<i class="fas fa-check-circle"></i> Accept Request';
       acceptB.addEventListener('click', async function () {
         setUpmLoading(acceptB, true);
         try {
           await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: uid });
-          upmRelation.className = 'upm-relation-badge friend';
-          upmRelation.innerHTML = '<i class="fas fa-user-check"></i> Friends';
-          upmCurrentRelation = 'friend';
-          acceptB.remove();
-          showToast('Friend request accepted!', 'success');
+          upmRelation.className = 'upm-relation-badge friend'; upmRelation.innerHTML = '<i class="fas fa-user-check"></i> Friends';
+          upmCurrentRelation = 'friend'; acceptB.remove(); showToast('Friend request accepted!', 'success');
           loadFriendsPanel(); loadRequestsPanel();
         } catch (err) { showToast(err.message, 'error'); setUpmLoading(acceptB, false); }
       });
       upmActions.insertBefore(acceptB, upmActions.children[1]);
     } else {
-      var addBtn = document.createElement('button');
-      addBtn.className = 'upm-btn upm-btn-add';
-      addBtn.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend';
+      var addBtn = document.createElement('button'); addBtn.className = 'upm-btn upm-btn-add'; addBtn.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend';
       addBtn.addEventListener('click', makeUpmAddHandler(addBtn, uid, username, upmRelation, upmActions));
       upmActions.insertBefore(addBtn, upmActions.children[1]);
     }
-
     openModal(userProfileModal);
   }
 
@@ -364,34 +309,23 @@
       setUpmLoading(btn, true);
       try {
         await callSessionApi('send-friend-request', { uid: currentUser.uid, toUid: uid });
-        upmRelation.className = 'upm-relation-badge pending';
-        upmRelation.innerHTML = '<i class="fas fa-clock"></i> Request Sent';
-        upmCurrentRelation = 'pending_sent';
-        btn.remove();
-        var cancelB = document.createElement('button');
-        cancelB.className = 'upm-btn upm-btn-cancel';
-        cancelB.innerHTML = '<i class="fas fa-times-circle"></i> Cancel Request';
+        upmRelation.className = 'upm-relation-badge pending'; upmRelation.innerHTML = '<i class="fas fa-clock"></i> Request Sent';
+        upmCurrentRelation = 'pending_sent'; btn.remove();
+        var cancelB = document.createElement('button'); cancelB.className = 'upm-btn upm-btn-cancel'; cancelB.innerHTML = '<i class="fas fa-times-circle"></i> Cancel Request';
         cancelB.addEventListener('click', async function () {
           setUpmLoading(cancelB, true);
           try {
             await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid });
-            upmRelation.className = 'upm-relation-badge none';
-            upmRelation.innerHTML = '<i class="fas fa-user"></i> Not Friends';
-            upmCurrentRelation = 'none';
-            cancelB.remove();
-            var addB2 = document.createElement('button');
-            addB2.className = 'upm-btn upm-btn-add';
-            addB2.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend';
+            upmRelation.className = 'upm-relation-badge none'; upmRelation.innerHTML = '<i class="fas fa-user"></i> Not Friends';
+            upmCurrentRelation = 'none'; cancelB.remove();
+            var addB2 = document.createElement('button'); addB2.className = 'upm-btn upm-btn-add'; addB2.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend';
             addB2.addEventListener('click', makeUpmAddHandler(addB2, uid, username, upmRelation, upmActions));
             upmActions.insertBefore(addB2, upmActions.children[1]);
-            syncSearchListRelation(uid, 'none');
-            showToast('Friend request cancelled.', 'info');
-            loadSentPanel();
+            syncSearchListRelation(uid, 'none'); showToast('Friend request cancelled.', 'info'); loadSentPanel();
           } catch (err) { showToast(err.message, 'error'); setUpmLoading(cancelB, false); }
         });
         upmActions.insertBefore(cancelB, upmActions.children[1]);
-        syncSearchListRelation(uid, 'pending_sent');
-        showToast('Friend request sent!', 'success');
+        syncSearchListRelation(uid, 'pending_sent'); showToast('Friend request sent!', 'success');
       } catch (err) { showToast(err.message, 'error'); setUpmLoading(btn, false); }
     };
   }
@@ -404,10 +338,6 @@
       var btns = actionsDiv.querySelectorAll('[data-uid]');
       var match = false;
       btns.forEach(function(b) { if (b.dataset.uid === uid) match = true; });
-      if (!match) {
-        var viewBtns = actionsDiv.querySelectorAll('.btn-icon');
-        viewBtns.forEach(function(vb) { if (vb._uid === uid) match = true; });
-      }
       if (!match) return;
       var username = item.querySelector('.username') ? item.querySelector('.username').textContent : uid;
       actionsDiv.innerHTML = '';
@@ -416,15 +346,11 @@
       viewB.title = 'View Profile'; viewB.innerHTML = '<i class="fas fa-user"></i>';
       viewB.addEventListener('click', function() { openUserProfileModal(uid, username, newRelation); });
       if (newRelation === 'pending_sent') {
-        var cb = document.createElement('button');
-        cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = uid;
-        cb.innerHTML = '<i class="fas fa-times"></i> Cancel';
+        var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel';
         cb.addEventListener('click', makeCancelHandler(cb, uid, actionsDiv, username));
         actionsDiv.appendChild(viewB); actionsDiv.appendChild(cb);
       } else if (newRelation === 'none') {
-        var ab = document.createElement('button');
-        ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid;
-        ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
+        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
         ab.addEventListener('click', makeAddHandler(ab, uid, actionsDiv));
         actionsDiv.appendChild(viewB); actionsDiv.appendChild(ab);
       } else if (newRelation === 'friend') {
@@ -434,28 +360,22 @@
   }
 
   function openRemoveOverlay(uid, name) {
-    pendingRemoveUid = uid;
-    pendingRemoveName = name;
+    pendingRemoveUid = uid; pendingRemoveName = name;
     document.getElementById('rmFriendName').textContent = name;
     removeFriendOverlay.classList.add('active');
   }
   function closeRemoveOverlay() {
     removeFriendOverlay.classList.remove('active');
-    pendingRemoveUid = null;
-    pendingRemoveName = null;
+    pendingRemoveUid = null; pendingRemoveName = null;
   }
   document.getElementById('rmCancelBtn').addEventListener('click', closeRemoveOverlay);
   removeFriendOverlay.addEventListener('click', function (e) { if (e.target === removeFriendOverlay) closeRemoveOverlay(); });
   document.getElementById('rmConfirmBtn').addEventListener('click', async function () {
     if (!pendingRemoveUid) return;
-    var btn = document.getElementById('rmConfirmBtn');
-    btn.disabled = true;
+    var btn = document.getElementById('rmConfirmBtn'); btn.disabled = true;
     try {
       await callSessionApi('remove-friend', { uid: currentUser.uid, friendUid: pendingRemoveUid });
-      closeRemoveOverlay();
-      closeCtxMenu();
-      showToast('Friend removed successfully.', 'info');
-      loadFriendsPanel();
+      closeRemoveOverlay(); closeCtxMenu(); showToast('Friend removed successfully.', 'info'); loadFriendsPanel();
     } catch (err) { showToast(err.message, 'error'); }
     finally { btn.disabled = false; }
   });
@@ -488,8 +408,7 @@
     var newUsername = newNameInput.value.trim();
     var password = passwordConfirmInput.value;
     if (!password) { passwordErrorMessage.textContent = 'Please enter your password.'; passwordErrorMessage.style.display = 'block'; return; }
-    renameLoadingSpinner.style.display = 'block';
-    confirmRenameBtn.disabled = true;
+    renameLoadingSpinner.style.display = 'block'; confirmRenameBtn.disabled = true;
     usernameError.style.display = 'none'; passwordErrorMessage.style.display = 'none';
     try {
       var v = await callAuthApi('verify-password', { uid: currentUser.uid, password: password });
@@ -497,13 +416,7 @@
       var c = await callSessionApi('check-username', { username: newUsername });
       if (!c.available) { usernameError.style.display = 'block'; return; }
       var d = await callSessionApi('set-username', { uid: currentUser.uid, username: newUsername });
-      if (d.success) {
-        currentUser = d.user;
-        localStorage.setItem('user', JSON.stringify(currentUser));
-        updateUsernameDisplay();
-        renameSuccessMessage.style.display = 'block';
-        setTimeout(function () { closeModal(renameModal); }, 1500);
-      }
+      if (d.success) { currentUser = d.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); renameSuccessMessage.style.display = 'block'; setTimeout(function () { closeModal(renameModal); }, 1500); }
     } catch (err) {
       if (err.message.toLowerCase().includes('taken')) usernameError.style.display = 'block';
       else { passwordErrorMessage.textContent = err.message; passwordErrorMessage.style.display = 'block'; }
@@ -516,11 +429,7 @@
 
   var playersModal = document.getElementById('playersModal');
   document.getElementById('amisBtn').addEventListener('click', function () {
-    openModal(playersModal);
-    loadFriendsPanel();
-    loadRequestsBadge();
-    loadSentBadge();
-    updateFooterRequestsBadge(0);
+    openModal(playersModal); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); updateFooterRequestsBadge(0);
   });
   document.querySelectorAll('.sidebar-item').forEach(function (item) {
     item.addEventListener('click', function () {
@@ -541,26 +450,15 @@
   }
 
   function openCtxMenu(triggerBtn, uid, name, relation) {
-    activeFriendUid = uid;
-    activeFriendName = name;
-    activeCtxTrigger = triggerBtn;
-
+    activeFriendUid = uid; activeFriendName = name; activeCtxTrigger = triggerBtn;
     var rect = triggerBtn.getBoundingClientRect();
     var menuW = 185;
-    var left = rect.right - menuW;
-    if (left < 6) left = 6;
-    var top = rect.bottom + 5;
-    if (top + 180 > window.innerHeight) top = rect.top - 180;
-
-    friendCtxMenu.style.left = left + 'px';
-    friendCtxMenu.style.top = top + 'px';
-    friendCtxMenu.style.minWidth = menuW + 'px';
+    var left = rect.right - menuW; if (left < 6) left = 6;
+    var top = rect.bottom + 5; if (top + 180 > window.innerHeight) top = rect.top - 180;
+    friendCtxMenu.style.left = left + 'px'; friendCtxMenu.style.top = top + 'px'; friendCtxMenu.style.minWidth = menuW + 'px';
     friendCtxMenu.classList.add('open');
   }
-  function closeCtxMenu() {
-    friendCtxMenu.classList.remove('open');
-    activeCtxTrigger = null;
-  }
+  function closeCtxMenu() { friendCtxMenu.classList.remove('open'); activeCtxTrigger = null; }
   document.addEventListener('click', function (e) {
     if (!friendCtxMenu.classList.contains('open')) return;
     if (friendCtxMenu.contains(e.target)) return;
@@ -568,33 +466,18 @@
     closeCtxMenu();
   });
 
-  document.getElementById('ctxProfileBtn').addEventListener('click', function () {
-    closeCtxMenu();
-    openUserProfileModal(activeFriendUid, activeFriendName, 'friend');
-  });
-  document.getElementById('ctxChatBtn').addEventListener('click', function () {
-    closeCtxMenu();
-    showToast('Chat feature coming soon.', 'info');
-  });
-  document.getElementById('ctxPlayBtn').addEventListener('click', function () {
-    closeCtxMenu();
-    showToast('Game invite feature coming soon.', 'info');
-  });
-  document.getElementById('ctxRemoveBtn').addEventListener('click', function () {
-    closeCtxMenu();
-    openRemoveOverlay(activeFriendUid, activeFriendName);
-  });
+  document.getElementById('ctxProfileBtn').addEventListener('click', function () { closeCtxMenu(); openUserProfileModal(activeFriendUid, activeFriendName, 'friend'); });
+  document.getElementById('ctxChatBtn').addEventListener('click', function () { closeCtxMenu(); showToast('Chat feature coming soon.', 'info'); });
+  document.getElementById('ctxPlayBtn').addEventListener('click', function () { closeCtxMenu(); showToast('Game invite feature coming soon.', 'info'); });
+  document.getElementById('ctxRemoveBtn').addEventListener('click', function () { closeCtxMenu(); openRemoveOverlay(activeFriendUid, activeFriendName); });
 
   function formatLastSeen(lastSeen) {
     if (!lastSeen) return '';
     var diff = Math.floor((Date.now() - lastSeen) / 1000);
     if (diff < 60) return '';
-    var min = Math.floor(diff / 60);
-    if (min < 60) return min + 'min ago';
-    var hr = Math.floor(min / 60);
-    if (hr < 24) return hr + 'h ago';
-    var days = Math.floor(hr / 24);
-    if (days < 365) return days + 'd ago';
+    var min = Math.floor(diff / 60); if (min < 60) return min + 'min ago';
+    var hr = Math.floor(min / 60); if (hr < 24) return hr + 'h ago';
+    var days = Math.floor(hr / 24); if (days < 365) return days + 'd ago';
     return Math.floor(days / 365) + 'y ago';
   }
 
@@ -604,31 +487,18 @@
     try {
       var data = await callSessionApi('get-friends', { uid: currentUser.uid });
       container.innerHTML = '';
-
       var countBadge = document.getElementById('friendsCountBadge');
       var friendCount = data.friendCount || 0;
-      countBadge.textContent = friendCount + '/100';
-      countBadge.style.display = friendCount > 0 ? 'inline-block' : 'none';
-
-      if (!data.friends || data.friends.length === 0) {
-        renderEmptyState(container, 'user-friends', 'You have no friends yet. Use "Add Friend" to get started.');
-        return;
-      }
-
+      countBadge.textContent = friendCount + '/100'; countBadge.style.display = friendCount > 0 ? 'inline-block' : 'none';
+      if (!data.friends || data.friends.length === 0) { renderEmptyState(container, 'user-friends', 'You have no friends yet. Use "Add Friend" to get started.'); return; }
       data.friends.forEach(function (friend) {
-        var div = document.createElement('div');
-        div.className = 'player-item';
+        var div = document.createElement('div'); div.className = 'player-item';
         var lastSeenTxt = friend.online ? '' : formatLastSeen(friend.lastSeen);
         div.innerHTML =
-          '<div class="player-item-left">' +
-            '<i class="fas fa-user-circle user-icon"></i>' +
-            '<span class="username">' + escapeHtml(friend.username) + '</span>' +
-            (lastSeenTxt ? '<span class="last-seen">' + escapeHtml(lastSeenTxt) + '</span>' : '') +
-            '<span class="status-dot ' + (friend.online ? 'online' : 'offline') + '" title="' + (friend.online ? 'Online' : 'Offline') + '"></span>' +
-          '</div>' +
-          '<div class="player-item-right">' +
-            '<button class="friend-ctx-btn" aria-label="Options" data-uid="' + friend.uid + '" data-name="' + escapeHtml(friend.username) + '"><i class="fas fa-ellipsis-v"></i></button>' +
-          '</div>';
+          '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(friend.username) + '</span>' +
+          (lastSeenTxt ? '<span class="last-seen">' + escapeHtml(lastSeenTxt) + '</span>' : '') +
+          '<span class="status-dot ' + (friend.online ? 'online' : 'offline') + '" title="' + (friend.online ? 'Online' : 'Offline') + '"></span></div>' +
+          '<div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + friend.uid + '" data-name="' + escapeHtml(friend.username) + '"><i class="fas fa-ellipsis-v"></i></button></div>';
         div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) {
           e.stopPropagation();
           var btn = e.currentTarget;
@@ -637,10 +507,7 @@
         });
         container.appendChild(div);
       });
-    } catch (err) {
-      container.innerHTML = '';
-      renderEmptyState(container, 'exclamation-circle', 'Failed to load friends. Please try again.');
-    }
+    } catch (err) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load friends. Please try again.'); }
   }
 
   async function loadRequestsBadge() {
@@ -648,30 +515,20 @@
       var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid });
       var count = (data.requests || []).length;
       var badge = document.getElementById('requestsBadge');
-      badge.textContent = count;
-      badge.style.display = count > 0 ? 'inline-block' : 'none';
+      badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none';
       updateFooterRequestsBadge(count);
     } catch (e) {}
   }
-
   function updateFooterRequestsBadge(count) {
-    var fb = document.getElementById('footerRequestsBadge');
-    if (!fb) return;
-    if (count > 0) {
-      fb.textContent = count > 9 ? '9+' : count;
-      fb.style.display = 'flex';
-    } else {
-      fb.style.display = 'none';
-    }
+    var fb = document.getElementById('footerRequestsBadge'); if (!fb) return;
+    if (count > 0) { fb.textContent = count > 9 ? '9+' : count; fb.style.display = 'flex'; } else { fb.style.display = 'none'; }
   }
-
   async function loadSentBadge() {
     try {
       var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid });
       var badge = document.getElementById('sentCountBadge');
       var count = data.sentCount || (data.sent || []).length;
-      badge.textContent = count;
-      badge.style.display = count > 0 ? 'inline-block' : 'none';
+      badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none';
     } catch (e) {}
   }
 
@@ -682,49 +539,27 @@
       var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid });
       container.innerHTML = '';
       var badge = document.getElementById('requestsBadge');
-      if (!data.requests || data.requests.length === 0) {
-        badge.style.display = 'none';
-        renderEmptyState(container, 'handshake', 'No pending friend requests.');
-        return;
-      }
-      badge.textContent = data.requests.length;
-      badge.style.display = 'inline-block';
+      if (!data.requests || data.requests.length === 0) { badge.style.display = 'none'; renderEmptyState(container, 'handshake', 'No pending friend requests.'); return; }
+      badge.textContent = data.requests.length; badge.style.display = 'inline-block';
       data.requests.forEach(function (req) {
-        var div = document.createElement('div');
-        div.className = 'player-item';
-        div.innerHTML =
-          '<div class="player-item-left">' +
-            '<i class="fas fa-user-circle user-icon"></i>' +
-            '<span class="username">' + escapeHtml(req.username) + '</span>' +
-          '</div>' +
-          '<div class="player-item-right">' +
-            '<button class="btn-sm btn-icon btn-accept-icon" title="Accept" data-uid="' + req.uid + '"><i class="fas fa-check"></i></button>' +
-            '<button class="btn-sm btn-icon btn-reject-icon" title="Decline" data-uid="' + req.uid + '"><i class="fas fa-times"></i></button>' +
-          '</div>';
-        var aBtn = div.querySelector('.btn-accept-icon');
-        var rBtn = div.querySelector('.btn-reject-icon');
+        var div = document.createElement('div'); div.className = 'player-item';
+        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(req.username) + '</span></div>' +
+          '<div class="player-item-right"><button class="btn-sm btn-icon btn-accept-icon" title="Accept" data-uid="' + req.uid + '"><i class="fas fa-check"></i></button>' +
+          '<button class="btn-sm btn-icon btn-reject-icon" title="Decline" data-uid="' + req.uid + '"><i class="fas fa-times"></i></button></div>';
+        var aBtn = div.querySelector('.btn-accept-icon'); var rBtn = div.querySelector('.btn-reject-icon');
         aBtn.addEventListener('click', async function () {
           aBtn.classList.add('loading'); aBtn.disabled = true; rBtn.disabled = true;
-          try {
-            await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: aBtn.dataset.uid });
-            showToast('Friend request accepted!', 'success');
-            loadRequestsPanel(); loadFriendsPanel();
-          } catch (err) { showToast(err.message, 'error'); aBtn.classList.remove('loading'); aBtn.disabled = false; rBtn.disabled = false; }
+          try { await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: aBtn.dataset.uid }); showToast('Friend request accepted!', 'success'); loadRequestsPanel(); loadFriendsPanel(); }
+          catch (err) { showToast(err.message, 'error'); aBtn.classList.remove('loading'); aBtn.disabled = false; rBtn.disabled = false; }
         });
         rBtn.addEventListener('click', async function () {
           rBtn.classList.add('loading'); rBtn.disabled = true; aBtn.disabled = true;
-          try {
-            await callSessionApi('reject-friend-request', { uid: currentUser.uid, fromUid: rBtn.dataset.uid });
-            showToast('Friend request declined.', 'info');
-            loadRequestsPanel();
-          } catch (err) { showToast(err.message, 'error'); rBtn.classList.remove('loading'); rBtn.disabled = false; aBtn.disabled = false; }
+          try { await callSessionApi('reject-friend-request', { uid: currentUser.uid, fromUid: rBtn.dataset.uid }); showToast('Friend request declined.', 'info'); loadRequestsPanel(); }
+          catch (err) { showToast(err.message, 'error'); rBtn.classList.remove('loading'); rBtn.disabled = false; aBtn.disabled = false; }
         });
         container.appendChild(div);
       });
-    } catch (err) {
-      container.innerHTML = '';
-      renderEmptyState(container, 'exclamation-circle', 'Failed to load requests. Please try again.');
-    }
+    } catch (err) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load requests. Please try again.'); }
   }
 
   async function loadSentPanel() {
@@ -735,38 +570,20 @@
       container.innerHTML = '';
       var badge = document.getElementById('sentCountBadge');
       var sentCount = data.sentCount || (data.sent || []).length;
-      badge.textContent = sentCount;
-      badge.style.display = sentCount > 0 ? 'inline-block' : 'none';
-      if (!data.sent || data.sent.length === 0) {
-        renderEmptyState(container, 'paper-plane', 'You have not sent any friend requests yet.');
-        return;
-      }
+      badge.textContent = sentCount; badge.style.display = sentCount > 0 ? 'inline-block' : 'none';
+      if (!data.sent || data.sent.length === 0) { renderEmptyState(container, 'paper-plane', 'You have not sent any friend requests yet.'); return; }
       data.sent.forEach(function (req) {
-        var div = document.createElement('div');
-        div.className = 'player-item';
-        div.innerHTML =
-          '<div class="player-item-left">' +
-            '<i class="fas fa-user-circle user-icon"></i>' +
-            '<span class="username">' + escapeHtml(req.username) + '</span>' +
-          '</div>' +
-          '<div class="player-item-right">' +
-            '<button class="btn-sm btn-cancel" data-uid="' + req.uid + '"><i class="fas fa-times"></i> Cancel</button>' +
-          '</div>';
+        var div = document.createElement('div'); div.className = 'player-item';
+        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(req.username) + '</span></div>' +
+          '<div class="player-item-right"><button class="btn-sm btn-cancel" data-uid="' + req.uid + '"><i class="fas fa-times"></i> Cancel</button></div>';
         div.querySelector('.btn-cancel').addEventListener('click', async function (e) {
-          var btn = e.currentTarget;
-          btn.classList.add('loading'); btn.disabled = true;
-          try {
-            await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: btn.dataset.uid });
-            showToast('Friend request cancelled.', 'info');
-            loadSentPanel();
-          } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; }
+          var btn = e.currentTarget; btn.classList.add('loading'); btn.disabled = true;
+          try { await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: btn.dataset.uid }); showToast('Friend request cancelled.', 'info'); loadSentPanel(); }
+          catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; }
         });
         container.appendChild(div);
       });
-    } catch (err) {
-      container.innerHTML = '';
-      renderEmptyState(container, 'exclamation-circle', 'Failed to load sent requests. Please try again.');
-    }
+    } catch (err) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load sent requests. Please try again.'); }
   }
 
   var searchUserInput = document.getElementById('searchUserInput');
@@ -776,61 +593,37 @@
 
   searchUserBtn.addEventListener('click', async function () {
     var query = searchUserInput.value.trim();
-    if (query.length < 3) {
-      searchResultsContainer.innerHTML = '<p style="color:#ef4444;font-size:0.88em;padding:4px 0;">Please enter at least 3 characters.</p>';
-      return;
-    }
-    searchLoadingSpinner.style.display = 'block';
-    searchResultsContainer.innerHTML = '';
+    if (query.length < 3) { searchResultsContainer.innerHTML = '<p style="color:#ef4444;font-size:0.88em;padding:4px 0;">Please enter at least 3 characters.</p>'; return; }
+    searchLoadingSpinner.style.display = 'block'; searchResultsContainer.innerHTML = '';
     try {
       var data = await callSessionApi('search-users', { uid: currentUser.uid, query: query });
       searchLoadingSpinner.style.display = 'none';
-      if (!data.users || data.users.length === 0) {
-        searchResultsContainer.innerHTML = '<p style="color:#64748b;font-size:0.88em;padding:4px 0;">No players found for "' + escapeHtml(query) + '".</p>';
-        return;
-      }
+      if (!data.users || data.users.length === 0) { searchResultsContainer.innerHTML = '<p style="color:#64748b;font-size:0.88em;padding:4px 0;">No players found for "' + escapeHtml(query) + '".</p>'; return; }
       data.users.forEach(function (user) {
-        var div = document.createElement('div');
-        div.className = 'player-item';
-        var actionsDiv = document.createElement('div');
-        actionsDiv.className = 'player-item-right';
-
-        if (user.relation === 'friend') {
-          actionsDiv.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>';
-        } else if (user.relation === 'pending_sent') {
-          var cb = document.createElement('button');
-          cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = user.uid;
-          cb.innerHTML = '<i class="fas fa-times"></i> Cancel';
-          cb.addEventListener('click', makeCancelHandler(cb, user.uid, actionsDiv));
-          actionsDiv.appendChild(cb);
+        var div = document.createElement('div'); div.className = 'player-item';
+        var actionsDiv = document.createElement('div'); actionsDiv.className = 'player-item-right';
+        if (user.relation === 'friend') { actionsDiv.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>'; }
+        else if (user.relation === 'pending_sent') {
+          var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = user.uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel';
+          cb.addEventListener('click', makeCancelHandler(cb, user.uid, actionsDiv)); actionsDiv.appendChild(cb);
         } else if (user.relation === 'pending_received') {
           var aB = document.createElement('button'); aB.className = 'btn-sm btn-icon btn-accept-icon'; aB.title = 'Accept'; aB.dataset.uid = user.uid; aB.innerHTML = '<i class="fas fa-check"></i>';
           var rB = document.createElement('button'); rB.className = 'btn-sm btn-icon btn-reject-icon'; rB.title = 'Decline'; rB.dataset.uid = user.uid; rB.innerHTML = '<i class="fas fa-times"></i>';
-          aB.addEventListener('click', makeAcceptHandler(aB, rB, user.uid, actionsDiv));
-          rB.addEventListener('click', makeRejectHandler(aB, rB, user.uid, actionsDiv));
+          aB.addEventListener('click', makeAcceptHandler(aB, rB, user.uid, actionsDiv)); rB.addEventListener('click', makeRejectHandler(aB, rB, user.uid, actionsDiv));
           actionsDiv.appendChild(aB); actionsDiv.appendChild(rB);
         } else {
           var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = user.uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
-          ab.addEventListener('click', makeAddHandler(ab, user.uid, actionsDiv));
-          actionsDiv.appendChild(ab);
+          ab.addEventListener('click', makeAddHandler(ab, user.uid, actionsDiv)); actionsDiv.appendChild(ab);
         }
-
         var viewBtn = document.createElement('button');
         viewBtn.className = 'btn-sm btn-icon'; viewBtn.style.background = '#f5f3ff'; viewBtn.style.color = '#6C00BF';
         viewBtn.title = 'View Profile'; viewBtn.innerHTML = '<i class="fas fa-user"></i>';
-        viewBtn.addEventListener('click', (function(uid, username, relation) {
-          return function() { openUserProfileModal(uid, username, relation); };
-        })(user.uid, user.username, user.relation));
+        viewBtn.addEventListener('click', (function(uid, username, relation) { return function() { openUserProfileModal(uid, username, relation); }; })(user.uid, user.username, user.relation));
         actionsDiv.insertBefore(viewBtn, actionsDiv.firstChild);
-
         div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(user.username) + '</span></div>';
-        div.appendChild(actionsDiv);
-        searchResultsContainer.appendChild(div);
+        div.appendChild(actionsDiv); searchResultsContainer.appendChild(div);
       });
-    } catch (err) {
-      searchLoadingSpinner.style.display = 'none';
-      searchResultsContainer.innerHTML = '<p style="color:#ef4444;font-size:0.88em;">' + escapeHtml(err.message) + '</p>';
-    }
+    } catch (err) { searchLoadingSpinner.style.display = 'none'; searchResultsContainer.innerHTML = '<p style="color:#ef4444;font-size:0.88em;">' + escapeHtml(err.message) + '</p>'; }
   });
 
   function makeAddHandler(btn, uid, actionsDiv) {
@@ -841,16 +634,11 @@
       try {
         await callSessionApi('send-friend-request', { uid: currentUser.uid, toUid: uid });
         actionsDiv.innerHTML = '';
-        var viewB = document.createElement('button');
-        viewB.className = 'btn-sm btn-icon'; viewB.style.background = '#f5f3ff'; viewB.style.color = '#6C00BF';
-        viewB.title = 'View Profile'; viewB.innerHTML = '<i class="fas fa-user"></i>';
+        var viewB = document.createElement('button'); viewB.className = 'btn-sm btn-icon'; viewB.style.background = '#f5f3ff'; viewB.style.color = '#6C00BF'; viewB.title = 'View Profile'; viewB.innerHTML = '<i class="fas fa-user"></i>';
         viewB.addEventListener('click', function() { openUserProfileModal(uid, savedUsername, 'pending_sent'); });
-        var cb = document.createElement('button');
-        cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = uid;
-        cb.innerHTML = '<i class="fas fa-times"></i> Cancel';
+        var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel';
         cb.addEventListener('click', makeCancelHandler(cb, uid, actionsDiv, savedUsername));
-        actionsDiv.appendChild(viewB); actionsDiv.appendChild(cb);
-        showToast('Friend request sent!', 'success');
+        actionsDiv.appendChild(viewB); actionsDiv.appendChild(cb); showToast('Friend request sent!', 'success');
       } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; }
     };
   }
@@ -862,29 +650,19 @@
       try {
         await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid });
         actionsDiv.innerHTML = '';
-        var viewB = document.createElement('button');
-        viewB.className = 'btn-sm btn-icon'; viewB.style.background = '#f5f3ff'; viewB.style.color = '#6C00BF';
-        viewB.title = 'View Profile'; viewB.innerHTML = '<i class="fas fa-user"></i>';
+        var viewB = document.createElement('button'); viewB.className = 'btn-sm btn-icon'; viewB.style.background = '#f5f3ff'; viewB.style.color = '#6C00BF'; viewB.title = 'View Profile'; viewB.innerHTML = '<i class="fas fa-user"></i>';
         viewB.addEventListener('click', function() { openUserProfileModal(uid, username, 'none'); });
-        var ab = document.createElement('button');
-        ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid;
-        ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
+        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
         ab.addEventListener('click', makeAddHandler(ab, uid, actionsDiv));
-        actionsDiv.appendChild(viewB); actionsDiv.appendChild(ab);
-        showToast('Friend request cancelled.', 'info');
-        loadSentPanel();
+        actionsDiv.appendChild(viewB); actionsDiv.appendChild(ab); showToast('Friend request cancelled.', 'info'); loadSentPanel();
       } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; }
     };
   }
   function makeAcceptHandler(aBtn, rBtn, uid, actionsDiv) {
     return async function () {
       aBtn.classList.add('loading'); aBtn.disabled = true; rBtn.disabled = true;
-      try {
-        await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: uid });
-        actionsDiv.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>';
-        showToast('Friend request accepted!', 'success');
-        loadFriendsPanel(); loadRequestsPanel();
-      } catch (err) { showToast(err.message, 'error'); aBtn.classList.remove('loading'); aBtn.disabled = false; rBtn.disabled = false; }
+      try { await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: uid }); actionsDiv.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>'; showToast('Friend request accepted!', 'success'); loadFriendsPanel(); loadRequestsPanel(); }
+      catch (err) { showToast(err.message, 'error'); aBtn.classList.remove('loading'); aBtn.disabled = false; rBtn.disabled = false; }
     };
   }
   function makeRejectHandler(aBtn, rBtn, uid, actionsDiv) {
@@ -895,17 +673,11 @@
       try {
         await callSessionApi('reject-friend-request', { uid: currentUser.uid, fromUid: uid });
         actionsDiv.innerHTML = '';
-        var viewB = document.createElement('button');
-        viewB.className = 'btn-sm btn-icon'; viewB.style.background = '#f5f3ff'; viewB.style.color = '#6C00BF';
-        viewB.title = 'View Profile'; viewB.innerHTML = '<i class="fas fa-user"></i>';
+        var viewB = document.createElement('button'); viewB.className = 'btn-sm btn-icon'; viewB.style.background = '#f5f3ff'; viewB.style.color = '#6C00BF'; viewB.title = 'View Profile'; viewB.innerHTML = '<i class="fas fa-user"></i>';
         viewB.addEventListener('click', function() { openUserProfileModal(uid, savedUsername, 'none'); });
-        var ab = document.createElement('button');
-        ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid;
-        ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
+        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
         ab.addEventListener('click', makeAddHandler(ab, uid, actionsDiv));
-        actionsDiv.appendChild(viewB); actionsDiv.appendChild(ab);
-        showToast('Friend request declined.', 'info');
-        loadRequestsPanel();
+        actionsDiv.appendChild(viewB); actionsDiv.appendChild(ab); showToast('Friend request declined.', 'info'); loadRequestsPanel();
       } catch (err) { showToast(err.message, 'error'); rBtn.classList.remove('loading'); rBtn.disabled = false; aBtn.disabled = false; }
     };
   }
@@ -913,9 +685,8 @@
   searchUserInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') searchUserBtn.click(); });
 
   // ================================================================
-  // SECTION : GAME SELECT & GAME SETUP
+  // GAME SELECT & GAME SETUP
   // ================================================================
-
   var gameSelectModal = document.getElementById('gameSelectModal');
   var gameSetupModal = document.getElementById('gameSetupModal');
   var inviteFriendsModal = document.getElementById('inviteFriendsModal');
@@ -938,60 +709,40 @@
 
   document.getElementById('searchAdversariesBtn').addEventListener('click', function () { openGameSelectModal('create'); });
   document.getElementById('roomBtn').addEventListener('click', function () { openGameSelectModal('room'); });
-
   document.getElementById('gameSelectCloseBtn').addEventListener('click', function () { closeModal(gameSelectModal); });
   gameSelectModal.addEventListener('click', function (e) { if (e.target === gameSelectModal) closeModal(gameSelectModal); });
 
   document.querySelectorAll('.game-type-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      selectedGame = btn.dataset.game;
-      closeModal(gameSelectModal);
-      openGameSetup(selectedGame);
-    });
+    btn.addEventListener('click', function () { selectedGame = btn.dataset.game; closeModal(gameSelectModal); openGameSetup(selectedGame); });
   });
 
   function openGameSetup(game) {
     var label = gameLabels[game] || game;
     var headerImg = document.getElementById('gsHeaderImg');
     headerImg.innerHTML = '';
-    var img = document.createElement('img');
-    img.src = gameImages[game] || '';
-    img.alt = label;
+    var img = document.createElement('img'); img.src = gameImages[game] || ''; img.alt = label;
     img.onerror = function () { headerImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
     headerImg.appendChild(img);
     document.getElementById('gsHeaderTitle').textContent = label;
-    selectedColor = 'green';
-    selectedMinutes = 5;
+    selectedColor = 'green'; selectedMinutes = 5;
     document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === 'green'); });
     document.getElementById('gsTimeDisplay').textContent = '5 min';
     document.querySelectorAll('.gs-time-option').forEach(function (o) {
-      var is5 = parseInt(o.dataset.minutes) === 5;
-      o.classList.toggle('selected', is5);
-      var check = o.querySelector('.gs-check');
-      if (check) check.style.display = is5 ? '' : 'none';
+      var is5 = parseInt(o.dataset.minutes) === 5; o.classList.toggle('selected', is5);
+      var check = o.querySelector('.gs-check'); if (check) check.style.display = is5 ? '' : 'none';
     });
     closeGsDropdown();
-
-    // Ovaina ny launchBtn arakaraka ny gameOrigin
     var launchBtn = document.getElementById('gsLaunchBtn');
     if (gameOrigin === 'room') {
       launchBtn.innerHTML = '<i class="fas fa-user-plus"></i> Invite Friends';
     } else {
       launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
     }
-
     openModal(gameSetupModal);
   }
 
-  document.getElementById('gameSetupBackBtn').addEventListener('click', function () {
-    closeGsDropdown();
-    closeModal(gameSetupModal);
-    openGameSelectModal(gameOrigin);
-  });
-
-  gameSetupModal.addEventListener('click', function (e) {
-    if (e.target === gameSetupModal) closeGsDropdown();
-  });
+  document.getElementById('gameSetupBackBtn').addEventListener('click', function () { closeGsDropdown(); closeModal(gameSetupModal); openGameSelectModal(gameOrigin); });
+  gameSetupModal.addEventListener('click', function (e) { if (e.target === gameSetupModal) closeGsDropdown(); });
 
   document.querySelectorAll('.color-pick-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -1004,52 +755,28 @@
   var gsTimeDropdown = document.getElementById('gsTimeDropdown');
   var gsTimeDropdownOverlay = document.getElementById('gsTimeDropdownOverlay');
 
-  function openGsDropdown() {
-    gsDropdownOpen = true;
-    gsTimeDropdownOverlay.classList.add('open');
-    gsTimeDropdown.classList.add('open');
-    gsTimeTrigger.classList.add('open');
-  }
-  function closeGsDropdown() {
-    gsDropdownOpen = false;
-    gsTimeDropdown.classList.remove('open');
-    gsTimeDropdownOverlay.classList.remove('open');
-    if (gsTimeTrigger) gsTimeTrigger.classList.remove('open');
-  }
+  function openGsDropdown() { gsDropdownOpen = true; gsTimeDropdownOverlay.classList.add('open'); gsTimeDropdown.classList.add('open'); gsTimeTrigger.classList.add('open'); }
+  function closeGsDropdown() { gsDropdownOpen = false; gsTimeDropdown.classList.remove('open'); gsTimeDropdownOverlay.classList.remove('open'); if (gsTimeTrigger) gsTimeTrigger.classList.remove('open'); }
 
-  gsTimeTrigger.addEventListener('click', function (e) {
-    e.stopPropagation();
-    if (gsDropdownOpen) closeGsDropdown(); else openGsDropdown();
-  });
-
-  gsTimeDropdownOverlay.addEventListener('click', function (e) {
-    if (e.target === gsTimeDropdownOverlay) closeGsDropdown();
-  });
-
+  gsTimeTrigger.addEventListener('click', function (e) { e.stopPropagation(); if (gsDropdownOpen) closeGsDropdown(); else openGsDropdown(); });
+  gsTimeDropdownOverlay.addEventListener('click', function (e) { if (e.target === gsTimeDropdownOverlay) closeGsDropdown(); });
   document.querySelectorAll('.gs-time-option').forEach(function (opt) {
     opt.addEventListener('click', function (e) {
-      e.stopPropagation();
-      selectedMinutes = parseInt(opt.dataset.minutes);
+      e.stopPropagation(); selectedMinutes = parseInt(opt.dataset.minutes);
       document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
       document.querySelectorAll('.gs-time-option').forEach(function (o) {
-        var sel = parseInt(o.dataset.minutes) === selectedMinutes;
-        o.classList.toggle('selected', sel);
-        var check = o.querySelector('.gs-check');
-        if (check) check.style.display = sel ? '' : 'none';
+        var sel = parseInt(o.dataset.minutes) === selectedMinutes; o.classList.toggle('selected', sel);
+        var check = o.querySelector('.gs-check'); if (check) check.style.display = sel ? '' : 'none';
       });
       closeGsDropdown();
     });
   });
-
   document.addEventListener('click', function (e) {
-    if (gsDropdownOpen && gsTimeDropdownOverlay && !gsTimeDropdownOverlay.contains(e.target)) {
-      closeGsDropdown();
-    }
+    if (gsDropdownOpen && gsTimeDropdownOverlay && !gsTimeDropdownOverlay.contains(e.target)) closeGsDropdown();
   });
 
   document.getElementById('gsLaunchBtn').addEventListener('click', function () {
     if (gameOrigin === 'room') {
-      // Misokatra ilay Invite Friends Modal
       closeGsDropdown();
       closeModal(gameSetupModal);
       openInviteFriendsModal();
@@ -1059,22 +786,24 @@
   });
 
   // ================================================================
-  // SECTION : INVITE FRIENDS MODAL
+  // INVITE FRIENDS MODAL
   // ================================================================
 
+  // Map: uid → { timer, intervalId } pour gérer les countdowns des boutons Invite
+  var inviteTimers = {};
+
   function openInviteFriendsModal() {
-    // Asiana header info (image sy title ny game nofidiana)
     var label = gameLabels[selectedGame] || selectedGame || 'Game';
     var headerImg = document.getElementById('inviteHeaderImg');
     headerImg.innerHTML = '';
-    var img = document.createElement('img');
-    img.src = gameImages[selectedGame] || '';
-    img.alt = label;
+    var img = document.createElement('img'); img.src = gameImages[selectedGame] || ''; img.alt = label;
     img.onerror = function () { headerImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
     headerImg.appendChild(img);
     document.getElementById('inviteHeaderTitle').textContent = 'Invite Friends';
     document.getElementById('inviteHeaderSub').textContent = label + ' · ' + selectedMinutes + ' min';
-
+    // Reset tous les timers
+    Object.keys(inviteTimers).forEach(function(uid) { clearInterval(inviteTimers[uid]); });
+    inviteTimers = {};
     openModal(inviteFriendsModal);
     loadOnlineFriendsForInvite();
   }
@@ -1085,28 +814,22 @@
     try {
       var data = await callSessionApi('get-friends', { uid: currentUser.uid });
       container.innerHTML = '';
-
-      // Asiana ny amis enligne ihany
       var onlineFriends = (data.friends || []).filter(function(f) { return f.online; });
-
       if (onlineFriends.length === 0) {
         container.innerHTML =
-          '<div class="invite-empty-state">' +
-            '<i class="fas fa-wifi"></i>' +
-            '<p>No friends are online right now.<br>Invite them when they connect!</p>' +
-          '</div>';
+          '<div class="invite-empty-state"><i class="fas fa-wifi"></i><p>No friends are online right now.<br>Invite them when they connect!</p></div>';
         return;
       }
-
       onlineFriends.forEach(function(friend) {
         var div = document.createElement('div');
         div.className = 'invite-friend-item';
-        div.innerHTML =
-          '<div class="invite-friend-left">' +
-            '<i class="fas fa-user-circle user-icon"></i>' +
-            '<span class="username">' + escapeHtml(friend.username) + '</span>' +
-            '<span class="status-dot online" title="Online"></span>' +
-          '</div>';
+
+        var leftDiv = document.createElement('div');
+        leftDiv.className = 'invite-friend-left';
+        leftDiv.innerHTML =
+          '<i class="fas fa-user-circle user-icon"></i>' +
+          '<span class="username">' + escapeHtml(friend.username) + '</span>' +
+          '<span class="status-dot online" title="Online"></span>';
 
         var inviteBtn = document.createElement('button');
         inviteBtn.className = 'btn-invite';
@@ -1114,64 +837,141 @@
         inviteBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
 
         inviteBtn.addEventListener('click', (function(btn, f) {
-          return async function() {
-            btn.classList.add('loading');
+          return function() {
+            // Si déjà un timer actif pour cet ami, ne rien faire
+            if (inviteTimers[f.uid]) return;
+            // Démarrer countdown 10s sur le bouton
             btn.disabled = true;
-            try {
-              // Izao fotsiny no omena — tsy mbola asiana hasana hiditra anaty room
-              showToast('Invitation sent to ' + f.username + '!', 'success');
-              btn.classList.remove('loading');
-              btn.classList.add('sent');
-              btn.innerHTML = '<i class="fas fa-check"></i> Sent';
-              // btn.disabled = true; -- efa disabled
-            } catch(err) {
-              showToast(err.message || 'Failed to send invitation.', 'error');
-              btn.classList.remove('loading');
-              btn.disabled = false;
-            }
+            btn.classList.add('counting');
+            var count = 10;
+            btn.textContent = count;
+            var ivl = setInterval(function() {
+              count--;
+              if (count <= 0) {
+                clearInterval(ivl);
+                delete inviteTimers[f.uid];
+                btn.classList.remove('counting');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
+              } else {
+                btn.textContent = count;
+              }
+            }, 1000);
+            inviteTimers[f.uid] = ivl;
+            // Afficher la notification chez l'ami (simulation côté expéditeur)
+            // En production réelle: appel API pour envoyer l'invitation
+            showGameInviteNotif(f.username);
           };
         })(inviteBtn, friend));
 
+        div.appendChild(leftDiv);
         div.appendChild(inviteBtn);
         container.appendChild(div);
       });
     } catch(err) {
-      container.innerHTML =
-        '<div class="invite-empty-state">' +
-          '<i class="fas fa-exclamation-circle"></i>' +
-          '<p>Failed to load friends. Please try again.</p>' +
-        '</div>';
+      container.innerHTML = '<div class="invite-empty-state"><i class="fas fa-exclamation-circle"></i><p>Failed to load friends. Please try again.</p></div>';
     }
   }
 
-  // Back button: retour au gameSetupModal
   document.getElementById('inviteModalBackBtn').addEventListener('click', function () {
+    // Arrêter tous les timers d'invitation
+    Object.keys(inviteTimers).forEach(function(uid) { clearInterval(inviteTimers[uid]); });
+    inviteTimers = {};
     closeModal(inviteFriendsModal);
     openGameSetup(selectedGame);
   });
 
   // ================================================================
+  // GAME INVITE NOTIFICATION (cadre kely eo ambony ankavanana)
+  // Miseho amin'ilay amis nanasana — aseho eo amin'ny dashboard ny amis
+  // ================================================================
 
-  // UID copy button
+  var ginNotif = document.getElementById('gameInviteNotif');
+  var ginProgressBar = document.getElementById('ginProgressBar');
+  var ginCountdownEl = document.getElementById('ginCountdown');
+  var ginUsernameEl = document.getElementById('ginUsername');
+  var ginAcceptBtn = document.getElementById('ginAcceptBtn');
+  var ginDeclineBtn = document.getElementById('ginDeclineBtn');
+  var ginTimer = null;
+  var ginExpanded = false;
+
+  /**
+   * Asehana ny notification amin'ny amis.
+   * En production: appeler cette fonction côté destinataire via WebSocket/polling.
+   * Ici simulé localement pour démonstration.
+   */
+  function showGameInviteNotif(senderUsername) {
+    // Stop existing timer
+    if (ginTimer) { clearInterval(ginTimer); ginTimer = null; }
+
+    ginUsernameEl.textContent = senderUsername;
+    ginCountdownEl.textContent = '10';
+    // Reset progress bar
+    ginProgressBar.style.transition = 'none';
+    ginProgressBar.style.transform = 'scaleX(1)';
+
+    // Afficher le cadre (sans les boutons d'abord)
+    ginNotif.classList.remove('gin-expanded');
+    ginNotif.classList.add('gin-visible');
+
+    // Après 300ms, expand pour montrer les boutons
+    setTimeout(function() {
+      ginNotif.classList.add('gin-expanded');
+      ginExpanded = true;
+      // Démarrer la progress bar
+      requestAnimationFrame(function() {
+        ginProgressBar.style.transition = 'transform 10s linear';
+        ginProgressBar.style.transform = 'scaleX(0)';
+      });
+    }, 300);
+
+    // Countdown 10s
+    var count = 10;
+    ginTimer = setInterval(function() {
+      count--;
+      ginCountdownEl.textContent = count > 0 ? count : '0';
+      if (count <= 0) {
+        clearInterval(ginTimer); ginTimer = null;
+        hideGameInviteNotif();
+      }
+    }, 1000);
+  }
+
+  function hideGameInviteNotif() {
+    if (ginTimer) { clearInterval(ginTimer); ginTimer = null; }
+    ginNotif.classList.remove('gin-visible', 'gin-expanded');
+    ginExpanded = false;
+  }
+
+  ginAcceptBtn.addEventListener('click', function() {
+    hideGameInviteNotif();
+    showToast('Game invitation accepted!', 'success');
+    // En production: rediriger vers la Room
+  });
+
+  ginDeclineBtn.addEventListener('click', function() {
+    hideGameInviteNotif();
+    // Pas de toast — discret
+  });
+
+  // Exposer showGameInviteNotif globalement (pour appel via WebSocket/polling)
+  window.showGameInviteNotif = showGameInviteNotif;
+
+  // ================================================================
+
   var upmCopyUidBtn = document.getElementById('upmCopyUidBtn');
   if (upmCopyUidBtn) {
     upmCopyUidBtn.addEventListener('click', function () {
       var uidText = document.getElementById('upmUid').textContent.replace('UID: ', '').trim();
       if (!uidText || uidText === '—') return;
       navigator.clipboard.writeText(uidText).then(function () {
-        upmCopyUidBtn.innerHTML = '<i class="fas fa-check"></i>';
-        upmCopyUidBtn.classList.add('copied');
-        setTimeout(function () {
-          upmCopyUidBtn.innerHTML = '<i class="fas fa-copy"></i>';
-          upmCopyUidBtn.classList.remove('copied');
-        }, 2000);
+        upmCopyUidBtn.innerHTML = '<i class="fas fa-check"></i>'; upmCopyUidBtn.classList.add('copied');
+        setTimeout(function () { upmCopyUidBtn.innerHTML = '<i class="fas fa-copy"></i>'; upmCopyUidBtn.classList.remove('copied'); }, 2000);
       }).catch(function () { showToast('Copy failed.', 'error'); });
     });
   }
 
-  // Email modal
   var emailModal = document.getElementById('emailModal');
-
   function openEmailModal() {
     if (!currentUser) return;
     document.getElementById('emailModalUsername').textContent = currentUser.username || '____';
@@ -1179,7 +979,6 @@
     document.getElementById('emailModalValue').textContent = currentUser.email || '—';
     openModal(emailModal);
   }
-
   document.getElementById('emailModalCloseBtn').addEventListener('click', function () { closeModal(emailModal); });
   document.getElementById('emailModalCloseFooterBtn').addEventListener('click', function () { closeModal(emailModal); });
   emailModal.addEventListener('click', function (e) { if (e.target === emailModal) closeModal(emailModal); });
