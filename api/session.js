@@ -16,7 +16,7 @@ const usersCollection = db.collection("users");
 const gameInvitesCollection = db.collection("gameInvites");
 
 const FRIEND_LIMIT = 100;
-const ONLINE_THRESHOLD = 35 * 1000;
+const ONLINE_THRESHOLD = 12 * 1000; // ping toutes les 10s + 2s marge
 const GAME_INVITE_TTL = 12 * 1000; // 12s (10s display + 2s margin)
 
 export default async function handler(req, res) {
@@ -492,17 +492,30 @@ async function handleCheckGameInviteStatus(body, res) {
   // Autorisé pour sender ET receiver
   if (invite.fromUid !== uid && invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
 
+  // Récupérer lastSeen des deux joueurs pour détecter offline
+  const now = Date.now();
+  const [senderDoc, receiverDoc] = await Promise.all([
+    usersCollection.doc(invite.fromUid).get(),
+    usersCollection.doc(invite.toUid).get()
+  ]);
+  const senderLastSeen = senderDoc.exists ? (senderDoc.data().lastSeen || 0) : 0;
+  const receiverLastSeen = receiverDoc.exists ? (receiverDoc.data().lastSeen || 0) : 0;
+  const senderOnline = (now - senderLastSeen) < ONLINE_THRESHOLD;
+  const receiverOnline = (now - receiverLastSeen) < ONLINE_THRESHOLD;
+
   return res.status(200).json({
     success: true,
     status: invite.status,
     game: invite.game,
-    color: invite.color,           // couleur choisie par le sender (mis à jour par update-room-settings)
-    minutes: invite.minutes,       // minutes choisies par le sender
-    receiverReady: invite.receiverReady !== false, // true par défaut si absent
+    color: invite.color,
+    minutes: invite.minutes,
+    receiverReady: invite.receiverReady !== false,
     senderUid: invite.fromUid,
     senderUsername: invite.fromUsername,
+    senderOnline,
     receiverUid: invite.toUid,
-    receiverUsername: invite.toUsername
+    receiverUsername: invite.toUsername,
+    receiverOnline
   });
 }
 
