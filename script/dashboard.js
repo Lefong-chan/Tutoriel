@@ -705,6 +705,9 @@
     // Afficher Quit seulement quand room+matchup
     var quitBtn = document.getElementById('gsQuitBtn');
     if (quitBtn) quitBtn.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
+    // Afficher chat seulement quand room+matchup (olona roa ao amin'ny room)
+    var chatWrap = document.getElementById('gsChatWrap');
+    if (chatWrap) chatWrap.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
 
     openModal(gameSetupModal);
   }
@@ -1247,6 +1250,22 @@
   document.getElementById('emailModalCloseBtn').addEventListener('click', function () { closeModal(emailModal); });
   document.getElementById('emailModalCloseFooterBtn').addEventListener('click', function () { closeModal(emailModal); });
   emailModal.addEventListener('click', function (e) { if (e.target === emailModal) closeModal(emailModal); });
+
+  // ── Room chat input auto-resize ──────────────────────────
+  var gsChatInput = document.getElementById('gsChatInput');
+  if (gsChatInput) {
+    gsChatInput.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 72) + 'px';
+    });
+    gsChatInput.addEventListener('keydown', function(e) {
+      // Shift+Enter = nouvelle ligne, Enter seul = send (placeholder only)
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        // TODO: send message
+      }
+    });
+  }
 
   window.showToast = showToast;
   loadSession();
