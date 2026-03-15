@@ -57,6 +57,22 @@
     .game-setup-header .gsh-back.hidden { visibility: hidden; pointer-events: none; }
     .game-setup-header .gsh-back:hover { background: rgba(255,255,255,0.34); }
     .game-setup-header .gsh-spacer { width: 30px; flex-shrink: 0; }
+    .gsh-quit { background: rgba(255,255,255,0.18); border: none; color: white; height: 30px; border-radius: 8px; cursor: pointer; display: none; align-items: center; justify-content: center; font-size: 0.72em; font-weight: 700; gap: 5px; padding: 0 10px; transition: background 0.15s; flex-shrink: 0; white-space: nowrap; }
+    .gsh-quit:hover { background: rgba(239,68,68,0.55); }
+    .gsh-quit.visible { display: flex; }
+    /* Room quit confirm overlay */
+    .room-quit-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.7); backdrop-filter: blur(3px); z-index: 9000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.22s; }
+    .room-quit-overlay.active { display: flex; opacity: 1; }
+    .room-quit-card { background: white; border-radius: 16px; padding: 26px 24px 22px; max-width: 340px; width: 88%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.25); animation: rmCardIn 0.2s ease; }
+    .room-quit-card .rq-icon { width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+    .room-quit-card .rq-icon i { font-size: 1.4em; color: #ef4444; }
+    .room-quit-card h3 { font-size: 1em; font-weight: 800; color: #1e293b; margin-bottom: 8px; }
+    .room-quit-card p { font-size: 0.84em; color: #64748b; margin-bottom: 20px; line-height: 1.5; }
+    .rq-buttons { display: flex; gap: 10px; }
+    .rq-btn-cancel { flex: 1; padding: 11px; border: none; border-radius: 10px; background: #f1f5f9; color: #475569; font-weight: 700; font-size: 0.88em; cursor: pointer; transition: opacity 0.2s; }
+    .rq-btn-cancel:hover { opacity: 0.8; }
+    .rq-btn-confirm { flex: 1; padding: 11px; border: none; border-radius: 10px; background: #ef4444; color: white; font-weight: 700; font-size: 0.88em; cursor: pointer; transition: opacity 0.2s; }
+    .rq-btn-confirm:hover { opacity: 0.85; }
     .game-setup-body { padding: 14px 16px 16px; }
 
     /* ── Room roles: receiver disabled, ready/waiting badges ── */
@@ -492,7 +508,7 @@
           <div class="game-setup-header-title" id="gsHeaderTitle">Game Setup</div>
           <div class="game-setup-header-sub" id="gsHeaderSub">Configure your game settings</div>
         </div>
-        <div class="gsh-spacer"></div>
+        <button class="gsh-quit" id="gsQuitBtn" aria-label="Quit room"><i class="fas fa-sign-out-alt"></i> Quit</button>
       </div>
       <div class="game-setup-body">
         <!-- Matchup strip — visible seulement quand invitation acceptée -->
@@ -730,6 +746,19 @@
         <div class="email-modal-value" id="emailModalValue">—</div>
         <p class="email-modal-note">This is the email address linked to your account. It is only visible to you.</p>
         <button class="em-close-footer" id="emailModalCloseFooterBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Room Quit Confirm Overlay -->
+  <div class="room-quit-overlay" id="roomQuitOverlay">
+    <div class="room-quit-card">
+      <div class="rq-icon"><i class="fas fa-sign-out-alt"></i></div>
+      <h3 id="rqTitle">Leave the room?</h3>
+      <p id="rqMessage">Are you sure you want to leave the room?</p>
+      <div class="rq-buttons">
+        <button class="rq-btn-cancel" id="rqCancelBtn">Stay</button>
+        <button class="rq-btn-confirm" id="rqConfirmBtn">Leave</button>
       </div>
     </div>
   </div>
