@@ -45,7 +45,7 @@
     .game-type-arrow { color: #c4b5fd; font-size: 0.85em; }
 
     /* ── Game Setup Modal ── */
-    .game-setup-modal .modal-content { max-width: 400px; padding: 0; overflow: hidden; width: 88%; max-height: 96vh; overflow-y: auto; }
+    .game-setup-modal .modal-content { max-width: 560px; padding: 0; overflow: hidden; width: 94%; max-height: 96vh; overflow-y: auto; }
     .game-setup-header { background: linear-gradient(135deg, #5b21b6, #7c3aed, #a78bfa); padding: 15px 18px 14px; color: white; display: flex; align-items: center; gap: 11px; }
     .game-setup-header-img { width: 40px; height: 40px; border-radius: 9px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
     .game-setup-header-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
@@ -75,28 +75,19 @@
     .rq-btn-confirm:hover { opacity: 0.85; }
     .game-setup-body { padding: 14px 16px 16px; }
 
-    /* ── Room Chat (miseho rehefa misy matchup) ── */
-    .gs-chat-wrap {
-      display: none;
-      flex-direction: column;
-      margin-top: 14px;
-      border-top: 1.5px solid #f0ebff;
-      padding-top: 12px;
-      gap: 8px;
-    }
-    .gs-chat-wrap.visible { display: flex; }
+    /* ── Room Chat (dans gs-body-chat, toujours flex column) ── */
     .gs-chat-messages {
-      min-height: 80px;
-      max-height: 110px;
+      flex: 1;
+      min-height: 0;
       background: #faf8ff;
       border: 1.5px solid #ede9f8;
       border-radius: 10px;
-      padding: 8px 10px;
+      padding: 7px 8px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      font-size: 0.8em;
+      gap: 3px;
+      font-size: 0.76em;
       color: #94a3b8;
     }
     .gs-chat-messages .gs-chat-placeholder {
@@ -106,22 +97,24 @@
       font-size: 0.9em;
       color: #c4b5fd;
       pointer-events: none;
+      line-height: 1.4;
     }
     .gs-chat-input-row {
       display: flex;
-      gap: 7px;
+      gap: 5px;
       align-items: flex-end;
+      flex-shrink: 0;
     }
     .gs-chat-input {
       flex: 1;
-      padding: 8px 11px;
+      padding: 6px 8px;
       border: 1.5px solid #e2e8f0;
-      border-radius: 9px;
-      font-size: 0.85em;
+      border-radius: 8px;
+      font-size: 0.8em;
       outline: none;
       resize: none;
-      min-height: 36px;
-      max-height: 72px;
+      min-height: 32px;
+      max-height: 60px;
       line-height: 1.4;
       font-family: inherit;
       color: #1e293b;
@@ -130,17 +123,34 @@
       overflow-y: auto;
     }
     .gs-chat-input:focus { border-color: #a78bfa; }
-    .gs-chat-input::placeholder { color: #c4b5fd; }
+    .gs-chat-input::placeholder { color: #c4b5fd; font-size: 0.92em; }
     .gs-chat-send {
-      width: 36px; height: 36px; flex-shrink: 0;
-      border: none; border-radius: 9px;
+      width: 32px; height: 32px; flex-shrink: 0;
+      border: none; border-radius: 8px;
       background: linear-gradient(135deg, #5b21b6, #7c3aed);
-      color: white; font-size: 0.92em;
+      color: white; font-size: 0.85em;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       transition: opacity 0.15s, transform 0.12s;
     }
     .gs-chat-send:hover { opacity: 0.85; transform: scale(1.06); }
     .gs-chat-send:active { transform: scale(0.96); }
+
+    /* ── Room body layout: flex row quand matchup ── */
+    .gs-body-row { display: flex; gap: 12px; align-items: stretch; }
+    .gs-body-chat {
+      display: none;
+      flex-direction: column;
+      gap: 7px;
+      width: 140px;
+      flex-shrink: 0;
+    }
+    .gs-body-row.room-active .gs-body-chat { display: flex; }
+    .gs-body-settings { flex: 1; min-width: 0; }
+    /* Séparateur vertical entre chat et settings */
+    .gs-body-row.room-active .gs-body-settings {
+      border-left: 1.5px solid #f0ebff;
+      padding-left: 12px;
+    }
 
     /* ── Room roles: receiver disabled, ready/waiting badges ── */
     .gs-receiver-mode .color-pick-btn { pointer-events: none; cursor: default; }
@@ -493,11 +503,13 @@
       .invite-modal-content { max-width: 100%; border-radius: 0; }
       .invite-modal-body { height: auto; max-height: calc(100vh - 70px); }
       .game-invite-notif { width: calc(100vw - 24px); right: 12px; top: 12px; }
-      .game-setup-modal .modal-content { width: 85%; max-height: 88vh; }
+      .game-setup-modal .modal-content { width: 94%; max-height: 92vh; }
+      .gs-body-chat { width: 120px; }
       .color-pick-btn img, .color-pick-btn .cpb-img-ph { width: 38px; height: 38px; }
     }
     @media (max-width: 400px) {
-      .game-setup-modal .modal-content { width: 92%; }
+      .game-setup-modal .modal-content { width: 98%; }
+      .gs-body-chat { width: 100px; }
       .gs-matchup-name { font-size: 0.75em; }
       .gs-launch-btn { padding: 9px 10px; font-size: 0.78em; }
     }
@@ -578,49 +590,56 @@
         <button class="gsh-quit" id="gsQuitBtn" aria-label="Quit room"><i class="fas fa-sign-out-alt"></i> Quit</button>
       </div>
       <div class="game-setup-body">
-        <!-- Matchup strip — visible seulement quand invitation acceptée -->
+        <!-- Matchup strip — au-dessus du layout flex -->
         <div class="gs-matchup" id="gsMatchup">
           <div class="gs-matchup-name" id="gsMatchupSender">—</div>
           <i class="fas fa-times gs-matchup-vs-icon"></i>
           <div class="gs-matchup-name" id="gsMatchupReceiver">—</div>
         </div>
 
-        <div class="gs-section-label" id="gsSectionLabelPiece">Choose Your Piece</div>
-        <div class="color-pick-row">
-          <button class="color-pick-btn selected" data-color="green" id="cpGreen">
-            <img src="img/button-green.png" alt="Green" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-            <div class="cpb-img-ph green" style="display:none;"><i class="fas fa-circle"></i></div>
-            <span class="cpb-label">Green</span>
-          </button>
-          <button class="color-pick-btn" data-color="red" id="cpRed">
-            <img src="img/button-red.png" alt="Red" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-            <div class="cpb-img-ph red" style="display:none;"><i class="fas fa-circle"></i></div>
-            <span class="cpb-label">Red</span>
-          </button>
-        </div>
-        <div class="gs-time-header-row">
-          <div class="gs-section-label" style="margin-bottom:0;">Time per player</div>
-          <span class="gs-opponent-not-ready" id="gsOpponentNotReady">Opponent not ready</span>
-        </div>
-        <div class="gs-time-row">
-          <button class="gs-time-trigger" id="gsTimeTrigger">
-            <span class="gs-time-val"><i class="fas fa-clock"></i><span id="gsTimeDisplay">5 min</span></span>
-            <i class="fas fa-chevron-down gs-time-chevron"></i>
-          </button>
-          <button class="gs-launch-btn" id="gsLaunchBtn"><i class="fas fa-play"></i> Start Game</button>
-        </div>
+        <!-- Flex row: chat (ankavia) + settings (ankavanana) -->
+        <div class="gs-body-row" id="gsBodyRow">
 
-        <!-- Room Chat — visible seulement quand matchup (olona roa ao amin'ny room) -->
-        <div class="gs-chat-wrap" id="gsChatWrap">
-          <div class="gs-chat-messages" id="gsChatMessages">
-            <span class="gs-chat-placeholder">No messages yet…</span>
+          <!-- Colonne gauche: Chat (hidden si pas de matchup) -->
+          <div class="gs-body-chat" id="gsChatWrap">
+            <div class="gs-chat-messages" id="gsChatMessages">
+              <span class="gs-chat-placeholder">No messages yet…</span>
+            </div>
+            <div class="gs-chat-input-row">
+              <textarea class="gs-chat-input" id="gsChatInput" placeholder="Message…" rows="1"></textarea>
+              <button class="gs-chat-send" id="gsChatSendBtn" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
+            </div>
           </div>
-          <div class="gs-chat-input-row">
-            <textarea class="gs-chat-input" id="gsChatInput" placeholder="Type a message…" rows="1"></textarea>
-            <button class="gs-chat-send" id="gsChatSendBtn" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
-          </div>
-        </div>
 
+          <!-- Colonne droite: Settings -->
+          <div class="gs-body-settings" id="gsBodySettings">
+            <div class="gs-section-label" id="gsSectionLabelPiece">Choose Your Piece</div>
+            <div class="color-pick-row">
+              <button class="color-pick-btn selected" data-color="green" id="cpGreen">
+                <img src="img/button-green.png" alt="Green" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="cpb-img-ph green" style="display:none;"><i class="fas fa-circle"></i></div>
+                <span class="cpb-label">Green</span>
+              </button>
+              <button class="color-pick-btn" data-color="red" id="cpRed">
+                <img src="img/button-red.png" alt="Red" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="cpb-img-ph red" style="display:none;"><i class="fas fa-circle"></i></div>
+                <span class="cpb-label">Red</span>
+              </button>
+            </div>
+            <div class="gs-time-header-row">
+              <div class="gs-section-label" style="margin-bottom:0;">Time per player</div>
+              <span class="gs-opponent-not-ready" id="gsOpponentNotReady">Opponent not ready</span>
+            </div>
+            <div class="gs-time-row">
+              <button class="gs-time-trigger" id="gsTimeTrigger">
+                <span class="gs-time-val"><i class="fas fa-clock"></i><span id="gsTimeDisplay">5 min</span></span>
+                <i class="fas fa-chevron-down gs-time-chevron"></i>
+              </button>
+              <button class="gs-launch-btn" id="gsLaunchBtn"><i class="fas fa-play"></i> Start Game</button>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
   </div>
