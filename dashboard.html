@@ -62,30 +62,7 @@
     .gs-receiver-mode .color-pick-btn { pointer-events: none; cursor: default; }
     .gs-receiver-mode .color-pick-btn:not(.selected) { opacity: 0.45; }
     .gs-receiver-mode .gs-time-trigger { pointer-events: none; opacity: 0.6; cursor: default; }
-    .gs-ready-badge {
-      display: none; align-items: center; gap: 6px;
-      background: #d1fae5; color: #065f46; border: 1.5px solid #6ee7b7;
-      border-radius: 8px; padding: 7px 12px; font-size: 0.8em; font-weight: 700;
-      margin-bottom: 14px;
-    }
-    .gs-ready-badge.visible { display: flex; }
-    .gs-waiting-badge {
-      display: none; align-items: center; gap: 6px;
-      background: #fef3c7; color: #92400e; border: 1.5px solid #fcd34d;
-      border-radius: 8px; padding: 7px 12px; font-size: 0.8em; font-weight: 700;
-      margin-bottom: 14px;
-    }
-    .gs-waiting-badge.visible { display: flex; }
-    .gs-receiver-color-info {
-      display: none; align-items: center; gap: 8px;
-      background: #f5f0ff; border: 1.5px solid #ddd6fe;
-      border-radius: 10px; padding: 8px 12px; margin-bottom: 14px;
-      font-size: 0.82em; font-weight: 600; color: #5b21b6;
-    }
-    .gs-receiver-color-info.visible { display: flex; }
-    .gs-receiver-color-info .rci-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
-    .gs-receiver-color-info .rci-dot.green { background: #10b981; }
-    .gs-receiver-color-info .rci-dot.red { background: #ef4444; }
+
 
     /* ── Matchup strip (miseho rehefa misy amis nanao accepté) ── */
     .gs-matchup {
@@ -528,14 +505,6 @@
           </div>
         </div>
 
-        <!-- Ready badge (receiver) / Waiting badge (sender) -->
-        <div class="gs-ready-badge" id="gsReadyBadge"><i class="fas fa-check-circle"></i> Ready to play!</div>
-        <div class="gs-waiting-badge" id="gsWaitingBadge"><i class="fas fa-clock"></i> Waiting for opponent to confirm…</div>
-        <!-- Receiver color info -->
-        <div class="gs-receiver-color-info" id="gsReceiverColorInfo">
-          <div class="rci-dot green" id="gsRciDot"></div>
-          <span id="gsRciText">Your piece: Green</span>
-        </div>
         <div class="gs-section-label" id="gsSectionLabelPiece">Choose Your Piece</div>
         <div class="color-pick-row">
           <button class="color-pick-btn selected" data-color="green" id="cpGreen">
