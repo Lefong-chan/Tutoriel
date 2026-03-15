@@ -53,6 +53,8 @@ export default async function handler(req, res) {
       case "decline-game-invite": return await handleDeclineGameInvite(payload, res);
       case "cancel-game-invite": return await handleCancelGameInvite(payload, res);
       case "check-game-invite-status": return await handleCheckGameInviteStatus(payload, res);
+      case "update-room-ready": return await handleUpdateRoomReady(payload, res);
+      case "update-room-settings": return await handleUpdateRoomSettings(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -487,17 +489,62 @@ async function handleCheckGameInviteStatus(body, res) {
   if (!inviteDoc.exists) return res.status(200).json({ success: true, status: "not_found" });
 
   const invite = inviteDoc.data();
-  if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
+  // Autorisé pour sender ET receiver
+  if (invite.fromUid !== uid && invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
 
   return res.status(200).json({
     success: true,
-    status: invite.status, // pending | accepted | declined | cancelled | expired
+    status: invite.status,
     game: invite.game,
-    color: invite.color,
-    minutes: invite.minutes,
+    color: invite.color,           // couleur choisie par le sender (mis à jour par update-room-settings)
+    minutes: invite.minutes,       // minutes choisies par le sender
+    receiverReady: invite.receiverReady !== false, // true par défaut si absent
     senderUid: invite.fromUid,
     senderUsername: invite.fromUsername,
     receiverUid: invite.toUid,
     receiverUsername: invite.toUsername
   });
+}
+
+/**
+ * update-room-ready
+ * Body: { uid, inviteId, ready }
+ * Receiver met à jour son état prêt (true/false)
+ */
+async function handleUpdateRoomReady(body, res) {
+  const { uid, inviteId, ready } = body;
+  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
+
+  const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
+  if (!inviteDoc.exists) return res.status(404).json({ error: "Invitation not found." });
+
+  const invite = inviteDoc.data();
+  if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
+  if (invite.status !== "accepted") return res.status(400).json({ error: "Invitation is not active." });
+
+  await inviteDoc.ref.update({ receiverReady: ready === true || ready === "true" });
+  return res.status(200).json({ success: true });
+}
+
+/**
+ * update-room-settings
+ * Body: { uid, inviteId, color, minutes }
+ * Sender met à jour color/minutes dans Firestore pour que le receiver les voie
+ */
+async function handleUpdateRoomSettings(body, res) {
+  const { uid, inviteId, color, minutes } = body;
+  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
+
+  const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
+  if (!inviteDoc.exists) return res.status(404).json({ error: "Invitation not found." });
+
+  const invite = inviteDoc.data();
+  if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
+  if (invite.status !== "accepted") return res.status(400).json({ error: "Invitation is not active." });
+
+  const update = {};
+  if (color) update.color = color;
+  if (minutes) update.minutes = parseInt(minutes);
+  await inviteDoc.ref.update(update);
+  return res.status(200).json({ success: true });
 }
