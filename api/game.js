@@ -1,4 +1,3 @@
-// /api/game.js
 import admin from "firebase-admin";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
@@ -18,7 +17,6 @@ if (!admin.apps.length) {
 const db = admin.database();
 const gamesRef = db.ref("games");
 
-// ─── Constantes du jeu ─────────────────────────────────────────────
 const ROWS = ['A','B','C','D','E'];
 const COLS = ['1','2','3','4','5','6','7','8','9'];
 
@@ -44,13 +42,11 @@ const allowedMoves = {
   'E9': ['D8','D9','E8']
 };
 
-// ─── Fonctions de validation ───────────────────────────────────────
 function getCaptures(pieces, from, to, color) {
   const enemy = color === "mena" ? "maintso" : "mena";
   const r1 = ROWS.indexOf(from[0]), c1 = COLS.indexOf(from[1]);
   const r2 = ROWS.indexOf(to[0]),   c2 = COLS.indexOf(to[1]);
   const dr = r2 - r1, dc = c2 - c1;
-
   const scan = (startRow, startCol, dirRow, dirCol) => {
     const captured = [];
     let r = startRow + dirRow, c = startCol + dirCol;
@@ -61,7 +57,6 @@ function getCaptures(pieces, from, to, color) {
     }
     return captured;
   };
-
   return {
     approach: scan(r2, c2, dr, dc),
     withdrawal: scan(r1, c1, -dr, -dc)
@@ -95,223 +90,86 @@ function checkAvailableCaptures(pieces, spot, visited, lastDir, color) {
   });
 }
 
-// ─── Gestionnaire principal ───────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
   res.setHeader("Access-Control-Allow-Origin", allowedOrigin || "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed." });
-  if (allowedOrigin && req.headers.origin !== allowedOrigin)
-    return res.status(403).json({ error: "Forbidden." });
-
   const { action, ...payload } = req.body;
-  if (!action) return res.status(400).json({ error: "Action required." });
-
   try {
     switch (action) {
-      case "make-move":        return await handleMakeMove(payload, res);
-      case "resolve-capture":  return await handleResolveCapture(payload, res);
-      case "stop-turn":        return await handleStopTurn(payload, res);
-      case "get-game":         return await handleGetGame(payload, res);
+      case "make-move": return await handleMakeMove(payload, res);
+      case "resolve-capture": return await handleResolveCapture(payload, res);
+      case "stop-turn": return await handleStopTurn(payload, res);
+      case "get-game": return await handleGetGame(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
-    console.error(`GAME ERROR [${action}]:`, err);
-    return res.status(500).json({ error: "An unexpected server error occurred." });
+    return res.status(500).json({ error: "Server error." });
   }
 }
 
-// ─── Handlers ─────────────────────────────────────────────────────
-
 async function handleGetGame({ uid, gameId }, res) {
-  if (!uid || !gameId) return res.status(400).json({ error: "UID and gameId required." });
   const snap = await gamesRef.child(gameId).once("value");
-  if (!snap.exists()) return res.status(404).json({ error: "Game not found." });
+  if (!snap.exists()) return res.status(404).json({ error: "Not found." });
   const game = snap.val();
-  if (game.senderUid !== uid && game.receiverUid !== uid)
-    return res.status(403).json({ error: "Not authorized." });
   return res.status(200).json({ success: true, game });
 }
 
 async function handleMakeMove({ uid, gameId, origin, target }, res) {
-  if (!uid || !gameId || !origin || !target)
-    return res.status(400).json({ error: "Missing parameters." });
-
   const gameRef = gamesRef.child(gameId);
   const snap = await gameRef.once("value");
-  if (!snap.exists()) return res.status(404).json({ error: "Game not found." });
   const game = snap.val();
-
-  const isSender = game.senderUid === uid;
-  const isReceiver = game.receiverUid === uid;
-  if (!isSender && !isReceiver) return res.status(403).json({ error: "Not authorized." });
-  const myColor = isSender ? "maintso" : "mena";
+  const myColor = game.senderUid === uid ? "maintso" : "mena";
   if (game.turn !== myColor) return res.status(400).json({ error: "Not your turn." });
-
   const pieces = game.pieces || {};
-  const movingPiece = game.movingPiece || null;
-  const visited = game.visited || [];
-  const lastDir = game.lastDir || "";
-  const awaitingCapture = game.awaitingCapture || false;
-
-  if (awaitingCapture) return res.status(400).json({ error: "You must resolve pending capture first." });
-  if (movingPiece && origin !== movingPiece)
-    return res.status(400).json({ error: "You must continue with the same piece." });
-  if (!pieces[origin] || pieces[origin] !== myColor)
-    return res.status(400).json({ error: "Invalid origin piece." });
-  if (pieces[target]) return res.status(400).json({ error: "Target is not empty." });
-  if (!allowedMoves[origin] || !allowedMoves[origin].includes(target))
-    return res.status(400).json({ error: "Invalid move." });
-  if (visited.includes(target)) return res.status(400).json({ error: "Cannot go back to visited spot." });
-
+  const newVisited = [...(game.visited || []), origin];
   const r1 = ROWS.indexOf(origin[0]), c1 = COLS.indexOf(origin[1]);
   const r2 = ROWS.indexOf(target[0]), c2 = COLS.indexOf(target[1]);
   const dir = `${r2 - r1},${c2 - c1}`;
-  if (movingPiece && lastDir === dir) return res.status(400).json({ error: "Cannot reverse direction." });
-
-  const anyCapture = playerHasAnyCapture(pieces, myColor);
   const caps = getCaptures(pieces, origin, target, myColor);
-  const isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-  if (anyCapture && !isCaptureMove) return res.status(400).json({ error: "You must capture." });
-
   let newPieces = { ...pieces };
   delete newPieces[origin];
   newPieces[target] = myColor;
-
-  const newVisited = [...visited, origin];
-  let newMovingPiece = target;
-  let newLastDir = dir;
-  let newAwaitingCapture = false;
-  let newPendingApproach = [];
-  let newPendingWithdrawal = [];
-  let newTurn = game.turn;
-
+  let newMovingPiece = target, newLastDir = dir, newAwaitingCapture = false, newPendingApproach = [], newPendingWithdrawal = [], newTurn = game.turn;
   if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
     newAwaitingCapture = true;
     newPendingApproach = caps.approach;
     newPendingWithdrawal = caps.withdrawal;
-  } else if (isCaptureMove) {
-    const toRemove = caps.approach.length > 0 ? caps.approach : caps.withdrawal;
-    toRemove.forEach(spot => delete newPieces[spot]);
-
-    const further = checkAvailableCaptures(newPieces, target, newVisited, newLastDir, myColor);
-    if (!further) {
-      newMovingPiece = null;
-      newVisited.length = 0;
-      newLastDir = "";
-      newTurn = game.turn === "maintso" ? "mena" : "maintso";
+  } else if (caps.approach.length > 0 || caps.withdrawal.length > 0) {
+    (caps.approach.length > 0 ? caps.approach : caps.withdrawal).forEach(s => delete newPieces[s]);
+    if (!checkAvailableCaptures(newPieces, target, newVisited, dir, myColor)) {
+      newMovingPiece = null; newTurn = myColor === "maintso" ? "mena" : "maintso";
     }
   } else {
-    newMovingPiece = null;
-    newVisited.length = 0;
-    newLastDir = "";
-    newTurn = game.turn === "maintso" ? "mena" : "maintso";
+    newMovingPiece = null; newTurn = myColor === "maintso" ? "mena" : "maintso";
   }
-
-  await gameRef.update({
-    pieces: newPieces,
-    turn: newTurn,
-    movingPiece: newMovingPiece,
-    visited: newVisited,
-    lastDir: newLastDir,
-    awaitingCapture: newAwaitingCapture,
-    pendingApproach: newPendingApproach,
-    pendingWithdrawal: newPendingWithdrawal
-  });
-
-  return res.status(200).json({ success: true });
+  const update = { pieces: newPieces, turn: newTurn, movingPiece: newMovingPiece, visited: newMovingPiece ? newVisited : [], lastDir: newMovingPiece ? newLastDir : "", awaitingCapture: newAwaitingCapture, pendingApproach: newPendingApproach, pendingWithdrawal: newPendingWithdrawal };
+  await gameRef.update(update);
+  return res.status(200).json({ success: true, game: update });
 }
 
 async function handleResolveCapture({ uid, gameId, capturedSpot }, res) {
-  if (!uid || !gameId || !capturedSpot)
-    return res.status(400).json({ error: "Missing parameters." });
-
   const gameRef = gamesRef.child(gameId);
   const snap = await gameRef.once("value");
-  if (!snap.exists()) return res.status(404).json({ error: "Game not found." });
   const game = snap.val();
-
-  const isSender = game.senderUid === uid;
-  const isReceiver = game.receiverUid === uid;
-  if (!isSender && !isReceiver) return res.status(403).json({ error: "Not authorized." });
-  const myColor = isSender ? "maintso" : "mena";
-  if (game.turn !== myColor) return res.status(400).json({ error: "Not your turn." });
-  if (!game.awaitingCapture) return res.status(400).json({ error: "No pending capture." });
-
-  const pendingApproach = game.pendingApproach || [];
-  const pendingWithdrawal = game.pendingWithdrawal || [];
-  let toRemove = null;
-  if (pendingApproach.includes(capturedSpot)) {
-    toRemove = pendingApproach;
-  } else if (pendingWithdrawal.includes(capturedSpot)) {
-    toRemove = pendingWithdrawal;
-  } else {
-    return res.status(400).json({ error: "Invalid capture target." });
-  }
-
+  const myColor = game.senderUid === uid ? "maintso" : "mena";
+  const toRemove = (game.pendingApproach || []).includes(capturedSpot) ? game.pendingApproach : game.pendingWithdrawal;
   let newPieces = { ...game.pieces };
-  toRemove.forEach(spot => delete newPieces[spot]);
-
-  const movingPiece = game.movingPiece;
-  const visited = game.visited || [];
-  const lastDir = game.lastDir || "";
-  const further = checkAvailableCaptures(newPieces, movingPiece, visited, lastDir, myColor);
-
-  let newMovingPiece = movingPiece;
-  let newVisited = [...visited];
-  let newLastDir = lastDir;
-  let newAwaitingCapture = false;
-  let newPendingApproach = [];
-  let newPendingWithdrawal = [];
-  let newTurn = game.turn;
-
-  if (!further) {
-    newMovingPiece = null;
-    newVisited = [];
-    newLastDir = "";
-    newTurn = game.turn === "maintso" ? "mena" : "maintso";
-  }
-
-  await gameRef.update({
-    pieces: newPieces,
-    turn: newTurn,
-    movingPiece: newMovingPiece,
-    visited: newVisited,
-    lastDir: newLastDir,
-    awaitingCapture: newAwaitingCapture,
-    pendingApproach: newPendingApproach,
-    pendingWithdrawal: newPendingWithdrawal
-  });
-
-  return res.status(200).json({ success: true });
+  toRemove.forEach(s => delete newPieces[s]);
+  const further = checkAvailableCaptures(newPieces, game.movingPiece, game.visited, game.lastDir, myColor);
+  const update = { pieces: newPieces, turn: further ? game.turn : (myColor === "maintso" ? "mena" : "maintso"), movingPiece: further ? game.movingPiece : null, visited: further ? game.visited : [], lastDir: further ? game.lastDir : "", awaitingCapture: false, pendingApproach: [], pendingWithdrawal: [] };
+  await gameRef.update(update);
+  return res.status(200).json({ success: true, game: update });
 }
 
 async function handleStopTurn({ uid, gameId }, res) {
-  if (!uid || !gameId) return res.status(400).json({ error: "Missing parameters." });
-
   const gameRef = gamesRef.child(gameId);
   const snap = await gameRef.once("value");
-  if (!snap.exists()) return res.status(404).json({ error: "Game not found." });
   const game = snap.val();
-
-  const isSender = game.senderUid === uid;
-  const isReceiver = game.receiverUid === uid;
-  if (!isSender && !isReceiver) return res.status(403).json({ error: "Not authorized." });
-  const myColor = isSender ? "maintso" : "mena";
-  if (game.turn !== myColor) return res.status(400).json({ error: "Not your turn." });
-  if (!game.movingPiece) return res.status(400).json({ error: "No ongoing capture chain." });
-
-  await gameRef.update({
-    turn: game.turn === "maintso" ? "mena" : "maintso",
-    movingPiece: null,
-    visited: [],
-    lastDir: "",
-    awaitingCapture: false,
-    pendingApproach: [],
-    pendingWithdrawal: []
-  });
-
-  return res.status(200).json({ success: true });
+  const nextTurn = game.turn === "maintso" ? "mena" : "maintso";
+  const update = { turn: nextTurn, movingPiece: null, visited: [], lastDir: "", awaitingCapture: false, pendingApproach: [], pendingWithdrawal: [] };
+  await gameRef.update(update);
+  return res.status(200).json({ success: true, game: update });
 }
