@@ -1,978 +1,534 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="mg">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - Fanorona</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <title>Fanorona - Lalao</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
-    body { background: linear-gradient(135deg, #6e8efb, #a777e3); color: #333; min-height: 100vh; display: flex; flex-direction: column; }
-
-    .header { padding: 10px 30px; display: flex; justify-content: space-between; align-items: center; color: white; }
-    .user-info { display: flex; align-items: center; flex-grow: 1; }
-    .profile-box { background: rgba(255,255,255,0.2); border-radius: 8px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; transition: background 0.2s; }
-    .profile-box:hover { background: rgba(255,255,255,0.3); }
-    .profile-box .icon-user { color: #fff; font-size: 25px; }
-    .profile-box .name { font-size: 1.2em; font-weight: bold; color: white; }
-    .settings-btn { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.2); border-radius: 8px; padding: 5px 10px; border: 1px solid rgba(255,255,255,0.3); font-size: 1.2em; font-weight: bold; color: white; cursor: pointer; transition: background 0.2s; }
-    .settings-btn:hover { background: rgba(255,255,255,0.3); }
-    .settings-btn i { color: #FFD700; font-size: 1.3em; }
-
-    .main-content { flex-grow: 1; display: flex; justify-content: center; align-items: center; padding: 20px; padding-bottom: 70px; }
-    .game-options-container { display: flex; gap: 20px; max-width: 900px; width: 100%; justify-content: center; }
-    .game-option { background-color: white; color: #a777e3; border: none; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; max-width: 150px; min-height: 150px; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition: transform 0.2s, box-shadow 0.2s; text-align: center; }
-    .game-option:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.3); }
-    .game-option i { font-size: 3em; margin-bottom: 10px; color: #a777e3; }
-    .game-option span { font-size: 1em; font-weight: bold; }
-
-    /* ── Game Select Modal ── */
-    .game-select-modal .modal-content { max-width: 440px; padding: 24px 22px 22px; }
-    .game-select-modal-header { display: flex; align-items: center; margin-bottom: 5px; position: relative; }
-    .game-select-modal-header .gm-close { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.1em; padding: 2px 4px; line-height: 1; transition: color 0.15s; position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
-    .game-select-modal-header .gm-close:hover { color: #1e293b; }
-    .game-select-modal .gm-title { font-size: 1.05em; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; }
-    .game-select-modal .gm-sub { font-size: 0.79em; color: #64748b; margin-bottom: 16px; margin-top: 3px; text-align: center; }
-    .game-type-grid { display: flex; flex-direction: column; gap: 9px; }
-    .game-type-btn { display: flex; align-items: center; gap: 13px; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 11px 14px; background: white; cursor: pointer; transition: border-color 0.18s, background 0.18s, transform 0.15s, box-shadow 0.18s; text-align: left; width: 100%; }
-    .game-type-btn:hover { border-color: #a78bfa; background: #faf5ff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,58,237,0.1); }
-    .game-type-img { width: 48px; height: 48px; border-radius: 10px; background: #f1f5f9; flex-shrink: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .game-type-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
-    .game-type-img .placeholder-icon { font-size: 1.6em; color: #a78bfa; }
-    .game-type-info { flex: 1; }
-    .game-type-name { font-size: 0.92em; font-weight: 700; color: #1e293b; margin-bottom: 1px; }
-    .game-type-desc { font-size: 0.73em; color: #94a3b8; }
-    .game-type-arrow { color: #c4b5fd; font-size: 0.85em; }
-
-    /* ── Game Setup Modal ── */
-    .game-setup-modal .modal-content { max-width: 560px; padding: 0; overflow: hidden; width: 94%; max-height: 96vh; }
-    .game-setup-header { background: linear-gradient(135deg, #5b21b6, #7c3aed, #a78bfa); padding: 15px 18px 14px; color: white; display: flex; align-items: center; gap: 11px; }
-    .game-setup-header-img { width: 40px; height: 40px; border-radius: 9px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
-    .game-setup-header-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
-    .game-setup-header-img .ph { font-size: 1.3em; color: white; }
-    .game-setup-header-info { flex: 1; text-align: center; }
-    .game-setup-header-title { font-size: 0.98em; font-weight: 800; margin-bottom: 1px; }
-    .game-setup-header-sub { font-size: 0.72em; opacity: 0.75; }
-    .game-setup-header .gsh-back { background: rgba(255,255,255,0.18); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9em; transition: background 0.15s; flex-shrink: 0; }
-    .game-setup-header .gsh-back.hidden { visibility: hidden; pointer-events: none; }
-    .game-setup-header .gsh-back:hover { background: rgba(255,255,255,0.34); }
-    .game-setup-header .gsh-spacer { width: 30px; flex-shrink: 0; }
-    .gsh-quit { background: rgba(255,255,255,0.18); border: none; color: white; height: 30px; border-radius: 8px; cursor: pointer; display: none; align-items: center; justify-content: center; font-size: 0.72em; font-weight: 700; gap: 5px; padding: 0 10px; transition: background 0.15s; flex-shrink: 0; white-space: nowrap; }
-    .gsh-quit:hover { background: rgba(239,68,68,0.55); }
-    .gsh-quit.visible { display: flex; }
-    /* Room quit confirm overlay */
-    .room-quit-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.7); backdrop-filter: blur(3px); z-index: 9000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.22s; }
-    .room-quit-overlay.active { display: flex; opacity: 1; }
-    .room-quit-card { background: white; border-radius: 16px; padding: 26px 24px 22px; max-width: 340px; width: 88%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.25); animation: rmCardIn 0.2s ease; }
-    .room-quit-card .rq-icon { width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
-    .room-quit-card .rq-icon i { font-size: 1.4em; color: #ef4444; }
-    .room-quit-card h3 { font-size: 1em; font-weight: 800; color: #1e293b; margin-bottom: 8px; }
-    .room-quit-card p { font-size: 0.84em; color: #64748b; margin-bottom: 20px; line-height: 1.5; }
-    .rq-buttons { display: flex; gap: 10px; }
-    .rq-btn-cancel { flex: 1; padding: 11px; border: none; border-radius: 10px; background: #f1f5f9; color: #475569; font-weight: 700; font-size: 0.88em; cursor: pointer; transition: opacity 0.2s; }
-    .rq-btn-cancel:hover { opacity: 0.8; }
-    .rq-btn-confirm { flex: 1; padding: 11px; border: none; border-radius: 10px; background: #ef4444; color: white; font-weight: 700; font-size: 0.88em; cursor: pointer; transition: opacity 0.2s; }
-    .rq-btn-confirm:hover { opacity: 0.85; }
-    .game-setup-body { padding: 14px 12px 14px; }
-
-    /* ── Room Chat (dans gs-body-chat, toujours flex column) ── */
-    .gs-chat-messages {
-      flex: 1;              /* ← prend tout l'espace disponible */
-      min-height: 0;        /* ← obligatoire pour que flex:1 + overflow fonctionne */
-      background: #faf8ff;
-      border: 1.5px solid #ede9f8;
-      border-radius: 10px;
-      padding: 7px 8px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 0.76em;
-      color: #94a3b8;
-    }
-    .gs-chat-messages .gs-chat-placeholder {
-      text-align: center;
-      margin: auto 0;
-      font-style: italic;
-      font-size: 0.9em;
-      color: #c4b5fd;
-      pointer-events: none;
-      line-height: 1.4;
-    }
-    /* ── Message bubbles ── */
-    .gs-msg-wrap { display: flex; max-width: 100%; }
-    .gs-msg-wrap.gs-msg-mine   { justify-content: flex-end; }
-    .gs-msg-wrap.gs-msg-theirs { justify-content: flex-start; }
-    .gs-msg-bubble {
-      max-width: 85%;
-      padding: 5px 9px;
-      border-radius: 12px;
-      font-size: 1em;
-      font-weight: 500;
-      word-break: break-word;
-      line-height: 1.35;
-      text-align: left;
-    }
-    .gs-msg-mine   .gs-msg-bubble { background: linear-gradient(135deg, #5b21b6, #7c3aed); color: white; border-bottom-right-radius: 3px; }
-    .gs-msg-theirs .gs-msg-bubble { background: #ede9f8; color: #2d1b69; border-bottom-left-radius: 3px; }
-    /* ── Chat input row — collé au bas du cadre ── */
-    .gs-chat-input-row {
-      display: flex;
-      gap: 5px;
-      align-items: center;
-      flex-shrink: 0;
-      padding-top: 5px;
-    }
-    .gs-chat-input {
-      flex: 1;
-      padding: 5px 7px;
-      border: 1.5px solid #e2e8f0;
-      border-radius: 8px;
-      font-size: 0.72em;
-      outline: none;
-      resize: none;
-      min-height: 28px;
-      max-height: 52px;
-      line-height: 1.4;
-      font-family: inherit;
-      color: #1e293b;
-      background: white;
-      transition: border-color 0.15s;
-      overflow-y: auto;
-      word-break: break-word;
-    }
-    .gs-chat-input:focus { border-color: #a78bfa; }
-    .gs-chat-input::placeholder { color: #c4b5fd; font-size: 0.92em; }
-    .gs-chat-send {
-      width: 28px; height: 28px; flex-shrink: 0;
-      border: none; border-radius: 8px;
-      background: linear-gradient(135deg, #5b21b6, #7c3aed);
-      color: white; font-size: 0.82em;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: opacity 0.15s, transform 0.12s;
-      align-self: center;
-      position: relative;
-      /* overflow:hidden supprimé — bloquait la rotation du spinner */
-    }
-    .gs-chat-send:hover:not(:disabled) { opacity: 0.85; transform: scale(1.06); }
-    .gs-chat-send:active:not(:disabled) { transform: scale(0.96); }
-    .gs-chat-send:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-    /* Spinner centré dans le bouton send */
-    .gs-chat-send.loading { color: transparent !important; pointer-events: none; }
-    .gs-chat-send.loading::after {
-      content: "";
-      position: absolute;
-      width: 14px; height: 14px;
-      top: 7px; left: 7px;   /* centré manuellement: (28-14)/2 = 7px */
-      border: 2px solid rgba(255,255,255,0.35);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spinner 0.7s linear infinite;
-    }
-
-    /* ── Room body layout: flex row quand room-active (matchup ou invite) ── */
-    .gs-body-row { display: flex; gap: 0; align-items: stretch; }
-    .gs-body-left {
-      display: none;
-      flex-direction: column;
-      width: 152px;
-      flex-shrink: 0;
-    }
-    /* Hauteur fixe + flex column pour que gsChatWrap puisse remplir */
-    .gs-body-row.room-active .gs-body-left {
-      display: flex;
-      height: 208px;
-      flex-direction: column;
-    }
-    /* gsChatWrap remplit toute la colonne gauche */
-    #gsChatWrap {
-      display: none;
-      flex-direction: column;
-      flex: 1;
-      min-height: 0;
-    }
-    .gs-body-settings { flex: 1; min-width: 0; }
-    .gs-body-row.room-active .gs-body-settings {
-      padding-left: 12px;
-      margin-left: 0;
-    }
-    .gs-body-row.room-active .gs-body-left {
-      border-right: 1.5px solid #ddd6fe;
-      margin-right: 12px;
-      padding-right: 12px;
-    }
-    /* Panneau amis enligne (avant matchup) */
-    .gs-room-friends {
-      display: flex; flex-direction: column; flex: 1; min-height: 0;
-    }
-    .gs-room-friends-label {
-      font-size: 0.63em; font-weight: 700; color: #94a3b8;
-      text-transform: uppercase; letter-spacing: 0.5px;
-      margin-bottom: 6px; flex-shrink: 0;
-    }
-    .gs-room-friends-list {
-      flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
-    }
-    .gs-room-friend-item {
-      display: flex; align-items: center; justify-content: space-between;
-      background: #faf8ff; border: 1px solid #ede9f8; border-radius: 8px;
-      padding: 5px 7px; gap: 5px;
-    }
-    .gs-room-friend-name {
-      font-size: 0.75em; font-weight: 700; color: #2d1b69;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
-    }
-    .gs-room-invite-btn {
-      width: 26px; height: 26px; flex-shrink: 0;
-      border: none; border-radius: 7px;
-      background: linear-gradient(135deg, #5b21b6, #7c3aed);
-      color: white; font-size: 0.78em;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: opacity 0.15s, transform 0.12s;
-      position: relative;
-    }
-    .gs-room-invite-btn:hover:not(:disabled) { opacity: 0.85; transform: scale(1.08); }
-    .gs-room-invite-btn:disabled { opacity: 0.65; cursor: not-allowed; }
-    .gs-room-invite-btn.counting {
-      background: #f59e0b; font-size: 0.7em; font-weight: 800;
-    }
-    .gs-room-empty {
-      font-size: 0.73em; color: #c4b5fd; font-style: italic;
-      text-align: center; padding: 10px 4px; line-height: 1.4;
-    }
-
-    /* ── Room roles: receiver disabled, ready/waiting badges ── */
-    .gs-receiver-mode .color-pick-btn { pointer-events: none; cursor: default; }
-    .gs-receiver-mode .color-pick-btn:not(.selected) { opacity: 0.45; }
-    .gs-receiver-mode .gs-time-trigger { pointer-events: none; opacity: 0.6; cursor: default; }
-
-
-    /* ── Matchup strip (miseho rehefa misy amis nanao accepté) ── */
-    .gs-matchup {
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: #f5f0ff;
-      border: 1.5px solid #ddd6fe;
-      border-radius: 10px;
-      padding: 8px 12px;
-      margin-bottom: 14px;
-      gap: 0;
-    }
-    .gs-matchup.visible { display: flex; }
-    .gs-matchup-name { font-size: 0.83em; font-weight: 800; color: #5b21b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; text-align: center; min-width: 0; }
-    .gs-matchup-pending { font-size: 0.78em; font-weight: 600; color: #a78bfa; font-style: italic; line-height: 1.3; }
-    .gs-matchup-name.pending { color: #a78bfa; font-weight: 600; font-style: italic; font-size: 0.76em; }
-    .gs-matchup-vs-icon { color: #a78bfa; font-size: 0.78em; flex-shrink: 0; padding: 0 10px; }
-    .gs-section-label { font-size: 0.73em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 9px; text-align: left; }
-    .gs-time-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; min-height: 0; }
-    .gs-time-header-row .gs-section-label { margin-bottom: 0; }
-    .gs-opponent-not-ready { font-size: 0.7em; font-weight: 700; color: #ef4444; display: none; line-height: 1; }
-
-
-    .color-pick-row { display: flex; gap: 11px; margin-bottom: 18px; }
-    .color-pick-btn { flex: 1; border: 2px solid #e2e8f0; border-radius: 11px; padding: 10px 8px; background: white; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: border-color 0.18s, background 0.18s; }
-    .color-pick-btn:hover { border-color: #a78bfa; background: #faf5ff; }
-    .color-pick-btn.selected { border-color: #7c3aed; background: #faf5ff; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
-    .color-pick-btn img { width: 44px; height: 44px; object-fit: contain; border-radius: 7px; }
-    .color-pick-btn .cpb-img-ph { width: 44px; height: 44px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 1.5em; }
-    .color-pick-btn .cpb-img-ph.green { background: #d1fae5; color: #065f46; }
-    .color-pick-btn .cpb-img-ph.red { background: #fee2e2; color: #991b1b; }
-    .color-pick-btn .cpb-label { font-size: 0.77em; font-weight: 700; color: #334155; }
-    .gs-time-row { display: flex; align-items: center; gap: 11px; }
-    .gs-time-trigger { flex: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 13px; border: 1.5px solid #e2e8f0; border-radius: 10px; background: white; cursor: pointer; font-size: 0.88em; font-weight: 600; color: #334155; transition: border-color 0.18s; user-select: none; }
-    .gs-time-trigger:hover { border-color: #a78bfa; background: #faf5ff; }
-    .gs-time-trigger .gs-time-val { display: flex; align-items: center; gap: 7px; }
-    .gs-time-trigger .gs-time-val i { color: #7c3aed; font-size: 0.9em; }
-    .gs-time-trigger .gs-time-chevron { color: #94a3b8; font-size: 0.8em; transition: transform 0.2s; }
-    .gs-time-trigger.open .gs-time-chevron { transform: rotate(180deg); }
-    .gs-launch-btn { padding: 10px 18px; border: none; border-radius: 10px; background: linear-gradient(to right, #5b21b6, #7c3aed); color: white; font-size: 0.88em; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 7px; transition: opacity 0.2s, transform 0.15s; white-space: nowrap; flex-shrink: 0; }
-    .gs-launch-btn:hover { opacity: 0.88; transform: translateY(-1px); }
-    .gs-launch-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
-
-    .gs-time-dropdown-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.45); backdrop-filter: blur(2px); z-index: 8000; justify-content: center; align-items: center; }
-    .gs-time-dropdown-overlay.open { display: flex; }
-    .gs-time-dropdown { background: white; border-radius: 14px; box-shadow: 0 12px 36px rgba(0,0,0,0.18); overflow: hidden; min-width: 200px; width: 240px; opacity: 0; transform: scale(0.94) translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: none; }
-    .gs-time-dropdown.open { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
-    .gs-time-dropdown-title { padding: 14px 18px 10px; font-size: 0.82em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.7px; border-bottom: 1px solid #f1f5f9; }
-    .gs-time-option { padding: 13px 18px; font-size: 0.92em; font-weight: 600; color: #334155; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.12s; }
-    .gs-time-option:hover { background: #f5f0ff; color: #5b21b6; }
-    .gs-time-option.selected { background: #faf5ff; color: #5b21b6; font-weight: 700; }
-    .gs-time-option .gs-time-opt-icon { color: #a78bfa; font-size: 0.9em; width: 16px; text-align: center; }
-    .gs-time-option .gs-check { color: #7c3aed; margin-left: auto; font-size: 0.85em; }
-
-    /* ── Footer ── */
-    .footer { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 1000; padding: 0 30px; }
-    .footer-content { display: flex; width: 100%; gap: 15px; padding: 10px 0; }
-    .footer-button { border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 15px 10px; transition: opacity 0.2s; gap: 8px; font-weight: bold; font-size: 1.1em; background: linear-gradient(135deg, #4f46e5, #6366f1); border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
-    .footer-button i { font-size: 1.2em; }
-    .footer-button:hover { opacity: 0.8; }
-    .footer-button span { font-size: 0.9em; font-weight: bold; }
-    #chatFooterBtn { flex-grow: 0; flex-shrink: 0; }
-    #amisBtn { flex: 1; }
-    #contactBtn { flex-grow: 0; flex-shrink: 0; }
-
-    /* ── Modals ── */
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(15,23,42,0.65); backdrop-filter: blur(3px); z-index: 2000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.25s ease-out; }
-    .modal-overlay.active { display: flex; opacity: 1; }
-    .modal-content { background-color: white; padding: 28px; border-radius: 16px; width: 90%; max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); text-align: center; color: #1e293b; position: relative; }
-    .modal-close-btn { position: absolute; top: 14px; right: 16px; font-size: 1.3em; cursor: pointer; color: #94a3b8; transition: color 0.2s; background: none; border: none; line-height: 1; }
-    .modal-close-btn:hover { color: #1e293b; }
-    .modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-    .modal-action-btn { padding: 12px; border: none; border-radius: 10px; font-size: 1em; font-weight: bold; cursor: pointer; transition: opacity 0.2s, transform 0.15s; display: flex; align-items: center; justify-content: center; gap: 10px; }
-    .modal-action-btn:hover { opacity: 0.88; transform: translateY(-1px); }
-
-    .rename-form { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; text-align: left; }
-    .input-group { display: flex; flex-direction: column; gap: 5px; }
-    .input-group label { font-weight: 600; font-size: 0.9em; color: #555; margin-bottom: 4px; display: block; }
-    .rename-form input, #setUsernameModal input { width: 100%; padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: 15px; outline: none; background: #f8fafc; transition: all 0.2s; color: #1e293b; box-sizing: border-box; }
-    .rename-form input:focus, #setUsernameModal input:focus { border-color: #6e8efb; background: #fff; box-shadow: 0 0 0 4px rgba(110,142,251,0.12); }
-    .error-message { color: #ef4444; font-size: 0.82em; font-weight: 600; display: none; margin-top: 3px; }
-    .success-message { color: #10b981; font-size: 0.95em; font-weight: bold; margin-top: 8px; display: none; text-align: center; }
-    .password-error-message { color: #ef4444; font-size: 0.9em; font-weight: bold; margin-top: 8px; display: none; text-align: center; }
-    #confirmRenameBtn { background: linear-gradient(to right, #6e8efb, #a777e3); color: white; padding: 12px; border: none; border-radius: 10px; font-size: 1em; font-weight: bold; cursor: pointer; margin-top: 6px; width: 100%; transition: opacity 0.2s; }
-    #confirmRenameBtn:hover:not(:disabled) { opacity: 0.88; }
-    #confirmRenameBtn:disabled { opacity: 0.45; cursor: not-allowed; }
-    .loading-spinner { border: 3px solid #f0f0f0; border-top: 3px solid #6C00BF; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: none; margin: 8px auto 0; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .signout-actions { display: flex; gap: 12px; margin-top: 24px; }
-    #confirmLogoutBtn { background-color: #ef4444; color: white; padding: 10px 20px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; flex-grow: 1; font-size: 0.95em; }
-    #confirmLogoutBtn:hover { opacity: 0.85; }
-    #cancelLogoutBtn { background-color: #e2e8f0; color: #475569; padding: 10px 20px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; flex-grow: 1; font-size: 0.95em; }
-    #cancelLogoutBtn:hover { opacity: 0.85; }
-    #setUsernameModal .modal-content { max-width: 360px; }
-    #setUsernameModal h2 { color: #6C00BF; margin-bottom: 16px; }
-    #setUsernameModal .confirm-btn { background: linear-gradient(to right, #6e8efb, #a777e3); color: white; padding: 13px; border: none; border-radius: 10px; font-size: 1em; font-weight: bold; cursor: pointer; width: 100%; margin-top: 12px; transition: opacity 0.2s; }
-    #setUsernameModal .confirm-btn:hover:not(:disabled) { opacity: 0.88; }
-    #setUsernameModal .confirm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-    /* ── Players Modal ── */
-    #playersModal { justify-content: center; align-items: center; padding: 0; }
-    #playersModal .modal-content { max-width: 820px; width: 92%; height: 88%; max-height: 88vh; padding: 0; display: flex; flex-direction: column; opacity: 0; transform: scale(0.95); transition: opacity 0.3s ease, transform 0.3s ease; border-radius: 16px; overflow: hidden; }
-    #playersModal.active .modal-content { opacity: 1; transform: scale(1); }
-    .players-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; background: linear-gradient(to right, #6C00BF, #a777e3); color: white; flex-shrink: 0; }
-    .players-modal-header h2 { margin: 0; color: white; font-size: 1.15em; }
-    .players-modal-header .modal-close-btn { position: relative; top: auto; right: auto; color: rgba(255,255,255,0.8); font-size: 1.4em; }
-    .players-modal-header .modal-close-btn:hover { color: white; }
-    .players-container { display: flex; flex-grow: 1; overflow: hidden; }
-    .sidebar { width: 190px; background-color: #f8f7ff; border-right: 1px solid #ede9f8; padding: 12px 0; display: flex; flex-direction: column; flex-shrink: 0; }
-    .sidebar-item { padding: 13px 18px; font-weight: 600; color: #4A008F; cursor: pointer; transition: background-color 0.2s; display: flex; align-items: center; gap: 9px; font-size: 0.88em; }
-    .sidebar-item:hover { background-color: #ede9f8; }
-    .sidebar-item.active { background-color: #6C00BF; color: white; }
-    .sidebar-item .badge { background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.75em; margin-left: auto; min-width: 18px; text-align: center; font-weight: 700; }
-    .sidebar-item .friends-count, .sidebar-item .sent-count { background: #ede9f8; color: #6C00BF; border-radius: 10px; padding: 1px 7px; font-size: 0.75em; margin-left: auto; min-width: 18px; text-align: center; font-weight: 700; }
-    .sidebar-item.active .friends-count, .sidebar-item.active .sent-count { background: rgba(255,255,255,0.25); color: white; }
-    .last-seen { font-size: 0.72em; color: #94a3b8; margin-left: 2px; }
-    .main-panel { flex-grow: 1; padding: 20px; background-color: white; overflow-y: auto; }
-    .content-panel { display: none; }
-    .content-panel.active-panel { display: block; }
-    .panel-title { font-size: 1em; font-weight: 700; color: #4A008F; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #f0ebff; display: flex; align-items: center; gap: 8px; }
-    .search-bar-wrap { display: flex; gap: 10px; margin-bottom: 18px; }
-    .search-bar-wrap input { flex-grow: 1; padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.92em; outline: none; transition: border-color 0.2s; }
-    .search-bar-wrap input:focus { border-color: #6C00BF; }
-    .search-bar-wrap button { background: #6C00BF; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-weight: bold; cursor: pointer; font-size: 0.88em; transition: background 0.2s; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
-    .search-bar-wrap button:hover { background: #4A008F; }
-
-    .player-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 13px; margin-bottom: 7px; background: #fafafa; border-radius: 10px; border: 1px solid #f0f0f0; transition: background 0.15s; }
-    .player-item:hover { background: #f5f0ff; }
-    .player-item-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-    .player-item-left .user-icon { color: #6C00BF; font-size: 1.25em; flex-shrink: 0; }
-    .player-item-left .username { font-weight: 700; color: #2d1b69; font-size: 0.92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .status-dot.online { background: #10b981; box-shadow: 0 0 5px rgba(16,185,129,0.6); }
-    .status-dot.offline { background: #cbd5e1; }
-    .player-item-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-
-    .btn-sm { border: none; border-radius: 7px; padding: 7px 12px; font-size: 0.82em; font-weight: 700; cursor: pointer; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; gap: 4px; }
-    .btn-sm:hover:not(:disabled) { opacity: 0.82; }
-    .btn-sm:disabled { opacity: 0.45; cursor: not-allowed; }
-    .btn-add { background: #10b981; color: white; }
-    .btn-cancel-req { background: #f59e0b; color: white; }
-    .btn-already { background: #94a3b8; color: white; cursor: default; }
-    .btn-cancel { background: #f59e0b; color: white; }
-    .btn-icon { width: 32px; height: 32px; padding: 0; border-radius: 7px; flex-shrink: 0; }
-    .btn-accept-icon { background: #10b981; color: white; }
-    .btn-reject-icon { background: #ef4444; color: white; }
-
-    .friend-ctx-btn { background: none; border: 1px solid #e2e8f0; cursor: pointer; color: #64748b; font-size: 0.9em; padding: 5px 8px; border-radius: 7px; transition: all 0.15s; flex-shrink: 0; }
-    .friend-ctx-btn:hover { background: #f1eeff; color: #6C00BF; border-color: #c4b5fd; }
-
-    .friend-ctx-menu { position: fixed; background: white; border: 1px solid #e8e0f8; border-radius: 12px; box-shadow: 0 10px 30px rgba(108,0,191,0.12); z-index: 9000; min-width: 180px; overflow: hidden; display: none; }
-    .friend-ctx-menu.open { display: block; animation: ctxFadeIn 0.12s ease; }
-    @keyframes ctxFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-    .friend-ctx-menu button { width: 100%; padding: 11px 16px; border: none; background: none; text-align: left; font-size: 0.88em; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 10px; color: #334155; transition: background 0.12s; justify-content: flex-start; }
-    .friend-ctx-menu button:hover { background: #f5f0ff; }
-    .friend-ctx-menu .ctx-remove { color: #ef4444; }
-    .friend-ctx-menu .ctx-remove:hover { background: #fff1f1; }
-    .ctx-divider { height: 1px; background: #f1f5f9; margin: 3px 0; }
-
-    .empty-state { text-align: center; padding: 40px 20px; }
-    .empty-state i { font-size: 2.8em; margin-bottom: 14px; opacity: 0.3; display: block; color: #6C00BF; }
-    .empty-state p { font-size: 0.92em; color: #64748b; }
-    .spinner-inline { border: 3px solid #f0ebff; border-top: 3px solid #6C00BF; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; margin: 24px auto; }
-
-    .toast-notification { position: fixed; top: 24px; right: 24px; min-width: 280px; max-width: calc(100% - 48px); background: #fff; border-radius: 12px; padding: 14px 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.13); z-index: 99999; display: flex; align-items: flex-start; gap: 12px; opacity: 0; transform: translateY(-10px); transition: opacity 0.3s, transform 0.3s; pointer-events: none; }
-    .toast-notification.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
-    .toast-notification.error { border-left: 4px solid #ef4444; }
-    .toast-notification.success { border-left: 4px solid #10b981; }
-    .toast-notification.info { border-left: 4px solid #3b82f6; }
-    .toast-icon { font-size: 17px; margin-top: 1px; }
-    .toast-notification.error .toast-icon { color: #ef4444; }
-    .toast-notification.success .toast-icon { color: #10b981; }
-    .toast-notification.info .toast-icon { color: #3b82f6; }
-    .toast-body { flex: 1; }
-    .toast-title { font-weight: 700; font-size: 13px; margin-bottom: 2px; color: #1e293b; }
-    .toast-message { font-size: 12px; color: #64748b; }
-    .toast-close-btn { background: none; border: none; font-size: 17px; color: #94a3b8; cursor: pointer; padding: 0; line-height: 1; }
-    .toast-close-btn:hover { color: #1e293b; }
-    @media (max-width: 600px) { .toast-notification { right: 50%; transform: translateX(50%) translateY(-10px); } .toast-notification.show { transform: translateX(50%) translateY(0); } }
-
-    .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); display: flex; justify-content: center; align-items: center; z-index: 10000; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
-    .loading-overlay.active { opacity: 1; pointer-events: all; }
-    .loading-spinner-large { border: 6px solid #f0ebff; border-top: 6px solid #6C00BF; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
-
-    #userProfileModal { padding: 20px; }
-    .user-profile-modal-content { background: white; border-radius: 20px; width: 100%; max-width: 420px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.22); position: relative; opacity: 0; transform: scale(0.94) translateY(8px); transition: opacity 0.28s ease, transform 0.28s ease; }
-    .modal-overlay.active .user-profile-modal-content { opacity: 1; transform: scale(1) translateY(0); }
-    .upm-banner { height: 54px; background: linear-gradient(135deg, #5b21b6, #7c3aed, #a78bfa); position: relative; flex-shrink: 0; }
-    .upm-avatar-wrap { position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); z-index: 1; }
-    .upm-avatar { width: 48px; height: 48px; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 4px 14px rgba(91,33,182,0.2); }
-    .upm-avatar i { font-size: 1.6em; color: #7c3aed; }
-    .upm-body { padding: 32px 20px 16px; text-align: center; }
-    .upm-username { font-size: 1.05em; font-weight: 800; color: #1e293b; margin-bottom: 2px; }
-    .upm-uid-row { display: flex; align-items: center; justify-content: center; gap: 7px; margin-bottom: 10px; }
-    .upm-uid-text { font-size: 0.72em; color: #94a3b8; font-family: monospace; letter-spacing: 0.5px; }
-    .upm-copy-btn { background: #f1f5f9; border: none; border-radius: 6px; width: 22px; height: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.72em; color: #64748b; transition: background 0.18s, color 0.18s; flex-shrink: 0; }
-    .upm-copy-btn:hover { background: #e2e8f0; color: #334155; }
-    .upm-copy-btn.copied { background: #d1fae5; color: #065f46; }
-
-    .email-modal-content { background: white; border-radius: 18px; width: 90%; max-width: 380px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.22); position: relative; opacity: 0; transform: scale(0.94) translateY(8px); transition: opacity 0.28s, transform 0.28s; }
-    .modal-overlay.active .email-modal-content { opacity: 1; transform: scale(1) translateY(0); }
-    .email-modal-header { background: linear-gradient(135deg, #5b21b6, #7c3aed); padding: 18px 20px 16px; color: white; text-align: center; position: relative; }
-    .email-modal-header .em-close { position: absolute; top: 10px; right: 12px; background: rgba(255,255,255,0.2); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 0.9em; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
-    .email-modal-header .em-close:hover { background: rgba(255,255,255,0.36); }
-    .email-modal-header .em-avatar { width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; border: 2px solid rgba(255,255,255,0.4); }
-    .email-modal-header .em-avatar i { font-size: 1.5em; }
-    .email-modal-header h3 { font-size: 1em; font-weight: 800; margin-bottom: 2px; }
-    .email-modal-header .em-uid { font-size: 0.72em; opacity: 0.75; font-family: monospace; }
-    .email-modal-body { padding: 20px 22px 22px; text-align: center; }
-    .email-modal-label { font-size: 0.7em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
-    .email-modal-value { font-size: 0.92em; font-weight: 600; color: #1e293b; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 9px; padding: 10px 14px; word-break: break-all; }
-    .email-modal-note { font-size: 0.75em; color: #94a3b8; margin-top: 12px; line-height: 1.5; }
-    .em-close-footer { width: 100%; padding: 11px; border: none; border-radius: 10px; background: #f1f5f9; color: #475569; font-size: 0.88em; font-weight: 700; cursor: pointer; margin-top: 16px; transition: background 0.15s; }
-    .em-close-footer:hover { background: #e2e8f0; }
-    .upm-relation-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 0.72em; font-weight: 700; margin-bottom: 12px; }
-    .upm-relation-badge.friend { background: #d1fae5; color: #065f46; }
-    .upm-relation-badge.none { background: #f1f5f9; color: #64748b; }
-    .upm-relation-badge.pending { background: #fef3c7; color: #92400e; }
-    .upm-divider { height: 1px; background: #f1f5f9; margin: 10px 0; }
-    .upm-actions { display: flex; flex-direction: column; gap: 6px; }
-    .upm-btn { width: 100%; padding: 11px 14px; border: none; border-radius: 9px; font-size: 0.88em; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: opacity 0.2s, transform 0.15s; position: relative; }
-    .upm-btn:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
-    .upm-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
-    .upm-btn-add { background: #10b981; color: white; }
-    .upm-btn-cancel { background: #f59e0b; color: white; }
-    .upm-btn-already { background: #e0f2fe; color: #0369a1; cursor: default; }
-    .upm-btn-remove { background: #fee2e2; color: #b91c1c; }
-    .upm-btn-history, .upm-btn-friends-list { background: #f5f3ff; color: #6C00BF; }
-    .upm-close-btn { position: absolute; top: 10px; right: 12px; background: rgba(255,255,255,0.25); border: none; color: white; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 0.85em; display: flex; align-items: center; justify-content: center; transition: background 0.15s; z-index: 2; }
-    .upm-close-btn:hover { background: rgba(255,255,255,0.42); }
-    .upm-btn.loading, .btn-sm.loading { color: transparent !important; pointer-events: none; }
-    .upm-btn.loading::after, .btn-sm.loading::after { content: ''; position: absolute; width: 15px; height: 15px; top: 50%; left: 50%; margin: -7.5px 0 0 -7.5px; border: 2px solid rgba(255,255,255,0.35); border-top-color: white; border-radius: 50%; animation: spinner 0.7s linear infinite; }
-    .btn-sm.loading::after { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; }
-    @keyframes spinner { to { transform: rotate(360deg); } }
-
-    .remove-friend-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.65); backdrop-filter: blur(3px); z-index: 5000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.25s; }
-    .remove-friend-overlay.active { display: flex; opacity: 1; }
-    .remove-friend-card { background: white; border-radius: 18px; padding: 32px 28px; max-width: 420px; width: 90%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.22); animation: rmCardIn 0.2s ease; }
-    @keyframes rmCardIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
-    .remove-friend-card .rm-icon { width: 60px; height: 60px; border-radius: 50%; background: #fee2e2; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
-    .remove-friend-card .rm-icon i { font-size: 1.6em; color: #ef4444; }
-    .remove-friend-card h3 { font-size: 1.1em; font-weight: 800; color: #1e293b; margin-bottom: 8px; }
-    .remove-friend-card p { font-size: 0.88em; color: #64748b; margin-bottom: 22px; line-height: 1.5; }
-    .rm-buttons { display: flex; gap: 10px; }
-    .rm-btn-confirm { flex: 1; padding: 12px; border: none; border-radius: 10px; background: #ef4444; color: white; font-weight: 700; font-size: 0.92em; cursor: pointer; transition: opacity 0.2s; }
-    .rm-btn-confirm:hover { opacity: 0.85; }
-    .rm-btn-cancel { flex: 1; padding: 12px; border: none; border-radius: 10px; background: #f1f5f9; color: #475569; font-weight: 700; font-size: 0.92em; cursor: pointer; transition: opacity 0.2s; }
-    .rm-btn-cancel:hover { opacity: 0.85; }
-
-    /* ── Invite Friends Modal
-       Mitovy TSARA amin'ny .game-setup-modal .modal-content:
-       max-width:440px, width:90%, padding:0, overflow:hidden, border-radius:16px
-    ── */
-    #inviteFriendsModal { z-index: 3000; padding: 20px; }
-    .invite-modal-content {
-      max-width: 440px;
-      width: 90%;
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    body {
+      font-family: sans-serif;
+      margin: 0;
       padding: 0;
+      background: #0092FF;
       overflow: hidden;
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-      opacity: 0;
-      transform: scale(0.94) translateY(8px);
-      transition: opacity 0.28s ease, transform 0.28s ease;
+      height: 100vh;
       display: flex;
       flex-direction: column;
+      justify-content: center;
+      align-items: center;
     }
-    .modal-overlay.active .invite-modal-content { opacity: 1; transform: scale(1) translateY(0); }
-    .invite-modal-header {
-      background: linear-gradient(135deg, #5b21b6, #7c3aed, #a78bfa);
-      padding: 15px 18px 14px; color: white;
-      display: flex; align-items: center; gap: 11px; flex-shrink: 0;
+    .flipped { transform: rotate(180deg); }
+    .grid-line { stroke: #333; stroke-width: 2; }
+    .piece-group { transition: transform 0.2s ease-in-out; }
+    .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
+    .movable-piece { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
+    .blocked-piece { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
+    .capture-target { stroke: darkorange; stroke-width: 5px; cursor: pointer; pointer-events: all !important; stroke-dasharray: 5; animation: dash 1s linear infinite; }
+    @keyframes dash { to { stroke-dashoffset: 10; } }
+    .spot { cursor: pointer; pointer-events: all; }
+    .lock-board .spot { pointer-events: none !important; }
+    .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+    .guide-dot { fill: #FFF700; opacity: 0.8; pointer-events: none; }
+
+    #players-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 95vw;
+      max-width: 800px;
+      margin-bottom: 10px;
+      padding: 8px 14px;
+      background: rgba(0,0,0,0.25);
+      border-radius: 12px;
+      color: white;
+      font-size: 1em;
+      font-weight: 700;
+      min-height: 44px;
     }
-    .invite-modal-header-info { flex: 1; text-align: center; }
-    .invite-modal-header-title { font-size: 0.98em; font-weight: 800; margin-bottom: 1px; }
-    .invite-modal-header-sub { font-size: 0.72em; opacity: 0.75; }
-    .invite-modal-header-img { width: 40px; height: 40px; border-radius: 9px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
-    .invite-modal-header-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
-    .invite-modal-header-img .ph { font-size: 1.3em; color: white; }
-    .invite-modal-back { background: rgba(255,255,255,0.18); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9em; transition: background 0.15s; flex-shrink: 0; }
-    .invite-modal-back:hover { background: rgba(255,255,255,0.34); }
-    .invite-modal-spacer { width: 30px; flex-shrink: 0; }
-    /* Body height: même que game-setup-body (~208px) — scrollable */
-    .invite-modal-body { padding: 14px 18px 18px; overflow-y: auto; height: 208px; flex-shrink: 0; }
+    .player-info { display: flex; align-items: center; gap: 8px; }
+    .player-dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); }
+    .dot-maintso { background: #22c55e; }
+    .dot-mena    { background: #ef4444; }
+    .player-name { font-size: 0.95em; }
+    .player-label { font-size: 0.7em; font-weight: 400; opacity: 0.75; margin-left: 2px; }
+    .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
 
-    .invite-friend-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 13px; margin-bottom: 7px; background: #fafafa; border-radius: 10px; border: 1px solid #f0f0f0; transition: background 0.15s; }
-    .invite-friend-item:hover { background: #f5f0ff; }
-    .invite-friend-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-    .invite-friend-left .user-icon { color: #6C00BF; font-size: 1.2em; flex-shrink: 0; }
-    .invite-friend-left .username { font-weight: 700; color: #2d1b69; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #info-box { color: white; margin-bottom: 10px; font-weight: bold; }
+    #turn-display { margin: 0; }
 
-    .btn-invite { background: linear-gradient(to right, #5b21b6, #7c3aed); color: white; border: none; border-radius: 8px; padding: 7px 11px; font-size: 0.8em; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: opacity 0.2s, transform 0.15s; white-space: nowrap; flex-shrink: 0; position: relative; min-width: 72px; justify-content: center; }
-    .btn-invite:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
-    .btn-invite:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
-    .btn-invite.counting { background: #f59e0b; }
-    .btn-invite.sent { background: #10b981; }
-    .invite-empty-state { text-align: center; padding: 30px 16px; }
-    .invite-empty-state i { font-size: 2.4em; opacity: 0.25; color: #6C00BF; display: block; margin-bottom: 10px; }
-    .invite-empty-state p { font-size: 0.88em; color: #64748b; line-height: 1.5; }
-    .invite-spinner { border: 3px solid #f0ebff; border-top: 3px solid #6C00BF; border-radius: 50%; width: 22px; height: 22px; animation: spin 0.8s linear infinite; margin: 24px auto; }
-
-    /* ── Game Invite Notification (visible UNIQUEMENT chez le destinataire) ── */
-    .game-invite-notif {
-      position: fixed; top: 14px; right: 14px; width: 272px;
-      background: white; border-radius: 14px;
-      box-shadow: 0 8px 32px rgba(91,33,182,0.2), 0 2px 8px rgba(0,0,0,0.08);
-      border: 1.5px solid #ede9f8; z-index: 99990; overflow: hidden;
-      opacity: 0; transform: translateX(110%);
-      transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
+    #stop-move-btn {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #f44336;
+      color: white;
+      border: 4px solid white;
+      font-size: 30px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 20px;
+      opacity: 0.3;
+      transition: 0.3s;
       pointer-events: none;
     }
-    .game-invite-notif.gin-visible { opacity: 1; transform: translateX(0); pointer-events: auto; }
-    .gin-progress-wrap { height: 3px; background: #f0ebff; overflow: hidden; }
-    .gin-progress-bar { height: 100%; width: 100%; background: linear-gradient(to right, #5b21b6, #a78bfa); transform-origin: left; transition: transform 1s linear; }
-    .gin-body { padding: 10px 12px 10px; }
-    .gin-row-top { display: flex; align-items: flex-start; gap: 9px; }
-    .gin-icon { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #5b21b6, #7c3aed); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
-    .gin-icon i { color: white; font-size: 0.82em; }
-    .gin-text-wrap { flex: 1; min-width: 0; }
-    .gin-label { font-size: 0.65em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px; }
-    .gin-msg { font-size: 0.82em; font-weight: 600; color: #1e293b; line-height: 1.35; }
-    .gin-username { color: #7c3aed; font-weight: 800; }
-    .gin-countdown-badge { font-size: 0.78em; font-weight: 800; color: #7c3aed; background: #f5f0ff; border-radius: 6px; padding: 2px 7px; flex-shrink: 0; align-self: flex-start; margin-top: 1px; line-height: 1.6; }
-    .gin-actions { display: flex; gap: 7px; max-height: 0; overflow: hidden; opacity: 0; transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease; margin-top: 0; }
-    .game-invite-notif.gin-expanded .gin-actions { max-height: 50px; opacity: 1; margin-top: 9px; }
-    .gin-btn-accept { flex: 1; padding: 7px 8px; border: none; border-radius: 9px; background: linear-gradient(to right, #5b21b6, #7c3aed); color: white; font-size: 0.8em; font-weight: 700; cursor: pointer; transition: opacity 0.18s; display: flex; align-items: center; justify-content: center; gap: 5px; }
-    .gin-btn-accept:hover { opacity: 0.85; }
-    .gin-btn-decline { width: 34px; height: 34px; border: none; border-radius: 9px; background: #f1f5f9; color: #64748b; font-size: 0.95em; cursor: pointer; transition: background 0.18s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .gin-btn-decline:hover { background: #fee2e2; color: #ef4444; }
-
-    @media (max-width: 768px) {
-      .game-options-container { flex-direction: column; gap: 15px; }
-      .game-option { max-width: 100%; min-height: 120px; }
-      .game-option i { font-size: 2.5em; }
-      .footer { padding: 0 10px; }
-      .footer-content { gap: 10px; }
-      .footer-button { font-size: 0.9em; padding: 12px 5px; }
-      #playersModal { padding: 0; }
-      #playersModal .modal-content { width: 100%; height: 100%; max-height: 100vh; border-radius: 0; }
-      .sidebar { width: 160px; }
-      .sidebar-item { padding: 11px 12px; font-size: 0.82em; }
-      .gs-launch-btn { padding: 10px 12px; font-size: 0.82em; }
-      #inviteFriendsModal { padding: 0; }
-      .invite-modal-content { max-width: 100%; border-radius: 0; }
-      .invite-modal-body { height: auto; max-height: calc(100vh - 70px); }
-      .game-invite-notif { width: calc(100vw - 24px); right: 12px; top: 12px; }
-      .game-setup-modal .modal-content { width: 94%; max-height: 92vh; }
-      .gs-body-chat { width: 120px; }
-      .color-pick-btn img, .color-pick-btn .cpb-img-ph { width: 38px; height: 38px; }
+    #stop-move-btn.active {
+      opacity: 1;
+      transform: scale(1.1);
+      box-shadow: 0 0 15px rgba(255,255,255,0.5);
+      pointer-events: all;
     }
-    @media (max-width: 400px) {
-      .game-setup-modal .modal-content { width: 98%; }
-      .gs-body-chat { width: 100px; }
-      .gs-matchup-name { font-size: 0.75em; }
-      .gs-launch-btn { padding: 9px 10px; font-size: 0.78em; }
+
+    #game-board {
+      width: 95vw;
+      max-width: 800px;
+      max-height: 75vh;
+      display: block;
+    }
+
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: #0092FF;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+      color: white;
+      font-size: 1.2em;
+      font-weight: 700;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #loading-overlay.hidden { display: none; }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #error-msg {
+      display: none;
+      color: #fef08a;
+      font-size: 1em;
+      margin-top: 10px;
+      text-align: center;
     }
   </style>
 </head>
 <body>
-  <div class="loading-overlay" id="loadingOverlay">
-    <div class="loading-spinner-large"></div>
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <span>Fananganana ny lalao…</span>
   </div>
 
-  <div class="header">
-    <div class="user-info">
-      <div class="profile-box" id="profileBox">
-        <i class="fas fa-user-circle icon-user"></i>
-        <span class="name" id="UsernameDisplay">____</span>
-      </div>
-    </div>
-    <button class="settings-btn" id="settingsBtn"><i class="fas fa-cog"></i></button>
-  </div>
+  <div id="players-bar" style="display:none;"></div>
+  <div id="info-box"><h2 id="turn-display">Mampiditra...</h2></div>
 
-  <div class="main-content">
-    <div class="game-options-container">
-      <button class="game-option" id="searchAdversariesBtn"><i class="fas fa-search"></i><span>Create a Game</span></button>
-      <button class="game-option" id="roomBtn"><i class="fas fa-users"></i><span>Room</span></button>
-      <button class="game-option" id="tournamentBtn"><i class="fas fa-trophy"></i><span>Tournament</span></button>
-    </div>
-  </div>
+  <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
+    <defs>
+      <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+        <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
+      </pattern>
+      <pattern id="maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+        <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
+      </pattern>
+    </defs>
+    <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400 M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200 M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200 M0 0 L200 200 M100 0 L0 100 M100 0 L300 200 M200 0 L0 200 M200 0 L400 200 M300 0 L100 200 M300 0 L400 100 M400 0 L200 200 M0 100 L100 200 M400 100 L300 200"/>
+    <g id="spots-group"></g>
+    <g id="guides-group"></g>
+    <g id="pieces-group"></g>
+  </svg>
 
-  <div class="footer">
-    <div class="footer-content">
-      <button class="footer-button" id="chatFooterBtn"><i class="fas fa-comment-dots"></i><span>Chat</span></button>
-      <button class="footer-button" id="amisBtn" style="position:relative;">
-        <i class="fas fa-user-friends"></i><span>Friends</span>
-        <span id="footerRequestsBadge" style="display:none;position:absolute;top:6px;right:6px;background:#ef4444;color:white;border-radius:50%;width:17px;height:17px;font-size:0.65em;font-weight:700;align-items:center;justify-content:center;line-height:1;">0</span>
-      </button>
-      <button class="footer-button" id="contactBtn"><i class="fas fa-envelope" style="color:#FFD700!important;"></i><span>Contact</span></button>
-    </div>
-  </div>
+  <button id="stop-move-btn">OK</button>
+  <div id="error-msg"></div>
 
-  <!-- Game Select Modal -->
-  <div class="modal-overlay game-select-modal" id="gameSelectModal">
-    <div class="modal-content">
-      <div class="game-select-modal-header">
-        <div class="gm-title" id="gameSelectTitle"><i class="fas fa-gamepad" style="color:#7c3aed;"></i>Create a Game</div>
-        <button class="gm-close" id="gameSelectCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
-      </div>
-      <div class="gm-sub" id="gameSelectSub">Choose the game type you want to play</div>
-      <div class="game-type-grid">
-        <button class="game-type-btn" data-game="both">
-          <div class="game-type-img"><img src="img/fanorona&vela.png" alt="Fanorona &amp; Vela" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="placeholder-icon" style="display:none;"><i class="fas fa-chess-board"></i></span></div>
-          <div class="game-type-info"><div class="game-type-name">Fanorona &amp; Vela</div><div class="game-type-desc">Play both game variants combined</div></div>
-          <i class="fas fa-chevron-right game-type-arrow"></i>
-        </button>
-        <button class="game-type-btn" data-game="fanorona">
-          <div class="game-type-img"><img src="img/fanorona.png" alt="Fanorona" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="placeholder-icon" style="display:none;"><i class="fas fa-chess"></i></span></div>
-          <div class="game-type-info"><div class="game-type-name">Fanorona</div><div class="game-type-desc">Classic Malagasy strategy board game</div></div>
-          <i class="fas fa-chevron-right game-type-arrow"></i>
-        </button>
-        <button class="game-type-btn" data-game="vela">
-          <div class="game-type-img"><img src="img/vela.png" alt="Vela" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="placeholder-icon" style="display:none;"><i class="fas fa-wind"></i></span></div>
-          <div class="game-type-info"><div class="game-type-name">Vela</div><div class="game-type-desc">Traditional Malagasy sailing game</div></div>
-          <i class="fas fa-chevron-right game-type-arrow"></i>
-        </button>
-      </div>
-    </div>
-  </div>
+  <script>
+(function() {
+  const SESSION_API_URL = '/api/session';
+  const GAME_API_URL = '/api/game';
+  const POLL_INTERVAL = 2000;
 
-  <!-- Game Setup Modal -->
-  <div class="modal-overlay game-setup-modal" id="gameSetupModal">
-    <div class="modal-content">
-      <div class="game-setup-header">
-        <button class="gsh-back" id="gameSetupBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-        <div class="game-setup-header-img" id="gsHeaderImg"><span class="ph"><i class="fas fa-chess-board"></i></span></div>
-        <div class="game-setup-header-info">
-          <div class="game-setup-header-title" id="gsHeaderTitle">Game Setup</div>
-          <div class="game-setup-header-sub" id="gsHeaderSub">Configure your game settings</div>
-        </div>
-        <button class="gsh-quit" id="gsQuitBtn" aria-label="Quit room"><i class="fas fa-sign-out-alt"></i> Quit</button>
-      </div>
-      <div class="game-setup-body">
-        <!-- Flex row: left panel (ankavia) + settings (ankavanana) -->
-        <div class="gs-body-row" id="gsBodyRow">
+  const params = new URLSearchParams(window.location.search);
+  const gameId = params.get('gameId');
+  const myColor = params.get('color');
 
-          <!-- Colonne gauche: amis enligne (avant matchup) OU chat (après matchup) -->
-          <div class="gs-body-left" id="gsBodyLeft">
+  const rows = ['A','B','C','D','E'];
+  const cols = ['1','2','3','4','5','6','7','8','9'];
 
-            <!-- Panneau amis enligne — visible quand pas de matchup -->
-            <div class="gs-room-friends" id="gsRoomFriends">
-              <div class="gs-room-friends-label">Online friends</div>
-              <div class="gs-room-friends-list" id="gsRoomFriendsList">
-                <div class="gs-room-empty">Loading…</div>
-              </div>
-            </div>
+  const allowedMoves = {
+    'A1': ['A2','B1','B2'], 'A2': ['A1','A3','B2'], 'A3': ['A2','A4','B2','B3','B4'],
+    'A4': ['A3','A5','B4'], 'A5': ['A4','A6','B4','B5','B6'], 'A6': ['A5','A7','B6'],
+    'A7': ['A6','A8','B6','B7','B8'], 'A8': ['A7','A9','B8'], 'A9': ['A8','B8','B9'],
+    'B1': ['A1','B2','C1'], 'B2': ['A1','A2','A3','B1','B3','C1','C2','C3'],
+    'B3': ['A3','B2','B4','C3'], 'B4': ['A3','A4','A5','B3','B5','C3','C4','C5'],
+    'B5': ['A5','B4','B6','C5'], 'B6': ['A5','A6','A7','B5','B7','C5','C6','C7'],
+    'B7': ['A7','B6','B8','C7'], 'B8': ['A7','A8','A9','B7','B9','C7','C8','C9'],
+    'B9': ['A9','B8','C9'], 'C1': ['B1','B2','C2','D1','D2'], 'C2': ['B2','C1','C3','D2'],
+    'C3': ['B2','B3','B4','C2','C4','D2','D3','D4'], 'C4': ['B4','C3','C5','D4'],
+    'C5': ['B4','B5','B6','C4','C6','D4','D5','D6'], 'C6': ['B6','C5','C7','D6'],
+    'C7': ['B6','B7','B8','C6','C8','D6','D7','D8'], 'C8': ['B8','C7','C9','D8'],
+    'C9': ['B8','B9','C8','D8','D9'], 'D1': ['C1','D2','E1'], 'D2': ['C1','C2','C3','D1','D3','E1','E2','E3'],
+    'D3': ['C3','D2','D4','E3'], 'D4': ['C3','C4','C5','D3','D5','E3','E4','E5'],
+    'D5': ['C5','D4','D6','E5'], 'D6': ['C5','C6','C7','D5','D7','E5','E6','E7'],
+    'D7': ['C7','D6','D8','E7'], 'D8': ['C7','C8','C9','D7','D9','E7','E8','E9'],
+    'D9': ['C9','D8','E9'], 'E1': ['D1','D2','E2'], 'E2': ['D2','E1','E3'],
+    'E3': ['D2','D3','D4','E2','E4'], 'E4': ['D4','E3','E5'], 'E5': ['D4','D5','D6','E4','E6'],
+    'E6': ['D6','E5','E7'], 'E7': ['D6','D7','D8','E6','E8'], 'E8': ['D8','E7','E9'],
+    'E9': ['D8','D9','E8']
+  };
 
-            <!-- Chat — visible quand matchup -->
-            <div class="gs-body-chat" id="gsChatWrap">
-              <div class="gs-chat-messages" id="gsChatMessages">
-                <span class="gs-chat-placeholder">No messages yet…</span>
-              </div>
-              <div class="gs-chat-input-row">
-                <textarea class="gs-chat-input" id="gsChatInput" placeholder="Message…" rows="1"></textarea>
-                <button class="gs-chat-send" id="gsChatSendBtn" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
-              </div>
-            </div>
+  let currentGame = null;
+  let selectedSpot = null;
+  let lastBlockedSpot = null;
+  let canChangePiece = true;
+  let pollingInterval = null;
+  let myUid = null;
+  let myUsername = null;
+  let opponentUsername = null;
+  let isSending = false;
 
-          </div>
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+    document.getElementById('loading-overlay').classList.add('hidden');
+  }
 
-          <!-- Colonne droite: Settings -->
-          <div class="gs-body-settings" id="gsBodySettings">
+  async function callSessionApi(action, payload) {
+    try {
+      const res = await fetch(SESSION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...payload })
+      });
+      return await res.json();
+    } catch (e) { return { success: false }; }
+  }
 
-            <!-- Matchup strip — dans la colonne settings -->
-            <div class="gs-matchup" id="gsMatchup">
-              <!-- Misy matchup: Sender × Receiver -->
-              <div class="gs-matchup-with" id="gsMatchupWith" style="display:none; align-items:center; width:100%; justify-content:center;">
-                <div class="gs-matchup-name" id="gsMatchupSender">—</div>
-                <i class="fas fa-times gs-matchup-vs-icon"></i>
-                <div class="gs-matchup-name" id="gsMatchupReceiver">—</div>
-              </div>
-              <!-- Tsy misy matchup: message centré -->
-              <div class="gs-matchup-pending" id="gsMatchupPending" style="display:none; width:100%; text-align:center;">
-                Invite a friend to play with you
-              </div>
-            </div>
-            <div class="gs-section-label" id="gsSectionLabelPiece">Choose Your Piece</div>
-            <div class="color-pick-row">
-              <button class="color-pick-btn selected" data-color="green" id="cpGreen">
-                <img src="img/button-green.png" alt="Green" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-                <div class="cpb-img-ph green" style="display:none;"><i class="fas fa-circle"></i></div>
-                <span class="cpb-label">Green</span>
-              </button>
-              <button class="color-pick-btn" data-color="red" id="cpRed">
-                <img src="img/button-red.png" alt="Red" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-                <div class="cpb-img-ph red" style="display:none;"><i class="fas fa-circle"></i></div>
-                <span class="cpb-label">Red</span>
-              </button>
-            </div>
-            <div class="gs-time-header-row">
-              <div class="gs-section-label" style="margin-bottom:0;">Time per player</div>
-              <span class="gs-opponent-not-ready" id="gsOpponentNotReady">Opponent not ready</span>
-            </div>
-            <div class="gs-time-row">
-              <button class="gs-time-trigger" id="gsTimeTrigger">
-                <span class="gs-time-val"><i class="fas fa-clock"></i><span id="gsTimeDisplay">5 min</span></span>
-                <i class="fas fa-chevron-down gs-time-chevron"></i>
-              </button>
-              <button class="gs-launch-btn" id="gsLaunchBtn"><i class="fas fa-play"></i> Start Game</button>
-            </div>
-          </div>
+  async function callGameApi(action, payload) {
+    try {
+      isSending = true;
+      const res = await fetch(GAME_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...payload })
+      });
+      const data = await res.json();
+      isSending = false;
+      return data;
+    } catch (e) { isSending = false; return { success: false }; }
+  }
 
-        </div>
-      </div>
-    </div>
-  </div>
+  function getCaptures(pieces, from, to, color) {
+    const enemy = color === 'mena' ? 'maintso' : 'mena';
+    const r1 = rows.indexOf(from[0]), c1 = cols.indexOf(from[1]);
+    const r2 = rows.indexOf(to[0]), c2 = cols.indexOf(to[1]);
+    const dr = r2 - r1, dc = c2 - c1;
+    const scan = (sr, sc, dirR, dirC) => {
+      const captured = [];
+      let r = sr + dirR, c = sc + dirC;
+      while (r >= 0 && r < 5 && c >= 0 && c < 9 && pieces[rows[r] + cols[c]] === enemy) {
+        captured.push(rows[r] + cols[c]);
+        r += dirR;
+        c += dirC;
+      }
+      return captured;
+    };
+    return {
+      approach: scan(r2, c2, dr, dc),
+      withdrawal: scan(r1, c1, -dr, -dc)
+    };
+  }
 
-  <!-- Invite Friends Modal -->
-  <div class="modal-overlay" id="inviteFriendsModal">
-    <div class="invite-modal-content">
-      <div class="invite-modal-header">
-        <button class="invite-modal-back" id="inviteModalBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
-        <div class="invite-modal-header-img" id="inviteHeaderImg"><span class="ph"><i class="fas fa-chess-board"></i></span></div>
-        <div class="invite-modal-header-info">
-          <div class="invite-modal-header-title" id="inviteHeaderTitle">Invite Friends</div>
-          <div class="invite-modal-header-sub" id="inviteHeaderSub">Choose a friend to invite</div>
-        </div>
-        <div class="invite-modal-spacer"></div>
-      </div>
-      <div class="invite-modal-body" id="inviteFriendsList"></div>
-    </div>
-  </div>
+  function playerHasAnyCapture(pieces, color) {
+    for (let s in pieces) {
+      if (pieces[s] === color) {
+        const moves = allowedMoves[s] || [];
+        for (let t of moves) {
+          if (!pieces[t]) {
+            const c = getCaptures(pieces, s, t, color);
+            if (c.approach.length > 0 || c.withdrawal.length > 0) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
 
-  <!-- Game Invite Notification — visible uniquement chez le destinataire -->
-  <div class="game-invite-notif" id="gameInviteNotif">
-    <div class="gin-progress-wrap"><div class="gin-progress-bar" id="ginProgressBar"></div></div>
-    <div class="gin-body">
-      <div class="gin-row-top">
-        <div class="gin-icon"><i class="fas fa-gamepad"></i></div>
-        <div class="gin-text-wrap">
-          <div class="gin-label">Game Invitation</div>
-          <div class="gin-msg"><span class="gin-username" id="ginUsername">Player</span> invited you to play!</div>
-        </div>
-        <div class="gin-countdown-badge" id="ginCountdown">10</div>
-      </div>
-      <div class="gin-actions">
-        <button class="gin-btn-accept" id="ginAcceptBtn"><i class="fas fa-check"></i> Accept</button>
-        <button class="gin-btn-decline" id="ginDeclineBtn"><i class="fas fa-times"></i></button>
-      </div>
-    </div>
-  </div>
+  function canPieceMove(spot, pieces, color, globalCapture) {
+    const moves = allowedMoves[spot] || [];
+    return moves.some(target => {
+      if (pieces[target]) return false;
+      const caps = getCaptures(pieces, spot, target, color);
+      const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
+      return globalCapture ? isCap : true;
+    });
+  }
 
-  <!-- Settings Modal -->
-  <div class="modal-overlay" id="userSettingModal">
-    <div class="modal-content">
-      <button class="modal-close-btn" id="settingModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
-      <h2 style="color:#6C00BF;margin-bottom:4px;"><i class="fas fa-cog"></i> Settings</h2>
-      <p style="color:#64748b;font-size:0.85em;margin-bottom:4px;">Manage your account preferences</p>
-      <div class="modal-actions">
-        <button class="modal-action-btn" id="renameBtn" style="background:#f5f3ff;color:#6C00BF;"><i class="fas fa-signature"></i> Change Username</button>
-        <button class="modal-action-btn" id="signOutBtn" style="background:#fee2e2;color:#b91c1c;"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
-      </div>
-    </div>
-  </div>
+  function checkAvailableCaptures(pieces, spot, visited, lastDir, color) {
+    const moves = allowedMoves[spot] || [];
+    return moves.some(target => {
+      if (pieces[target] || (visited && visited.includes(target))) return false;
+      const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
+      const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
+      if (lastDir === `${r2 - r1},${c2 - c1}`) return false;
+      const caps = getCaptures(pieces, spot, target, color);
+      return caps.approach.length > 0 || caps.withdrawal.length > 0;
+    });
+  }
 
-  <div class="modal-overlay" id="renameModal">
-    <div class="modal-content">
-      <button class="modal-close-btn" id="renameModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
-      <h2 style="color:#6C00BF;margin-bottom:16px;"><i class="fas fa-signature"></i> Change Username</h2>
-      <div class="rename-form">
-        <div class="input-group">
-          <label for="newNameInput">New Username</label>
-          <input type="text" id="newNameInput" placeholder="3–20 characters, letters, numbers, _" required>
-          <span class="error-message" id="UsernameError">This username is already taken.</span>
-        </div>
-        <div class="input-group">
-          <label for="passwordConfirmInput">Confirm with Password</label>
-          <input type="password" id="passwordConfirmInput" placeholder="Enter your current password" required>
-        </div>
-        <p class="password-error-message" id="passwordErrorMessage"></p>
-        <p class="success-message" id="renameSuccessMessage"><i class="fas fa-check-circle"></i> Username changed successfully!</p>
-        <div class="loading-spinner" id="renameLoadingSpinner"></div>
-        <button id="confirmRenameBtn" disabled>Confirm Change</button>
-      </div>
-    </div>
-  </div>
+  function drawSpots() {
+    const grp = document.getElementById('spots-group');
+    grp.innerHTML = '';
+    rows.forEach((r, ri) => {
+      cols.forEach((c, ci) => {
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', ci * 50);
+        circle.setAttribute('cy', ri * 50);
+        circle.setAttribute('r', 22);
+        circle.setAttribute('fill', 'transparent');
+        circle.setAttribute('class', 'spot');
+        circle.onclick = () => handleSpotClick(r + c);
+        grp.appendChild(circle);
+      });
+    });
+  }
 
-  <div class="modal-overlay" id="setUsernameModal">
-    <div class="modal-content">
-      <h2><i class="fas fa-signature"></i> Choose Your Username</h2>
-      <p style="margin-bottom:16px;color:#64748b;font-size:0.88em;">This name will be visible to other players.</p>
-      <div class="input-group">
-        <input type="text" id="setUsernameInput" placeholder="Username (3–20 characters, _ allowed)" required>
-        <span class="error-message" id="setUsernameError"></span>
-      </div>
-      <div class="loading-spinner" id="setUsernameLoadingSpinner"></div>
-      <button class="confirm-btn" id="confirmSetUsernameBtn" disabled>Confirm</button>
-    </div>
-  </div>
+  function renderPieces(game) {
+    const pieces = game.pieces || {};
+    const grp = document.getElementById('pieces-group');
+    const isMyTurn = game.turn === myColor;
+    const globalCapture = playerHasAnyCapture(pieces, myColor);
+    grp.innerHTML = '';
+    for (let spot in pieces) {
+      const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+      const color = pieces[spot];
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'piece-group');
+      g.setAttribute('transform', `translate(${ci * 50}, ${ri * 50})`);
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('r', 12);
+      circle.setAttribute('fill', `url(#${color}-pat)`);
+      circle.style.pointerEvents = 'none';
+      if (isMyTurn && color === myColor) {
+        if (selectedSpot === spot) circle.classList.add('selected-piece');
+        else if (lastBlockedSpot === spot) circle.classList.add('blocked-piece');
+        else if (!game.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) circle.classList.add('movable-piece');
+      }
+      if (game.awaitingCapture && color !== myColor) {
+        if ((game.pendingApproach || []).includes(spot) || (game.pendingWithdrawal || []).includes(spot)) {
+          circle.classList.add('capture-target');
+          circle.style.pointerEvents = 'all';
+          circle.onclick = (e) => { e.stopPropagation(); resolveCapture(spot); };
+          const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          l1.setAttribute('x1',-5); l1.setAttribute('y1',-5); l1.setAttribute('x2',5); l1.setAttribute('y2',5);
+          l1.setAttribute('class','cross-line');
+          const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          l2.setAttribute('x1',5); l2.setAttribute('y1',-5); l2.setAttribute('x2',-5); l2.setAttribute('y2',5);
+          l2.setAttribute('class','cross-line');
+          g.appendChild(l1); g.appendChild(l2);
+        }
+      }
+      g.appendChild(circle);
+      grp.appendChild(g);
+    }
+  }
 
-  <div class="modal-overlay" id="logoutConfirmModal">
-    <div class="modal-content">
-      <button class="modal-close-btn" id="logoutModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
-      <div style="width:56px;height:56px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-        <i class="fas fa-sign-out-alt" style="font-size:1.5em;color:#ef4444;"></i>
-      </div>
-      <h2 style="color:#1e293b;margin-bottom:8px;font-size:1.1em;">Sign Out</h2>
-      <p style="color:#64748b;font-size:0.88em;margin-bottom:4px;">Are you sure you want to sign out of your account?</p>
-      <div class="signout-actions">
-        <button id="cancelLogoutBtn">Cancel</button>
-        <button id="confirmLogoutBtn">Yes</button>
-      </div>
-    </div>
-  </div>
+  function renderGuides(spot, game) {
+    const grp = document.getElementById('guides-group');
+    grp.innerHTML = '';
+    if (!spot) return;
+    const pieces = game.pieces || {};
+    const globalCapture = playerHasAnyCapture(pieces, myColor);
+    (allowedMoves[spot] || []).forEach(target => {
+      if (pieces[target] || (game.visited || []).includes(target)) return;
+      const caps = getCaptures(pieces, spot, target, myColor);
+      if (globalCapture && !(caps.approach.length > 0 || caps.withdrawal.length > 0)) return;
+      if (!canChangePiece) {
+        const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
+        const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
+        if (game.lastDir === `${r2 - r1},${c2 - c1}`) return;
+      }
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', cols.indexOf(target[1]) * 50);
+      dot.setAttribute('cy', rows.indexOf(target[0]) * 50);
+      dot.setAttribute('r', 6);
+      dot.setAttribute('class', 'guide-dot');
+      grp.appendChild(dot);
+    });
+  }
 
-  <div class="modal-overlay" id="playersModal">
-    <div class="modal-content">
-      <div class="players-modal-header">
-        <h2><i class="fas fa-user-friends"></i> Friends</h2>
-        <button class="modal-close-btn" id="playersModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
-      </div>
-      <div class="players-container">
-        <div class="sidebar">
-          <div class="sidebar-item active" data-panel="friends-panel"><i class="fas fa-users"></i> Friends <span class="friends-count" id="friendsCountBadge" style="display:none;">0</span></div>
-          <div class="sidebar-item" data-panel="search-panel"><i class="fas fa-user-plus"></i> Add Friend</div>
-          <div class="sidebar-item" data-panel="requests-panel"><i class="fas fa-handshake"></i> Requests <span class="badge" id="requestsBadge" style="display:none;">0</span></div>
-          <div class="sidebar-item" data-panel="sent-panel"><i class="fas fa-paper-plane"></i> Sent <span class="sent-count" id="sentCountBadge" style="display:none;">0</span></div>
-        </div>
-        <div class="main-panel">
-          <div id="friends-panel" class="content-panel active-panel">
-            <div class="panel-title"><i class="fas fa-users"></i> My Friends</div>
-            <div id="friendsListContainer"></div>
-          </div>
-          <div id="search-panel" class="content-panel">
-            <div class="panel-title"><i class="fas fa-user-plus"></i> Add a Friend</div>
-            <div class="search-bar-wrap">
-              <input type="text" id="searchUserInput" placeholder="Search by username or UID (min. 3 characters)">
-              <button id="searchUserBtn"><i class="fas fa-search"></i> Search</button>
-            </div>
-            <div id="searchLoadingSpinner" class="spinner-inline" style="display:none;"></div>
-            <div id="searchResultsContainer"></div>
-          </div>
-          <div id="requests-panel" class="content-panel">
-            <div class="panel-title"><i class="fas fa-handshake"></i> Requests Received</div>
-            <div id="requestsListContainer"></div>
-          </div>
-          <div id="sent-panel" class="content-panel">
-            <div class="panel-title"><i class="fas fa-paper-plane"></i> Requests Sent</div>
-            <div id="sentListContainer"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  function renderPlayersBar() {
+    const bar = document.getElementById('players-bar');
+    const myDot = myColor === 'maintso' ? 'dot-maintso' : 'dot-mena';
+    const oppDot = myColor === 'maintso' ? 'dot-mena' : 'dot-maintso';
+    bar.innerHTML = `<div class="player-info"><div class="player-dot ${oppDot}"></div><span class="player-name">${escapeHtml(opponentUsername || '???')}</span><span class="player-label">(adversaire)</span></div><span class="vs-sep">VS</span><div class="player-info"><span class="player-label">(ianao)</span><span class="player-name">${escapeHtml(myUsername || myUid)}</span><div class="player-dot ${myDot}"></div></div>`;
+    bar.style.display = 'flex';
+  }
 
-  <div id="friendCtxMenu" class="friend-ctx-menu">
-    <button id="ctxProfileBtn"><i class="fas fa-user"></i> View Profile</button>
-    <button id="ctxChatBtn"><i class="fas fa-comment-dots"></i> Send Message</button>
-    <button id="ctxPlayBtn"><i class="fas fa-gamepad"></i> Invite to Play <span id="ctxPlayCountdown" style="display:none;margin-left:auto;background:#f59e0b;color:white;border-radius:5px;padding:1px 6px;font-size:0.82em;font-weight:800;"></span></button>
-    <div class="ctx-divider"></div>
-    <button id="ctxRemoveBtn" class="ctx-remove"><i class="fas fa-user-times"></i> Remove Friend</button>
-  </div>
+  function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-  <div class="modal-overlay" id="userProfileModal">
-    <div class="user-profile-modal-content">
-      <button class="upm-close-btn" id="upmCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
-      <div class="upm-banner"><div class="upm-avatar-wrap"><div class="upm-avatar"><i class="fas fa-user-circle"></i></div></div></div>
-      <div class="upm-body">
-        <div class="upm-username" id="upmUsername">—</div>
-        <div class="upm-uid-row"><span class="upm-uid-text" id="upmUid">UID: —</span><button class="upm-copy-btn" id="upmCopyUidBtn" title="Copy UID"><i class="fas fa-copy"></i></button></div>
-        <div class="upm-relation-badge none" id="upmRelationBadge"></div>
-        <div class="upm-divider"></div>
-        <div class="upm-actions" id="upmActions"></div>
-      </div>
-    </div>
-  </div>
+  function updateUI() {
+    if (!currentGame) return;
+    const turnDisplay = document.getElementById('turn-display');
+    const stopBtn = document.getElementById('stop-move-btn');
+    if (currentGame.turn === myColor) {
+      turnDisplay.innerText = 'ANJARANAO';
+      turnDisplay.style.color = '#ADFF2F';
+      if (currentGame.movingPiece) { selectedSpot = currentGame.movingPiece; canChangePiece = false; stopBtn.classList.add('active'); }
+      else { canChangePiece = true; stopBtn.classList.remove('active'); }
+      if (selectedSpot && !currentGame.awaitingCapture) renderGuides(selectedSpot, currentGame);
+      else document.getElementById('guides-group').innerHTML = '';
+    } else {
+      turnDisplay.innerText = 'Miandry ny hafa...';
+      turnDisplay.style.color = 'white';
+      selectedSpot = null; lastBlockedSpot = null;
+      stopBtn.classList.remove('active');
+      document.getElementById('guides-group').innerHTML = '';
+    }
+    renderPieces(currentGame);
+    renderPlayersBar();
+  }
 
-  <div class="remove-friend-overlay" id="removeFriendOverlay">
-    <div class="remove-friend-card">
-      <div class="rm-icon"><i class="fas fa-user-times"></i></div>
-      <h3>Remove Friend</h3>
-      <p>Are you sure you want to remove <strong id="rmFriendName">this player</strong> from your friends list?</p>
-      <div class="rm-buttons">
-        <button class="rm-btn-cancel" id="rmCancelBtn">Cancel</button>
-        <button class="rm-btn-confirm" id="rmConfirmBtn">Remove</button>
-      </div>
-    </div>
-  </div>
+  async function fetchGame() {
+    if (!myUid || isSending) return;
+    const res = await fetch(`${GAME_API_URL}?uid=${myUid}&gameId=${gameId}`, { 
+        method: 'POST', 
+        body: JSON.stringify({ action: 'get-game', uid: myUid, gameId }) 
+    });
+    const data = await res.json();
+    if (data.success && data.game && !isSending) {
+      currentGame = data.game;
+      updateUI();
+    }
+  }
 
-  <div id="toastNotification" class="toast-notification">
-    <span class="toast-icon" id="toastIcon"></span>
-    <div class="toast-body"><div class="toast-title" id="toastTitle"></div><div class="toast-message" id="toastMessage"></div></div>
-    <button class="toast-close-btn" id="toastClose" aria-label="Close">×</button>
-  </div>
+  async function handleSpotClick(spotID) {
+    if (!currentGame || currentGame.turn !== myColor || currentGame.awaitingCapture) return;
+    const pieces = currentGame.pieces || {};
+    if (canChangePiece && pieces[spotID] === myColor) {
+      if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) { selectedSpot = spotID; lastBlockedSpot = null; }
+      else { selectedSpot = null; lastBlockedSpot = spotID; }
+      updateUI();
+      return;
+    }
+    if (selectedSpot && (allowedMoves[selectedSpot] || []).includes(spotID) && !pieces[spotID]) {
+      if ((currentGame.visited || []).includes(spotID)) return;
+      const caps = getCaptures(pieces, selectedSpot, spotID, myColor);
+      const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
+      if (playerHasAnyCapture(pieces, myColor) && !isCap) return;
+      const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
+      const r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
+      const dir = `${r2 - r1},${c2 - c1}`;
+      if (!canChangePiece && currentGame.lastDir === dir) return;
 
-  <div class="gs-time-dropdown-overlay" id="gsTimeDropdownOverlay">
-    <div class="gs-time-dropdown" id="gsTimeDropdown">
-      <div class="gs-time-dropdown-title">Time per player</div>
-      <div class="gs-time-option selected" data-minutes="5"><i class="fas fa-clock gs-time-opt-icon"></i> 5 min <i class="fas fa-check gs-check"></i></div>
-      <div class="gs-time-option" data-minutes="10"><i class="fas fa-clock gs-time-opt-icon"></i> 10 min</div>
-      <div class="gs-time-option" data-minutes="15"><i class="fas fa-clock gs-time-opt-icon"></i> 15 min</div>
-    </div>
-  </div>
+      const origin = selectedSpot;
+      const oldGame = JSON.parse(JSON.stringify(currentGame));
+      
+      let newVisited = [...(currentGame.visited || []), origin];
+      let newPieces = { ...currentGame.pieces };
+      delete newPieces[origin];
+      newPieces[spotID] = myColor;
+      
+      let nextMovingPiece = spotID;
+      let nextDir = dir;
+      let nextAwaiting = false;
+      let nextTurn = currentGame.turn;
+      let pApproach = [], pWithdrawal = [];
 
-  <div class="modal-overlay" id="emailModal">
-    <div class="email-modal-content">
-      <div class="email-modal-header">
-        <button class="em-close" id="emailModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
-        <div class="em-avatar"><i class="fas fa-user-circle"></i></div>
-        <h3 id="emailModalUsername">—</h3>
-        <div class="em-uid" id="emailModalUid">UID: —</div>
-      </div>
-      <div class="email-modal-body">
-        <div class="email-modal-label">Email address</div>
-        <div class="email-modal-value" id="emailModalValue">—</div>
-        <p class="email-modal-note">This is the email address linked to your account. It is only visible to you.</p>
-        <button class="em-close-footer" id="emailModalCloseFooterBtn">Close</button>
-      </div>
-    </div>
-  </div>
+      if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
+        nextAwaiting = true;
+        pApproach = caps.approach;
+        pWithdrawal = caps.withdrawal;
+      } else if (isCap) {
+        const toRem = caps.approach.length > 0 ? caps.approach : caps.withdrawal;
+        toRem.forEach(s => delete newPieces[s]);
+        if (!checkAvailableCaptures(newPieces, spotID, newVisited, dir, myColor)) {
+          nextMovingPiece = null; nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso');
+        }
+      } else {
+        nextMovingPiece = null; nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso');
+      }
 
-  <!-- Room Quit Confirm Overlay -->
-  <div class="room-quit-overlay" id="roomQuitOverlay">
-    <div class="room-quit-card">
-      <div class="rq-icon"><i class="fas fa-sign-out-alt"></i></div>
-      <h3 id="rqTitle">Leave the room?</h3>
-      <p id="rqMessage">Are you sure you want to leave the room?</p>
-      <div class="rq-buttons">
-        <button class="rq-btn-cancel" id="rqCancelBtn">Stay</button>
-        <button class="rq-btn-confirm" id="rqConfirmBtn">Leave</button>
-      </div>
-    </div>
-  </div>
+      currentGame.pieces = newPieces;
+      currentGame.turn = nextTurn;
+      currentGame.movingPiece = nextMovingPiece;
+      currentGame.visited = nextMovingPiece ? newVisited : [];
+      currentGame.lastDir = nextMovingPiece ? nextDir : "";
+      currentGame.awaitingCapture = nextAwaiting;
+      currentGame.pendingApproach = pApproach;
+      currentGame.pendingWithdrawal = pWithdrawal;
+      
+      updateUI();
+      
+      const res = await callGameApi('make-move', { uid: myUid, gameId, origin, target: spotID });
+      if (!res.success) { currentGame = oldGame; updateUI(); }
+    }
+  }
 
-  <script src="script/dashboard.js"></script>
+  async function resolveCapture(capturedSpot) {
+    const oldGame = JSON.parse(JSON.stringify(currentGame));
+    const toRemove = (currentGame.pendingApproach || []).includes(capturedSpot) ? currentGame.pendingApproach : currentGame.pendingWithdrawal;
+    toRemove.forEach(s => delete currentGame.pieces[s]);
+    
+    const further = checkAvailableCaptures(currentGame.pieces, currentGame.movingPiece, currentGame.visited, currentGame.lastDir, myColor);
+    if (!further) {
+      currentGame.turn = (myColor === 'maintso' ? 'mena' : 'maintso');
+      currentGame.movingPiece = null;
+      currentGame.visited = [];
+      currentGame.lastDir = "";
+    }
+    currentGame.awaitingCapture = false;
+    currentGame.pendingApproach = [];
+    currentGame.pendingWithdrawal = [];
+    
+    updateUI();
+    const res = await callGameApi('resolve-capture', { uid: myUid, gameId, capturedSpot });
+    if (!res.success) { currentGame = oldGame; updateUI(); }
+  }
+
+  async function handleStopTurn() {
+    if (!currentGame || currentGame.turn !== myColor || !currentGame.movingPiece) return;
+    const oldGame = JSON.parse(JSON.stringify(currentGame));
+    
+    currentGame.turn = (myColor === 'maintso' ? 'mena' : 'maintso');
+    currentGame.movingPiece = null;
+    currentGame.visited = [];
+    currentGame.lastDir = "";
+    updateUI();
+
+    const res = await callGameApi('stop-turn', { uid: myUid, gameId });
+    if (!res.success) { currentGame = oldGame; updateUI(); }
+  }
+
+  async function init() {
+    if (!gameId || !myColor) return;
+    const stored = localStorage.getItem('user');
+    if (!stored) { window.location.href = 'login&register.html'; return; }
+    const localUser = JSON.parse(stored);
+    myUid = localUser.uid;
+    myUsername = localUser.username || myUid;
+    const data = await callSessionApi('get-fanorona-game', { uid: myUid, gameId });
+    if (data.success) {
+      opponentUsername = data.opponentUsername;
+      currentGame = { pieces: data.pieces, turn: data.turn, senderUid: data.senderUid, receiverUid: data.receiverUid };
+      document.getElementById('game-board').classList.toggle('flipped', myColor === 'mena');
+      drawSpots();
+      updateUI();
+      document.getElementById('game-board').style.display = 'block';
+      document.getElementById('loading-overlay').classList.add('hidden');
+      pollingInterval = setInterval(fetchGame, POLL_INTERVAL);
+    }
+  }
+
+  document.getElementById('stop-move-btn').onclick = handleStopTurn;
+  init();
+})();
+
+  </script>
 </body>
 </html>
