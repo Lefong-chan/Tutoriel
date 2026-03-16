@@ -187,7 +187,8 @@
       };
 
       // ---------- État local ----------
-      let currentGame = null;          // état complet du jeu depuis l'API
+      let currentGame = null;          // état officiel (depuis le backend)
+      let localGame = null;            // état local optimiste (peut être en avance)
       let selectedSpot = null;
       let lastBlockedSpot = null;
       let canChangePiece = true;
@@ -196,6 +197,7 @@
       let myUid = null;
       let myUsername = null;
       let opponentUsername = null;
+      let isAwaitingResponse = false;  // pour éviter les doubles envois
 
       // ---------- Fonctions utilitaires ----------
       function showError(msg) {
@@ -274,7 +276,11 @@
         });
       }
 
-      // ---------- Dessin ----------
+      // ---------- Dessin (utilise localGame si présent, sinon currentGame) ----------
+      function getGameState() {
+        return localGame || currentGame;
+      }
+
       function drawSpots() {
         const grp = document.getElementById('spots-group');
         grp.innerHTML = '';
@@ -293,6 +299,7 @@
       }
 
       function renderPieces(game) {
+        if (!game) return;
         const pieces = game.pieces || {};
         const grp = document.getElementById('pieces-group');
         const isMyTurn = game.turn === myColor;
@@ -314,7 +321,6 @@
           circle.setAttribute('fill', `url(#${color}-pat)`);
           circle.style.pointerEvents = 'none';
 
-          // Styles selon l'état
           if (isMyTurn && color === myColor) {
             if (selectedSpot === spot) {
               circle.classList.add('selected-piece');
@@ -325,7 +331,6 @@
             }
           }
 
-          // Marquer les pièces ennemies qui peuvent être capturées (pending)
           if (game.awaitingCapture && color !== myColor) {
             const isApproach = (game.pendingApproach || []).includes(spot);
             const isWithdrawal = (game.pendingWithdrawal || []).includes(spot);
@@ -336,7 +341,6 @@
                 e.stopPropagation();
                 resolveCapture(spot);
               };
-              // Ajouter deux petites croix
               const cross1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
               cross1.setAttribute('x1', -5); cross1.setAttribute('y1', -5);
               cross1.setAttribute('x2', 5); cross1.setAttribute('y2', 5);
@@ -358,7 +362,7 @@
       function renderGuides(spot, game) {
         const grp = document.getElementById('guides-group');
         grp.innerHTML = '';
-        if (!spot) return;
+        if (!spot || !game) return;
         const pieces = game.pieces || {};
         const visited = game.visited || [];
         const lastDir = game.lastDir || '';
@@ -408,8 +412,8 @@
       }
 
       function updateUI() {
-        if (!currentGame) return;
-        const game = currentGame;
+        const game = getGameState();
+        if (!game) return;
         const turnDisplay = document.getElementById('turn-display');
         const stopBtn = document.getElementById('stop-move-btn');
 
@@ -442,13 +446,16 @@
         renderPlayersBar();
       }
 
-      // ---------- Actions API ----------
+      // ---------- Actions API avec application locale immédiate ----------
       async function fetchGame() {
         if (!myUid) return;
         try {
           const data = await callGameApi('get-game', { uid: myUid, gameId });
           if (data.success && data.game) {
             currentGame = data.game;
+            // Si on avait un état local en attente, on le remplace par l'état officiel
+            // (mais normalement, après un mouvement réussi, localGame est null)
+            localGame = null;
             updateUI();
           }
         } catch (err) {
@@ -456,12 +463,85 @@
         }
       }
 
+      // Applique un mouvement localement et met à jour l'UI
+      function applyLocalMove(origin, target, caps, isCaptureMove) {
+        if (!currentGame) return null;
+        // Copie de l'état
+        const newGame = JSON.parse(JSON.stringify(currentGame));
+        const pieces = newGame.pieces;
+        const myColorHere = myColor;
+
+        // Déplacer la pièce
+        delete pieces[origin];
+        pieces[target] = myColorHere;
+
+        const newVisited = [...(newGame.visited || []), origin];
+        const r1 = rows.indexOf(origin[0]), c1 = cols.indexOf(origin[1]);
+        const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
+        const dir = `${r2 - r1},${c2 - c1}`;
+
+        if (isCaptureMove) {
+          if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
+            // Les deux types possibles -> on ne supprime rien pour l'instant, on passe en mode awaitingCapture
+            newGame.awaitingCapture = true;
+            newGame.pendingApproach = caps.approach;
+            newGame.pendingWithdrawal = caps.withdrawal;
+            newGame.movingPiece = target;
+            newGame.visited = newVisited;
+            newGame.lastDir = dir;
+            // On ne change pas le tour
+          } else {
+            const toRemove = caps.approach.length > 0 ? caps.approach : caps.withdrawal;
+            toRemove.forEach(spot => delete pieces[spot]);
+
+            // Vérifier s'il y a d'autres captures
+            const further = checkAvailableCaptures(pieces, target, newVisited, dir, myColorHere);
+            if (further) {
+              newGame.movingPiece = target;
+              newGame.visited = newVisited;
+              newGame.lastDir = dir;
+              newGame.awaitingCapture = false;
+              newGame.pendingApproach = [];
+              newGame.pendingWithdrawal = [];
+            } else {
+              newGame.movingPiece = null;
+              newGame.visited = [];
+              newGame.lastDir = "";
+              newGame.awaitingCapture = false;
+              newGame.pendingApproach = [];
+              newGame.pendingWithdrawal = [];
+              newGame.turn = newGame.turn === "maintso" ? "mena" : "maintso";
+            }
+          }
+        } else {
+          // Coup simple sans capture
+          newGame.movingPiece = null;
+          newGame.visited = [];
+          newGame.lastDir = "";
+          newGame.awaitingCapture = false;
+          newGame.pendingApproach = [];
+          newGame.pendingWithdrawal = [];
+          newGame.turn = newGame.turn === "maintso" ? "mena" : "maintso";
+        }
+
+        return newGame;
+      }
+
+      // Annule le mouvement local (restaure currentGame)
+      function rollbackLocalMove() {
+        localGame = null;
+        updateUI();
+      }
+
       async function handleSpotClick(spotID) {
-        if (!currentGame || currentGame.turn !== myColor) return;
-        if (currentGame.awaitingCapture) return; // la capture se fait en cliquant sur l'ennemi
+        if (isAwaitingResponse) return; // évite les doubles clics
+        const game = getGameState();
+        if (!game || game.turn !== myColor) return;
+        if (game.awaitingCapture) return; // la capture se fait en cliquant sur l'ennemi
 
-        const pieces = currentGame.pieces || {};
+        const pieces = game.pieces || {};
 
+        // Sélection d'une pièce
         if (canChangePiece && pieces[spotID] === myColor) {
           if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
             selectedSpot = spotID;
@@ -470,13 +550,14 @@
             selectedSpot = null;
             lastBlockedSpot = spotID;
           }
-          renderGuides(selectedSpot || '', currentGame);
-          renderPieces(currentGame);
+          renderGuides(selectedSpot || '', game);
+          renderPieces(game);
           return;
         }
 
+        // Tentative de mouvement
         if (selectedSpot && (allowedMoves[selectedSpot] || []).includes(spotID) && !pieces[spotID]) {
-          if (currentGame.visited && currentGame.visited.includes(spotID)) return;
+          if (game.visited && game.visited.includes(spotID)) return;
           const caps = getCaptures(pieces, selectedSpot, spotID, myColor);
           const isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
           if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
@@ -484,8 +565,17 @@
           const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
           const r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
           const dir = `${r2 - r1},${c2 - c1}`;
-          if (!canChangePiece && currentGame.lastDir === dir) return;
+          if (!canChangePiece && game.lastDir === dir) return;
 
+          // Appliquer localement immédiatement
+          const newGame = applyLocalMove(selectedSpot, spotID, caps, isCaptureMove);
+          if (!newGame) return;
+
+          localGame = newGame;
+          updateUI();
+
+          // Envoyer au backend
+          isAwaitingResponse = true;
           try {
             await callGameApi('make-move', {
               uid: myUid,
@@ -493,14 +583,58 @@
               origin: selectedSpot,
               target: spotID
             });
-            // L'état sera mis à jour par le polling
+            // Succès : on peut oublier localGame (le prochain fetch le remplacera)
+            // Mais on ne remet pas à jour tout de suite pour éviter un flash
+            // On laisse localGame, mais dès le prochain polling, il sera écrasé par l'état officiel.
+            // Pour être cohérent, on pourrait rafraîchir immédiatement avec un fetch, mais ce n'est pas nécessaire.
           } catch (err) {
+            // Erreur : annuler le mouvement local
+            console.error('Move error, rolling back:', err);
+            rollbackLocalMove();
             alert('Erreur: ' + err.message);
+          } finally {
+            isAwaitingResponse = false;
           }
         }
       }
 
       async function resolveCapture(capturedSpot) {
+        if (isAwaitingResponse) return;
+        const game = getGameState();
+        if (!game || !game.awaitingCapture) return;
+
+        // Appliquer localement la capture
+        const newGame = JSON.parse(JSON.stringify(game));
+        const pieces = newGame.pieces;
+        const toRemove = game.pendingApproach?.includes(capturedSpot) ? game.pendingApproach : game.pendingWithdrawal;
+        if (!toRemove) return;
+        toRemove.forEach(spot => delete pieces[spot]);
+
+        // Vérifier les captures suivantes
+        const movingPiece = game.movingPiece;
+        const visited = game.visited || [];
+        const lastDir = game.lastDir || '';
+        const further = checkAvailableCaptures(pieces, movingPiece, visited, lastDir, myColor);
+
+        if (further) {
+          newGame.awaitingCapture = false;
+          newGame.pendingApproach = [];
+          newGame.pendingWithdrawal = [];
+          // movingPiece, visited, lastDir restent
+        } else {
+          newGame.movingPiece = null;
+          newGame.visited = [];
+          newGame.lastDir = "";
+          newGame.awaitingCapture = false;
+          newGame.pendingApproach = [];
+          newGame.pendingWithdrawal = [];
+          newGame.turn = newGame.turn === "maintso" ? "mena" : "maintso";
+        }
+
+        localGame = newGame;
+        updateUI();
+
+        isAwaitingResponse = true;
         try {
           await callGameApi('resolve-capture', {
             uid: myUid,
@@ -508,16 +642,41 @@
             capturedSpot
           });
         } catch (err) {
+          console.error('Capture error, rolling back:', err);
+          rollbackLocalMove();
           alert('Erreur: ' + err.message);
+        } finally {
+          isAwaitingResponse = false;
         }
       }
 
       async function handleStopTurn() {
-        if (!currentGame || currentGame.turn !== myColor || !currentGame.movingPiece) return;
+        if (isAwaitingResponse) return;
+        const game = getGameState();
+        if (!game || game.turn !== myColor || !game.movingPiece) return;
+
+        // Appliquer localement la fin de tour
+        const newGame = JSON.parse(JSON.stringify(game));
+        newGame.movingPiece = null;
+        newGame.visited = [];
+        newGame.lastDir = "";
+        newGame.awaitingCapture = false;
+        newGame.pendingApproach = [];
+        newGame.pendingWithdrawal = [];
+        newGame.turn = newGame.turn === "maintso" ? "mena" : "maintso";
+
+        localGame = newGame;
+        updateUI();
+
+        isAwaitingResponse = true;
         try {
           await callGameApi('stop-turn', { uid: myUid, gameId });
         } catch (err) {
+          console.error('Stop turn error, rolling back:', err);
+          rollbackLocalMove();
           alert('Erreur: ' + err.message);
+        } finally {
+          isAwaitingResponse = false;
         }
       }
 
@@ -544,7 +703,7 @@
           return;
         }
 
-        // Appel initial à session.js pour obtenir les données de la partie (pièces, adversaire)
+        // Appel initial à session.js
         try {
           const data = await callSessionApi('get-fanorona-game', {
             uid: myUid,
@@ -555,7 +714,7 @@
             return;
           }
           opponentUsername = data.opponentUsername || '???';
-          currentGame = { pieces: data.pieces, turn: data.turn }; // On initialise avec ce qu'on a
+          currentGame = { pieces: data.pieces, turn: data.turn, movingPiece: null, visited: [], lastDir: '', awaitingCapture: false };
         } catch (err) {
           showError('Nisy olana tamin\'ny fahazoana ny lalao: ' + err.message);
           return;
@@ -567,8 +726,7 @@
 
         drawSpots();
         renderPlayersBar();
-        renderPieces(currentGame);
-        updateUI(); // met à jour l'affichage du tour
+        updateUI();
 
         document.getElementById('game-board').style.display = 'block';
         document.getElementById('loading-overlay').classList.add('hidden');
