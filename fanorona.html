@@ -28,7 +28,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
     #status-row {
       display: flex;
@@ -36,7 +36,7 @@
       justify-content: center;
       gap: 10px;
     }
-    #turn-display { margin: 0; font-size: 1.3em; }
+    #turn-display { margin: 0; font-size: 1.3em; color: white; }
 
     .loading-spinner {
       display: inline-block;
@@ -47,22 +47,18 @@
       animation: spin 0.8s linear infinite;
       flex-shrink: 0;
     }
-    .loading-spinner.hidden { display: none !important; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Erreur mena — eo ambanin'ny "Mampiditra..." */
     #error-line {
-      display: none !important;
       font-size: 0.83em;
-      color: #ff4444;
       font-weight: 700;
-      max-width: 320px;
+      max-width: 340px;
       text-align: center;
-      line-height: 1.5;
+      line-height: 1.55;
       padding: 0 8px;
-    }
-    #error-line.visible {
-      display: block !important;
+      color: #ff4444;
+      white-space: pre-line;
+      min-height: 1em;
     }
   </style>
 </head>
@@ -73,7 +69,6 @@
       <h2 id="turn-display">Mampiditra...</h2>
       <span class="loading-spinner" id="init-spinner"></span>
     </div>
-    <!-- Erreur mena eo ambanin'ny Mampiditra -->
     <div id="error-line"></div>
   </div>
 
@@ -138,22 +133,23 @@
     var _lastDataStr    = '';
     var _busy           = false;
 
-    // ── UI refs ───────────────────────────────────────────────────
-    var _spinnerEl   = document.getElementById('init-spinner');
+    var _spinner     = document.getElementById('init-spinner');
     var _errorLine   = document.getElementById('error-line');
     var _turnDisplay = document.getElementById('turn-display');
 
-    // Asehoy ny erreur mena eo ambanin'ny "Mampiditra..."
-    function showError(msg) {
+    // ── Asehoy ny erreur — inline style mba azo antoka ───────────
+    function setError(msg) {
       _errorLine.textContent = msg;
-      _errorLine.classList.add('visible');
     }
-    function hideError() {
-      _errorLine.classList.remove('visible');
+    function clearError() {
       _errorLine.textContent = '';
     }
-    function hideSpinner() {
-      _spinnerEl.classList.add('hidden');
+    function setStatus(txt, color) {
+      _turnDisplay.textContent = txt;
+      _turnDisplay.style.color = color || 'white';
+    }
+    function stopSpinner() {
+      _spinner.style.display = 'none';
     }
 
     // ── API helper ────────────────────────────────────────────────
@@ -168,85 +164,99 @@
       return d;
     }
 
-    // ── Init — essais pendant 10s, erreur visible dès le début ───
+    // ── Fandikana erreur ho mazava ────────────────────────────────
+    function parseError(e) {
+      var m = (e && e.message) ? e.message : String(e);
+      if (m.indexOf('not found') !== -1 || m.indexOf('404') !== -1)
+        return 'Game tsy hita (gameId: ' + gameId + ')';
+      if (m.indexOf('Not authorized') !== -1 || m.indexOf('403') !== -1)
+        return 'Tsy nahazo alàlana — UID tsy malalao ao anatin\'ity game ity';
+      if (m.indexOf('401') !== -1)
+        return 'Session efa lany — miverina amin\'ny login';
+      if (m.indexOf('500') !== -1)
+        return 'Olana ao amin\'ny server (500)';
+      if (m.indexOf('Failed to fetch') !== -1 || m.indexOf('NetworkError') !== -1 || m.indexOf('fetch') !== -1)
+        return 'Tsy misy connexion réseau';
+      return m;
+    }
+
+    // ── Init — 10s deadline, erreur miseho avy hatrany ───────────
     async function initGame() {
       drawBoardSpots();
 
-      // Deadline: 10s hatramin'ny fanombohana
-      var deadline   = Date.now() + 10000;
-      var attempts   = 0;
-      var lastErrors = [];   // tantara erreur rehetra
+      var deadline = Date.now() + 10000;
+      var stopped  = false;
+      var lastErr  = '';
 
-      function recordError(msg) {
-        var ts = new Date().toLocaleTimeString();
-        // Tsy ampiana raha mitovy amin'ny farany
-        if (lastErrors.length === 0 || lastErrors[lastErrors.length - 1].msg !== msg) {
-          lastErrors.push({ msg: msg, ts: ts });
-        }
-        // Asehoy ny errors rehetra (farany 3 fotsiny mba tsy ho be loatra)
-        var shown = lastErrors.slice(-3);
-        showError(shown.map(function(e){ return '⚠ ' + e.msg; }).join('\n'));
+      // Asehoy ny erreur isan'andro — inline style, tsy miankina amin'ny class
+      function showErr(msg) {
+        lastErr = msg;
+        _errorLine.textContent = msg;
+        _errorLine.style.display = 'block';
+        _errorLine.style.color   = '#ff4444';
       }
 
       async function tryInit() {
-        attempts++;
-        var remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+        if (stopped) return;
+
+        var remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
 
         try {
           var data = await callGameApi('get-state', { uid: currentUser.uid, gameId: gameId });
 
-          // Valiny avy amin'ny server
           if (!data.success) {
-            recordError((data.error || 'Partie introuvable') + ' — ' + remaining + 's sisa');
+            showErr('⚠ ' + (data.error || 'Tsy nahomby') + ' (' + remaining + 's)');
           } else if (!data.pieces || Object.keys(data.pieces).length === 0) {
-            recordError('Plateau vide (game mbola tsy voaforona) — ' + remaining + 's sisa');
+            showErr('⚠ Plateau vide — game mbola tsy voaforona (' + remaining + 's)');
           } else {
-            // ✅ Lalao hita sy misy pieces — manomboka!
-            hideError();
-            hideSpinner();
+            // ✅ Nahomby
+            stopped = true;
+            stopSpinner();
+            clearError();
             myColor = data.myColor;
             if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
             _lastDataStr = JSON.stringify(data);
             applyGameState(data);
             startPolling();
-            return; // mivoaka — tsy misy retry intsony
+            return;
           }
 
         } catch(e) {
-          // Erreur reseau na server
-          var msg = e.message || 'Connexion échouée';
-          // Anazavaina tsara ny karazany
-          if (msg.indexOf('404') !== -1 || msg.indexOf('not found') !== -1) {
-            msg = 'Game not found (gameId: ' + gameId + ')';
-          } else if (msg.indexOf('403') !== -1) {
-            msg = 'Non autorisé — uid tsy malalao';
-          } else if (msg.indexOf('401') !== -1) {
-            msg = 'Session expirée — miverina login';
-          } else if (msg.indexOf('500') !== -1) {
-            msg = 'Server error (500)';
-          } else if (msg.indexOf('Failed to fetch') !== -1 || msg.indexOf('NetworkError') !== -1) {
-            msg = 'Tsy misy connexion réseau';
-          }
-          recordError(msg + ' — ' + remaining + 's sisa');
+          showErr('⚠ ' + parseError(e) + ' (' + remaining + 's)');
         }
 
-        // Mbola misy fotoana? → retry
+        // Mbola misy fotoana?
         if (Date.now() < deadline) {
           setTimeout(tryInit, 900);
         } else {
-          // Tsy nahomby tao anatin'ny 10s — mijanona
-          hideSpinner();
-          // Avereno ny message farany amin'ny loko mena mafy, tsy misy "sisa"
-          var finalErrors = lastErrors.slice(-3);
-          showError(
-            finalErrors.map(function(e){ return '⚠ ' + e.msg.replace(/ — \d+s sisa/, ''); }).join('\n')
-            + '\n→ Miverina amin\'ny dashboard.'
-          );
+          // ── Tapitra ny 10s — soloina ilay "Mampiditra..." ──────
+          stopped = true;
+          stopSpinner();
+
+          // Jereo ny karazany erreur farany → soratra mazava
+          var finalMsg = lastErr.replace(/ \(\d+s\)$/, ''); // esory ilay "(Xs)"
+
+          // Soratra goavana: soloina "Mampiditra..."
+          if (finalMsg.indexOf('UID') !== -1 || finalMsg.indexOf('alàlana') !== -1) {
+            setStatus('Tsy nahazo alàlana', '#ff4444');
+            showErr('Ilay UID-nao (' + (currentUser.uid || '?') + ')\ntsy malalao ao anatin\'ity game ity.\nMiverina amin\'ny dashboard.');
+          } else if (finalMsg.indexOf('game tsy hita') !== -1 || finalMsg.indexOf('not found') !== -1 || finalMsg.indexOf('tsy hita') !== -1) {
+            setStatus('Game tsy hita', '#ff4444');
+            showErr('Tsy nahitana ny game.\n(gameId: ' + gameId + ')\nMiverina amin\'ny dashboard.');
+          } else if (finalMsg.indexOf('connexion') !== -1 || finalMsg.indexOf('réseau') !== -1 || finalMsg.indexOf('fetch') !== -1) {
+            setStatus('Tsy misy réseau', '#ff4444');
+            showErr('Tsy misy connexion internet.\nEnjao ny réseau dia avereno.');
+          } else if (finalMsg.indexOf('vide') !== -1 || finalMsg.indexOf('voaforona') !== -1) {
+            setStatus('Mpifanandrina tsy hita', '#ffcc00');
+            showErr('Hita ny game saingy ny plateau dia foana.\n(Mpifanandrina mbola tsy tonga na tsy nanomboka ny lalao)\nMiverina amin\'ny dashboard.');
+          } else {
+            setStatus('Tsy nahomby', '#ff4444');
+            showErr(finalMsg + '\nMiverina amin\'ny dashboard.');
+          }
         }
       }
 
-      // Manomboka avy hatrany (tsy miandry)
-      tryInit();
+      tryInit(); // manomboka avy hatrany
     }
 
     // ── Polling get-state (toutes les 800ms) ─────────────────────
@@ -268,12 +278,11 @@
 
     // ── Appliquer l'état reçu du serveur ─────────────────────────
     function applyGameState(data) {
-      var display  = _turnDisplay;
       var stopBtn  = document.getElementById('stop-move-btn');
       var isMyTurn = data.turn === myColor;
 
       if (isMyTurn) {
-        display.innerText = "ANJARANAO"; display.style.color = "#ADFF2F";
+        setStatus('ANJARANAO', '#ADFF2F');
         if (data.movingPiece) {
           selectedSpot = data.movingPiece;
           stopBtn.classList.add('active');
@@ -289,7 +298,7 @@
         if (selectedSpot) renderGuides(selectedSpot, data);
         else document.getElementById('guides-group').innerHTML = "";
       } else {
-        display.innerText = "Miandry ny hafa..."; display.style.color = "white";
+        setStatus('Miandry ny hafa...', 'white');
         selectedSpot = null; lastBlockedSpot = null;
         stopBtn.classList.remove('active');
         document.getElementById('guides-group').innerHTML = "";
@@ -330,14 +339,7 @@
           renderPieces(state.pieces, state);
           _busy = false; return;
         }
-
-        var res = await callGameApi('move', {
-          uid:    currentUser.uid,
-          gameId: gameId,
-          from:   selectedSpot,
-          to:     spotID
-        });
-
+        var res = await callGameApi('move', { uid: currentUser.uid, gameId: gameId, from: selectedSpot, to: spotID });
         if (res.needChooseCapture) {
           selectedSpot = spotID;
         } else {
@@ -367,10 +369,7 @@
           circle.classList.add("capture-target");
           circle.style.pointerEvents = "all";
           var captureType = isApp ? 'approach' : 'withdrawal';
-          circle.onclick = (function(t){ return function(e){
-            e.stopPropagation();
-            sendChooseCapture(t);
-          }; })(captureType);
+          circle.onclick = (function(t){ return function(e){ e.stopPropagation(); sendChooseCapture(t); }; })(captureType);
           g.appendChild(createCross(-5,-5,5,5));
           g.appendChild(createCross(5,-5,-5,5));
         }
@@ -378,8 +377,7 @@
     }
 
     async function sendChooseCapture(type) {
-      if (_busy) return;
-      _busy = true;
+      if (_busy) return; _busy = true;
       try {
         await callGameApi('choose-capture', { uid: currentUser.uid, gameId: gameId, type: type });
         await fetchAndApply();
@@ -394,8 +392,7 @@
       if (!startSpot) return;
       var pieces  = gameData.pieces;
       var visited = gameData.visited || [];
-      var moves   = ALLOWED_MOVES[startSpot] || [];
-      moves.forEach(function(target) {
+      (ALLOWED_MOVES[startSpot] || []).forEach(function(target) {
         if (pieces[target] || visited.includes(target)) return;
         var dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         dot.setAttribute("cx", COLS.indexOf(target[1]) * 50);
@@ -430,8 +427,7 @@
         g.setAttribute("class", "piece-group");
         var c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         c.setAttribute("r", 8);
-        g.appendChild(c);
-        grp.appendChild(g);
+        g.appendChild(c); grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
       });
 
@@ -449,7 +445,6 @@
         circle.removeAttribute("class");
         circle.style.pointerEvents = "none";
         g.querySelectorAll('.cross-line').forEach(function(l){ l.remove(); });
-
         if (isMyTurn && pieces[spot] === myColor && !gameData.pendingCaptures) {
           if (selectedSpot === spot)         circle.setAttribute("class", "selected-piece");
           else if (lastBlockedSpot === spot) circle.setAttribute("class", "blocked-piece");
@@ -466,10 +461,8 @@
       return l;
     }
 
-    // ── Bouton OK (stop-move) ─────────────────────────────────────
     document.getElementById('stop-move-btn').onclick = async function() {
-      if (_busy) return;
-      _busy = true;
+      if (_busy) return; _busy = true;
       try {
         await callGameApi('stop-move', { uid: currentUser.uid, gameId: gameId });
         selectedSpot = null; lastBlockedSpot = null;
