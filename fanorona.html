@@ -152,6 +152,7 @@
   const SESSION_API_URL = '/api/session';
   const GAME_API_URL = '/api/game';
   const POLL_INTERVAL = 2000;
+  const ROLLBACK_DELAY = 5000; // Miandry 5 segondra vao mamerina raha misy diso
 
   const params = new URLSearchParams(window.location.search);
   const gameId = params.get('gameId');
@@ -189,8 +190,6 @@
   let myUid = null;
   let myUsername = null;
   let opponentUsername = null;
-  
-  // Flag vaovao hitantanana ny synchronisation
   let localMoveInProgress = false;
 
   function showError(msg) {
@@ -400,23 +399,16 @@
   }
 
   async function fetchGame() {
-    // Polling avela foana na dia eo am-panaovana mouvement aza
-    if (!myUid) return;
-    
+    if (!myUid || localMoveInProgress) return;
     const res = await fetch(GAME_API_URL, { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'get-game', uid: myUid, gameId }) 
     });
     const data = await res.json();
-    
     if (data.success && data.game) {
-      // Raha ny adversaire no manatontosa mouvement, dia havaozina ny sary
-      // Raha izaho kosa no eo am-panaovana mouvement, dia avela aloha ny Optimistic UI
-      if (!localMoveInProgress || currentGame.turn !== myColor) {
-        currentGame = data.game;
-        updateUI();
-      }
+      currentGame = data.game;
+      updateUI();
     }
   }
 
@@ -451,8 +443,8 @@
       const origin = selectedSpot;
       const oldGame = JSON.parse(JSON.stringify(currentGame));
 
-      // OPTIMISTIC UI: Ovao avy hatrany ny sary eo an-toerana
-      localMoveInProgress = true;
+      // 1. OPTIMISTIC UPDATE: Mietsika avy hatrany
+      localMoveInProgress = true; 
       let newVisited = [...(currentGame.visited || []), origin];
       let newPieces = { ...currentGame.pieces };
       delete newPieces[origin];
@@ -486,16 +478,20 @@
       currentGame.awaitingCapture = nextAwaiting;
       currentGame.pendingApproach = pApproach;
       currentGame.pendingWithdrawal = pWithdrawal;
-      
       updateUI();
-      
-      // Alefa any amin'ny Backend ny hetsika
-      const res = await callGameApi('make-move', { uid: myUid, gameId, origin, target: spotID });
-      if (!res.success) { 
-        currentGame = oldGame; 
-        updateUI(); 
-      }
-      localMoveInProgress = false;
+
+      // 2. Alefa any amin'ny Backend AVY HATRANY
+      const movePromise = callGameApi('make-move', { uid: myUid, gameId, origin, target: spotID });
+
+      // 3. MIANDRY 5S vao mijery raha tafita (fa ny adversaire mahita avy hatrany any aminy)
+      setTimeout(async () => {
+        const res = await movePromise;
+        if (!res.success) {
+          currentGame = oldGame; // Rollback raha tsy tafita
+          updateUI();
+        }
+        localMoveInProgress = false; // Afaka manao polling indray
+      }, ROLLBACK_DELAY);
     }
   }
 
@@ -516,11 +512,14 @@
     currentGame.awaitingCapture = false;
     currentGame.pendingApproach = [];
     currentGame.pendingWithdrawal = [];
-    
     updateUI();
-    const res = await callGameApi('resolve-capture', { uid: myUid, gameId, capturedSpot });
-    if (!res.success) { currentGame = oldGame; updateUI(); }
-    localMoveInProgress = false;
+
+    const capturePromise = callGameApi('resolve-capture', { uid: myUid, gameId, capturedSpot });
+    setTimeout(async () => {
+      const res = await capturePromise;
+      if (!res.success) { currentGame = oldGame; updateUI(); }
+      localMoveInProgress = false;
+    }, ROLLBACK_DELAY);
   }
 
   async function handleStopTurn() {
@@ -534,9 +533,12 @@
     currentGame.lastDir = "";
     updateUI();
 
-    const res = await callGameApi('stop-turn', { uid: myUid, gameId });
-    if (!res.success) { currentGame = oldGame; updateUI(); }
-    localMoveInProgress = false;
+    const stopPromise = callGameApi('stop-turn', { uid: myUid, gameId });
+    setTimeout(async () => {
+      const res = await stopPromise;
+      if (!res.success) { currentGame = oldGame; updateUI(); }
+      localMoveInProgress = false;
+    }, ROLLBACK_DELAY);
   }
 
   async function init() {
@@ -556,8 +558,6 @@
       updateUI();
       document.getElementById('game-board').style.display = 'block';
       document.getElementById('loading-overlay').classList.add('hidden');
-      
-      // Mandefa polling isaky ny 2 segaondra
       setInterval(fetchGame, POLL_INTERVAL);
     }
   }
