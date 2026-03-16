@@ -11,7 +11,7 @@ if (!admin.apps.length) {
   }
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: process.env.FIREBASE_DATABASE_URL  // ← RTDB URL required
+    databaseURL: process.env.FIREBASE_DATABASE_URL
   });
 }
 
@@ -20,12 +20,12 @@ const usersCollection = db.collection("users");
 
 // ── RTDB refs ──────────────────────────────────────────────────────────────
 const rtdb = admin.database();
-const gameInvitesRef = rtdb.ref("gameInvites"); // gameInvites moved from Firestore → RTDB
-const presenceRef    = rtdb.ref("presence");    // lastSeen moved from Firestore → RTDB
+const gameInvitesRef = rtdb.ref("gameInvites");
+const presenceRef    = rtdb.ref("presence");
 
 const FRIEND_LIMIT      = 100;
-const ONLINE_THRESHOLD  = 12 * 1000; // ping toutes les 10s + 2s marge
-const GAME_INVITE_TTL   = 12 * 1000; // 12s (10s display + 2s margin)
+const ONLINE_THRESHOLD  = 12 * 1000;
+const GAME_INVITE_TTL   = 12 * 1000;
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       case "get-friends":              return await handleGetFriends(payload, res);
       case "get-friend-requests":      return await handleGetFriendRequests(payload, res);
       case "get-sent-requests":        return await handleGetSentRequests(payload, res);
-      // ── Game Invites (RTDB) ──
+      
       case "send-game-invite":         return await handleSendGameInvite(payload, res);
       case "check-game-invite":        return await handleCheckGameInvite(payload, res);
       case "accept-game-invite":       return await handleAcceptGameInvite(payload, res);
@@ -63,11 +63,9 @@ export default async function handler(req, res) {
       case "check-game-invite-status": return await handleCheckGameInviteStatus(payload, res);
       case "update-room-ready":        return await handleUpdateRoomReady(payload, res);
       case "update-room-settings":     return await handleUpdateRoomSettings(payload, res);
-      // ── Room Chat (RTDB) ──
+      
       case "send-chat-message":        return await handleSendChatMessage(payload, res);
       case "get-chat-messages":        return await handleGetChatMessages(payload, res);
-      // ── Fanorona Game ──
-      case "start-fanorona-game":      return await handleStartFanoronaGame(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -78,16 +76,11 @@ export default async function handler(req, res) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Lire un nœud RTDB une fois → retourne null si inexistant */
 async function rtdbGet(ref) {
   const snap = await ref.once("value");
   return snap.exists() ? snap.val() : null;
 }
 
-/**
- * Lire le lastSeen de plusieurs UIDs depuis RTDB en parallèle.
- * Retourne un Map uid → lastSeen (number, 0 si absent).
- */
 async function getLastSeenBatch(uids) {
   const entries = await Promise.all(
     uids.map(async uid => {
@@ -106,7 +99,6 @@ async function handleGetSession(body, res) {
   const userDoc = await usersCollection.doc(uid).get();
   if (!userDoc.exists) return res.status(404).json({ error: "User not found." });
 
-  // lastSeen → RTDB (plus de write Firestore ici)
   await presenceRef.child(uid).update({ lastSeen: Date.now() });
 
   const userData = userDoc.data();
@@ -125,7 +117,6 @@ async function handlePing(body, res) {
   const { uid } = body;
   if (!uid) return res.status(400).json({ error: "UID is required." });
 
-  // lastSeen → RTDB uniquement (économise 1 write Firestore par ping)
   await presenceRef.child(uid).update({ lastSeen: Date.now() });
   return res.status(200).json({ success: true });
 }
@@ -174,7 +165,6 @@ async function handleSearchUsers(body, res) {
   const seenIds = new Set();
   const users   = [];
 
-  // Lire lastSeen depuis RTDB en batch pour les résultats de recherche
   function addDoc(doc) {
     if (!doc || !doc.exists) return;
     if (doc.id === uid) return;
@@ -359,7 +349,6 @@ async function handleGetFriends(body, res) {
   if (friendUids.length === 0)
     return res.status(200).json({ success: true, friends: [], friendCount: 0, currentTotal, friendLimit: FRIEND_LIMIT });
 
-  // 1) Lire les profils Firestore (username)
   const chunks = [];
   for (let i = 0; i < friendUids.length; i += 10) chunks.push(friendUids.slice(i, i + 10));
   const profiles = new Map();
@@ -370,7 +359,6 @@ async function handleGetFriends(body, res) {
     snap.docs.forEach(doc => profiles.set(doc.id, doc.data()));
   }
 
-  // 2) Lire lastSeen depuis RTDB en parallèle
   const lastSeenMap = await getLastSeenBatch(friendUids);
 
   const now     = Date.now();
@@ -450,11 +438,6 @@ async function handleGetSentRequests(body, res) {
 
 // ── Game Invite handlers (Realtime Database) ───────────────────────────────
 
-/**
- * send-game-invite
- * Body: { uid, toUid, game, color, minutes }
- * Crée gameInvites/{inviteId} dans RTDB avec statut "pending"
- */
 async function handleSendGameInvite(body, res) {
   const { uid, toUid, game, color, minutes } = body;
   if (!uid || !toUid) return res.status(400).json({ error: "Both UIDs are required." });
@@ -470,7 +453,6 @@ async function handleSendGameInvite(body, res) {
   const senderUsername   = senderDoc.data().username   || uid;
   const receiverUsername = receiverDoc.data().username || toUid;
 
-  // Annuler toute invitation pending existante du même sender vers le même receiver
   const existingSnap = await gameInvitesRef
     .orderByChild("fromUid")
     .equalTo(uid)
@@ -500,8 +482,8 @@ async function handleSendGameInvite(body, res) {
     game,
     color:            color   || "green",
     minutes:          minutes || 5,
-    status:           "pending",  // pending | accepted | declined | cancelled | expired
-    receiverReady:    false,      // ← false à la création; le receiver met true immédiatement à l'entrée
+    status:           "pending",
+    receiverReady:    false,
     createdAt:        now,
     expiresAt:        now + GAME_INVITE_TTL
   });
@@ -509,11 +491,6 @@ async function handleSendGameInvite(body, res) {
   return res.status(200).json({ success: true, inviteId });
 }
 
-/**
- * check-game-invite
- * Body: { uid }
- * Retourne la dernière invitation "pending" non expirée destinée à cet utilisateur
- */
 async function handleCheckGameInvite(body, res) {
   const { uid } = body;
   if (!uid) return res.status(400).json({ error: "UID is required." });
@@ -536,7 +513,6 @@ async function handleCheckGameInvite(body, res) {
 
   if (docs.length === 0) return res.status(200).json({ success: true, invite: null });
 
-  // Trier par createdAt desc
   docs.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
 
   let validInvite = null;
@@ -556,12 +532,6 @@ async function handleCheckGameInvite(body, res) {
   return res.status(200).json({ success: true, invite: validInvite });
 }
 
-/**
- * accept-game-invite
- * Body: { uid, inviteId }
- * Met le statut à "accepted" ET receiverReady à true immédiatement
- * → corrige le bug "Opponent not ready" affiché côté sender au premier polling
- */
 async function handleAcceptGameInvite(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
@@ -577,13 +547,10 @@ async function handleAcceptGameInvite(body, res) {
     return res.status(400).json({ error: "Invitation has expired." });
   }
 
-  // FIX BUG "Opponent not ready":
-  // On met receiverReady: true en même temps qu'accepted
-  // → le sender verra toujours ready=true dès le 1er polling après l'acceptation
   await inviteRef.update({
     status:        "accepted",
     acceptedAt:    Date.now(),
-    receiverReady: true   // ← clé du fix: évite le flash "Opponent not ready"
+    receiverReady: true
   });
 
   return res.status(200).json({
@@ -598,10 +565,6 @@ async function handleAcceptGameInvite(body, res) {
   });
 }
 
-/**
- * decline-game-invite
- * Body: { uid, inviteId }
- */
 async function handleDeclineGameInvite(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
@@ -616,11 +579,6 @@ async function handleDeclineGameInvite(body, res) {
   return res.status(200).json({ success: true });
 }
 
-/**
- * cancel-game-invite
- * Body: { uid, inviteId }
- * Utilisé par l'expéditeur pour annuler (countdown écoulé ou retour)
- */
 async function handleCancelGameInvite(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
@@ -628,20 +586,13 @@ async function handleCancelGameInvite(body, res) {
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
 
-  if (!invite) return res.status(200).json({ success: true }); // déjà supprimé
+  if (!invite) return res.status(200).json({ success: true }); 
   if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
 
   await inviteRef.update({ status: "cancelled" });
   return res.status(200).json({ success: true });
 }
 
-/**
- * check-game-invite-status
- * Body: { uid, inviteId }
- * Utilisé par l'expéditeur pour savoir si son invitation a été acceptée/refusée
- * + utilisé par la room sync polling (sender & receiver)
- */
-// Cache simple en mémoire (TTL 2s) — évite les lectures RTDB répétées
 const _inviteStatusCache = new Map();
 const _INVITE_STATUS_TTL = 2000;
 
@@ -649,7 +600,6 @@ async function handleCheckGameInviteStatus(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
-  // Vérifier le cache
   const cached = _inviteStatusCache.get(inviteId);
   if (cached && (Date.now() - cached.ts) < _INVITE_STATUS_TTL) {
     const inv = cached.data;
@@ -674,29 +624,15 @@ async function handleCheckGameInviteStatus(body, res) {
     senderUid:        invite.fromUid,
     senderUsername:   invite.fromUsername,
     receiverUid:      invite.toUid,
-    receiverUsername: invite.toUsername,
-    gameId:           invite.gameId || null  // ← présent quand status=started
+    receiverUsername: invite.toUsername
   };
 
-  // Ne pas mettre en cache les états terminaux (started/cancelled/declined/expired)
-  // pour éviter que le receiver reçoive un état périmé
-  const terminalStatuses = ['started', 'cancelled', 'declined', 'expired'];
-  if (!terminalStatuses.includes(invite.status)) {
-    _inviteStatusCache.set(inviteId, { data: responseData, ts: Date.now() });
-    setTimeout(() => _inviteStatusCache.delete(inviteId), _INVITE_STATUS_TTL + 100);
-  } else {
-    // Vider le cache existant si l'état est terminal
-    _inviteStatusCache.delete(inviteId);
-  }
+  _inviteStatusCache.set(inviteId, { data: responseData, ts: Date.now() });
+  setTimeout(() => _inviteStatusCache.delete(inviteId), _INVITE_STATUS_TTL + 100);
 
   return res.status(200).json({ success: true, ...responseData });
 }
 
-/**
- * update-room-ready
- * Body: { uid, inviteId, ready }
- * Receiver met à jour son état prêt (true/false)
- */
 async function handleUpdateRoomReady(body, res) {
   const { uid, inviteId, ready } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
@@ -712,11 +648,6 @@ async function handleUpdateRoomReady(body, res) {
   return res.status(200).json({ success: true });
 }
 
-/**
- * update-room-settings
- * Body: { uid, inviteId, color, minutes, game }
- * Sender met à jour color/minutes/game dans RTDB pour que le receiver les voie
- */
 async function handleUpdateRoomSettings(body, res) {
   const { uid, inviteId, color, minutes, game } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
@@ -741,19 +672,11 @@ async function handleUpdateRoomSettings(body, res) {
 const CHAT_MAX_CHARS   = 30;
 const CHAT_MAX_MSGS    = 20;
 
-/**
- * send-chat-message
- * Body: { uid, inviteId, text }
- * Vérifie que uid est bien sender ou receiver de l'invite,
- * puis écrit le message dans RTDB: roomChats/{inviteId}/messages/{pushId}
- * et supprime automatiquement les messages > 20
- */
 async function handleSendChatMessage(body, res) {
   const { uid, inviteId, text } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
   if (!text || !text.trim()) return res.status(400).json({ error: "Message cannot be empty." });
 
-  // Vérifier que l'utilisateur appartient bien à cette room
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
   if (!invite) return res.status(404).json({ error: "Room not found." });
@@ -762,11 +685,9 @@ async function handleSendChatMessage(body, res) {
   if (invite.status !== "accepted")
     return res.status(400).json({ error: "Room is not active." });
 
-  // Limiter à CHAT_MAX_CHARS (compté en Array.from pour les emojis)
   const chars = Array.from(text.trim());
   const safeText = chars.slice(0, CHAT_MAX_CHARS).join('');
 
-  // Récupérer username depuis Firestore
   const userDoc = await usersCollection.doc(uid).get();
   const username = userDoc.exists ? (userDoc.data().username || uid) : uid;
 
@@ -779,7 +700,6 @@ async function handleSendChatMessage(body, res) {
     ts:             Date.now()
   });
 
-  // Supprimer automatiquement les messages dépassant CHAT_MAX_MSGS
   const allSnap = await msgsRef.once("value");
   if (allSnap.exists()) {
     const allMsgs = [];
@@ -798,16 +718,10 @@ async function handleSendChatMessage(body, res) {
   return res.status(200).json({ success: true });
 }
 
-/**
- * get-chat-messages
- * Body: { uid, inviteId }
- * Retourne les messages triés par ts (max CHAT_MAX_MSGS derniers)
- */
 async function handleGetChatMessages(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
-  // Vérifier appartenance à la room
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
   if (!invite) return res.status(404).json({ error: "Room not found." });
@@ -837,84 +751,3 @@ async function handleGetChatMessages(body, res) {
   return res.status(200).json({ success: true, messages: last });
 }
 
-// ── Fanorona Game handler ──────────────────────────────────────────────────
-
-const ROWS = ['A','B','C','D','E'];
-const COLS = ['1','2','3','4','5','6','7','8','9'];
-
-/**
- * start-fanorona-game
- * Body: { uid, inviteId }
- * - Vérifie que uid est sender de l'invite (seul le sender/Green peut démarrer)
- * - Crée games/{gameId} dans RTDB avec les pièces initiales
- * - Retourne { gameId, myColor, opponentColor, opponentUsername }
- */
-async function handleStartFanoronaGame(body, res) {
-  const { uid, inviteId } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-
-  if (!invite) return res.status(404).json({ error: "Room not found." });
-  // Seul le sender (Green) peut démarrer
-  if (invite.fromUid !== uid) return res.status(403).json({ error: "Only the room host can start the game." });
-  if (invite.status !== "accepted") return res.status(400).json({ error: "Room is not active." });
-
-  // gameId = inviteId (unique, déjà partagé entre les deux joueurs)
-  const gameId  = inviteId;
-  const gameRef = rtdb.ref(`games/${gameId}`);
-  const existing = await rtdbGet(gameRef);
-
-  if (!existing) {
-    // Initialiser le plateau
-    const initialPieces = {};
-    ROWS.forEach((r, ri) => {
-      COLS.forEach((c, ci) => {
-        const key = r + c;
-        if (ri < 2)      initialPieces[key] = "mena";
-        else if (ri > 2) initialPieces[key] = "maintso";
-        else {
-          if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
-          else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
-          // ci=4 (C5) = vide au centre
-        }
-      });
-    });
-
-    // Green (sender/fromUid) joue maintso, Red (receiver/toUid) joue mena
-    // maintso commence toujours en premier
-    await gameRef.set({
-      pieces:      initialPieces,
-      turn:        "maintso",   // Green (sender) commence
-      movingPiece: "",
-      visited:     [],
-      lastDir:     "",
-      senderUid:   invite.fromUid,    // maintso
-      receiverUid: invite.toUid,      // mena
-      startedAt:   Date.now()
-    });
-  }
-
-  // Déterminer couleur de chaque joueur
-  // sender = maintso (Green), receiver = mena (Red)
-  const myColor       = invite.fromUid === uid ? "maintso" : "mena";
-  const opponentColor = myColor === "maintso" ? "mena" : "maintso";
-  const opponentUid   = invite.fromUid === uid ? invite.toUid : invite.fromUid;
-
-  // Récupérer username de l'adversaire
-  const oppDoc = await usersCollection.doc(opponentUid).get();
-  const opponentUsername = oppDoc.exists ? (oppDoc.data().username || opponentUid) : opponentUid;
-
-  // Marquer l'invite comme "started" + vider le cache pour ce inviteId
-  await inviteRef.update({ status: "started", gameId });
-  _inviteStatusCache.delete(inviteId);
-
-  return res.status(200).json({
-    success:           true,
-    gameId,
-    myColor,
-    opponentColor,
-    opponentUsername
-  });
-}
