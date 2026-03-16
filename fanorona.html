@@ -21,7 +21,6 @@
     #stop-move-btn { width: 60px; height: 60px; border-radius: 50%; background: #f44336; color: white; border: 4px solid white; font-size: 30px; font-weight: bold; cursor: pointer; margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none; }
     #stop-move-btn.active { opacity: 1; transform: scale(1.1); box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all; }
 
-    /* ── Info box ── */
     #info-box {
       color: white;
       margin-bottom: 10px;
@@ -29,10 +28,8 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
     }
-
-    /* Ligne 1 : "Mampiditra..." + spinner */
     #status-row {
       display: flex;
       align-items: center;
@@ -50,20 +47,23 @@
       animation: spin 0.8s linear infinite;
       flex-shrink: 0;
     }
-    .loading-spinner.hidden { display: none; }
+    .loading-spinner.hidden { display: none !important; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Ligne 2 : erreur en rouge, EN DESSOUS du texte */
+    /* Erreur mena — eo ambanin'ny "Mampiditra..." */
     #error-line {
-      display: none;
-      font-size: 0.82em;
+      display: none !important;
+      font-size: 0.83em;
       color: #ff4444;
-      font-weight: 600;
-      max-width: 300px;
+      font-weight: 700;
+      max-width: 320px;
       text-align: center;
-      line-height: 1.4;
+      line-height: 1.5;
+      padding: 0 8px;
     }
-    #error-line.visible { display: block; }
+    #error-line.visible {
+      display: block !important;
+    }
   </style>
 </head>
 <body>
@@ -73,6 +73,7 @@
       <h2 id="turn-display">Mampiditra...</h2>
       <span class="loading-spinner" id="init-spinner"></span>
     </div>
+    <!-- Erreur mena eo ambanin'ny Mampiditra -->
     <div id="error-line"></div>
   </div>
 
@@ -142,12 +143,14 @@
     var _errorLine   = document.getElementById('error-line');
     var _turnDisplay = document.getElementById('turn-display');
 
+    // Asehoy ny erreur mena eo ambanin'ny "Mampiditra..."
     function showError(msg) {
       _errorLine.textContent = msg;
       _errorLine.classList.add('visible');
     }
     function hideError() {
       _errorLine.classList.remove('visible');
+      _errorLine.textContent = '';
     }
     function hideSpinner() {
       _spinnerEl.classList.add('hidden');
@@ -161,57 +164,88 @@
         body:    JSON.stringify(Object.assign({ action }, payload))
       });
       var d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Game error.');
+      if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
       return d;
     }
 
-    // ── Init avec retry ───────────────────────────────────────────
+    // ── Init — essais pendant 10s, erreur visible dès le début ───
     async function initGame() {
       drawBoardSpots();
-      var maxRetry = 10;
-      var attempts = 0;
+
+      // Deadline: 10s hatramin'ny fanombohana
+      var deadline   = Date.now() + 10000;
+      var attempts   = 0;
+      var lastErrors = [];   // tantara erreur rehetra
+
+      function recordError(msg) {
+        var ts = new Date().toLocaleTimeString();
+        // Tsy ampiana raha mitovy amin'ny farany
+        if (lastErrors.length === 0 || lastErrors[lastErrors.length - 1].msg !== msg) {
+          lastErrors.push({ msg: msg, ts: ts });
+        }
+        // Asehoy ny errors rehetra (farany 3 fotsiny mba tsy ho be loatra)
+        var shown = lastErrors.slice(-3);
+        showError(shown.map(function(e){ return '⚠ ' + e.msg; }).join('\n'));
+      }
 
       async function tryInit() {
+        attempts++;
+        var remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+
         try {
           var data = await callGameApi('get-state', { uid: currentUser.uid, gameId: gameId });
 
-          if (!data.success || !data.pieces || Object.keys(data.pieces).length === 0) {
-            attempts++;
-            var errMsg = !data.success
-              ? (data.error || 'Partie introuvable')
-              : 'Plateau en cours de création...';
-            if (attempts < maxRetry) {
-              showError(errMsg + ' (' + attempts + '/' + maxRetry + ')');
-              setTimeout(tryInit, 900);
-            } else {
-              hideSpinner();
-              showError(errMsg + ' — Fanandramana rehetra tsy nahomby. Miverina amin\'ny dashboard.');
-            }
-            return;
+          // Valiny avy amin'ny server
+          if (!data.success) {
+            recordError((data.error || 'Partie introuvable') + ' — ' + remaining + 's sisa');
+          } else if (!data.pieces || Object.keys(data.pieces).length === 0) {
+            recordError('Plateau vide (game mbola tsy voaforona) — ' + remaining + 's sisa');
+          } else {
+            // ✅ Lalao hita sy misy pieces — manomboka!
+            hideError();
+            hideSpinner();
+            myColor = data.myColor;
+            if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
+            _lastDataStr = JSON.stringify(data);
+            applyGameState(data);
+            startPolling();
+            return; // mivoaka — tsy misy retry intsony
           }
-
-          // ✅ Miasa tsara
-          hideError();
-          hideSpinner();
-          myColor = data.myColor;
-          if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
-          _lastDataStr = JSON.stringify(data);
-          applyGameState(data);
-          startPolling();
 
         } catch(e) {
-          attempts++;
-          var errMsg = 'Erreur: ' + (e.message || 'connexion échouée');
-          if (attempts < maxRetry) {
-            showError(errMsg + ' (' + attempts + '/' + maxRetry + ')');
-            setTimeout(tryInit, 900);
-          } else {
-            hideSpinner();
-            showError(errMsg + ' — Miverina amin\'ny dashboard.');
+          // Erreur reseau na server
+          var msg = e.message || 'Connexion échouée';
+          // Anazavaina tsara ny karazany
+          if (msg.indexOf('404') !== -1 || msg.indexOf('not found') !== -1) {
+            msg = 'Game not found (gameId: ' + gameId + ')';
+          } else if (msg.indexOf('403') !== -1) {
+            msg = 'Non autorisé — uid tsy malalao';
+          } else if (msg.indexOf('401') !== -1) {
+            msg = 'Session expirée — miverina login';
+          } else if (msg.indexOf('500') !== -1) {
+            msg = 'Server error (500)';
+          } else if (msg.indexOf('Failed to fetch') !== -1 || msg.indexOf('NetworkError') !== -1) {
+            msg = 'Tsy misy connexion réseau';
           }
+          recordError(msg + ' — ' + remaining + 's sisa');
+        }
+
+        // Mbola misy fotoana? → retry
+        if (Date.now() < deadline) {
+          setTimeout(tryInit, 900);
+        } else {
+          // Tsy nahomby tao anatin'ny 10s — mijanona
+          hideSpinner();
+          // Avereno ny message farany amin'ny loko mena mafy, tsy misy "sisa"
+          var finalErrors = lastErrors.slice(-3);
+          showError(
+            finalErrors.map(function(e){ return '⚠ ' + e.msg.replace(/ — \d+s sisa/, ''); }).join('\n')
+            + '\n→ Miverina amin\'ny dashboard.'
+          );
         }
       }
 
+      // Manomboka avy hatrany (tsy miandry)
       tryInit();
     }
 
