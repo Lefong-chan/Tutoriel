@@ -186,16 +186,16 @@
   let selectedSpot = null;
   let lastBlockedSpot = null;
   let canChangePiece = true;
-  let pollingInterval = null;
   let myUid = null;
   let myUsername = null;
   let opponentUsername = null;
-  let isSending = false;
+  
+  // Flag vaovao hitantanana ny synchronisation
+  let localMoveInProgress = false;
 
   function showError(msg) {
     const el = document.getElementById('error-msg');
     if (el) { el.textContent = msg; el.style.display = 'block'; }
-    document.getElementById('loading-overlay').classList.add('hidden');
   }
 
   async function callSessionApi(action, payload) {
@@ -211,16 +211,13 @@
 
   async function callGameApi(action, payload) {
     try {
-      isSending = true;
       const res = await fetch(GAME_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ...payload })
       });
-      const data = await res.json();
-      isSending = false;
-      return data;
-    } catch (e) { isSending = false; return { success: false }; }
+      return await res.json();
+    } catch (e) { return { success: false }; }
   }
 
   function getCaptures(pieces, from, to, color) {
@@ -364,6 +361,7 @@
 
   function renderPlayersBar() {
     const bar = document.getElementById('players-bar');
+    if (!bar) return;
     const myDot = myColor === 'maintso' ? 'dot-maintso' : 'dot-mena';
     const oppDot = myColor === 'maintso' ? 'dot-mena' : 'dot-maintso';
     bar.innerHTML = `<div class="player-info"><div class="player-dot ${oppDot}"></div><span class="player-name">${escapeHtml(opponentUsername || '???')}</span><span class="player-label">(adversaire)</span></div><span class="vs-sep">VS</span><div class="player-info"><span class="player-label">(ianao)</span><span class="player-name">${escapeHtml(myUsername || myUid)}</span><div class="player-dot ${myDot}"></div></div>`;
@@ -379,14 +377,21 @@
     if (currentGame.turn === myColor) {
       turnDisplay.innerText = 'ANJARANAO';
       turnDisplay.style.color = '#ADFF2F';
-      if (currentGame.movingPiece) { selectedSpot = currentGame.movingPiece; canChangePiece = false; stopBtn.classList.add('active'); }
-      else { canChangePiece = true; stopBtn.classList.remove('active'); }
+      if (currentGame.movingPiece) { 
+        selectedSpot = currentGame.movingPiece; 
+        canChangePiece = false; 
+        stopBtn.classList.add('active'); 
+      } else { 
+        canChangePiece = true; 
+        stopBtn.classList.remove('active'); 
+      }
       if (selectedSpot && !currentGame.awaitingCapture) renderGuides(selectedSpot, currentGame);
       else document.getElementById('guides-group').innerHTML = '';
     } else {
       turnDisplay.innerText = 'Miandry ny hafa...';
       turnDisplay.style.color = 'white';
-      selectedSpot = null; lastBlockedSpot = null;
+      selectedSpot = null; 
+      lastBlockedSpot = null;
       stopBtn.classList.remove('active');
       document.getElementById('guides-group').innerHTML = '';
     }
@@ -395,32 +400,49 @@
   }
 
   async function fetchGame() {
-    if (!myUid || isSending) return;
-    const res = await fetch(`${GAME_API_URL}?uid=${myUid}&gameId=${gameId}`, { 
+    // Polling avela foana na dia eo am-panaovana mouvement aza
+    if (!myUid) return;
+    
+    const res = await fetch(GAME_API_URL, { 
         method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'get-game', uid: myUid, gameId }) 
     });
     const data = await res.json();
-    if (data.success && data.game && !isSending) {
-      currentGame = data.game;
-      updateUI();
+    
+    if (data.success && data.game) {
+      // Raha ny adversaire no manatontosa mouvement, dia havaozina ny sary
+      // Raha izaho kosa no eo am-panaovana mouvement, dia avela aloha ny Optimistic UI
+      if (!localMoveInProgress || currentGame.turn !== myColor) {
+        currentGame = data.game;
+        updateUI();
+      }
     }
   }
 
   async function handleSpotClick(spotID) {
     if (!currentGame || currentGame.turn !== myColor || currentGame.awaitingCapture) return;
     const pieces = currentGame.pieces || {};
+
     if (canChangePiece && pieces[spotID] === myColor) {
-      if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) { selectedSpot = spotID; lastBlockedSpot = null; }
-      else { selectedSpot = null; lastBlockedSpot = spotID; }
+      if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) { 
+        selectedSpot = spotID; 
+        lastBlockedSpot = null; 
+      } else { 
+        selectedSpot = null; 
+        lastBlockedSpot = spotID; 
+      }
       updateUI();
       return;
     }
+
     if (selectedSpot && (allowedMoves[selectedSpot] || []).includes(spotID) && !pieces[spotID]) {
       if ((currentGame.visited || []).includes(spotID)) return;
+      
       const caps = getCaptures(pieces, selectedSpot, spotID, myColor);
       const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
       if (playerHasAnyCapture(pieces, myColor) && !isCap) return;
+      
       const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
       const r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
       const dir = `${r2 - r1},${c2 - c1}`;
@@ -428,12 +450,14 @@
 
       const origin = selectedSpot;
       const oldGame = JSON.parse(JSON.stringify(currentGame));
-      
+
+      // OPTIMISTIC UI: Ovao avy hatrany ny sary eo an-toerana
+      localMoveInProgress = true;
       let newVisited = [...(currentGame.visited || []), origin];
       let newPieces = { ...currentGame.pieces };
       delete newPieces[origin];
       newPieces[spotID] = myColor;
-      
+
       let nextMovingPiece = spotID;
       let nextDir = dir;
       let nextAwaiting = false;
@@ -465,13 +489,20 @@
       
       updateUI();
       
+      // Alefa any amin'ny Backend ny hetsika
       const res = await callGameApi('make-move', { uid: myUid, gameId, origin, target: spotID });
-      if (!res.success) { currentGame = oldGame; updateUI(); }
+      if (!res.success) { 
+        currentGame = oldGame; 
+        updateUI(); 
+      }
+      localMoveInProgress = false;
     }
   }
 
   async function resolveCapture(capturedSpot) {
     const oldGame = JSON.parse(JSON.stringify(currentGame));
+    localMoveInProgress = true;
+    
     const toRemove = (currentGame.pendingApproach || []).includes(capturedSpot) ? currentGame.pendingApproach : currentGame.pendingWithdrawal;
     toRemove.forEach(s => delete currentGame.pieces[s]);
     
@@ -489,11 +520,13 @@
     updateUI();
     const res = await callGameApi('resolve-capture', { uid: myUid, gameId, capturedSpot });
     if (!res.success) { currentGame = oldGame; updateUI(); }
+    localMoveInProgress = false;
   }
 
   async function handleStopTurn() {
     if (!currentGame || currentGame.turn !== myColor || !currentGame.movingPiece) return;
     const oldGame = JSON.parse(JSON.stringify(currentGame));
+    localMoveInProgress = true;
     
     currentGame.turn = (myColor === 'maintso' ? 'mena' : 'maintso');
     currentGame.movingPiece = null;
@@ -503,6 +536,7 @@
 
     const res = await callGameApi('stop-turn', { uid: myUid, gameId });
     if (!res.success) { currentGame = oldGame; updateUI(); }
+    localMoveInProgress = false;
   }
 
   async function init() {
@@ -512,6 +546,7 @@
     const localUser = JSON.parse(stored);
     myUid = localUser.uid;
     myUsername = localUser.username || myUid;
+    
     const data = await callSessionApi('get-fanorona-game', { uid: myUid, gameId });
     if (data.success) {
       opponentUsername = data.opponentUsername;
@@ -521,7 +556,9 @@
       updateUI();
       document.getElementById('game-board').style.display = 'block';
       document.getElementById('loading-overlay').classList.add('hidden');
-      pollingInterval = setInterval(fetchGame, POLL_INTERVAL);
+      
+      // Mandefa polling isaky ny 2 segaondra
+      setInterval(fetchGame, POLL_INTERVAL);
     }
   }
 
