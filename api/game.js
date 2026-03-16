@@ -78,19 +78,32 @@ async function getGame(gameId) {
   return snap.exists() ? snap.val() : null;
 }
 
+// ── FIX: getCaptures corrigé ──────────────────────────────────────────────
+// approach  : depuis la case d'arrivée (e), on continue dans la même direction (dr,dc)
+// withdrawal: depuis la case de départ  (s), on recule dans la direction opposée (-dr,-dc)
+// Le scan ne comprend PAS le point de départ — il commence à (point + vecteur).
 function getCaptures(pieces, s, e, color) {
   const r1 = ROWS.indexOf(s[0]), c1 = COLS.indexOf(s[1]);
   const r2 = ROWS.indexOf(e[0]), c2 = COLS.indexOf(e[1]);
   const enemy = color === "mena" ? "maintso" : "mena";
   const dr = r2 - r1, dc = c2 - c1;
-  const scan = (row, col, sr, sc) => {
-    const res = []; let cr = row + sr, cc = col + sc;
-    while (cr >= 0 && cr < 5 && cc >= 0 && cc < 9 && pieces[ROWS[cr] + COLS[cc]] === enemy) {
-      res.push(ROWS[cr] + COLS[cc]); cr += sr; cc += sc;
+
+  const scan = (startR, startC, sr, sc) => {
+    const result = [];
+    let cr = startR + sr, cc = startC + sc;
+    while (cr >= 0 && cr < 5 && cc >= 0 && cc < 9) {
+      const key = ROWS[cr] + COLS[cc];
+      if (pieces[key] !== enemy) break;
+      result.push(key);
+      cr += sr; cc += sc;
     }
-    return res;
+    return result;
   };
-  return { approach: scan(r2, c2, dr, dc), withdrawal: scan(r1, c1, -dr, -dc) };
+
+  return {
+    approach:   scan(r2, c2,  dr,  dc),   // continue depuis l'arrivée
+    withdrawal: scan(r1, c1, -dr, -dc),   // recule depuis le départ
+  };
 }
 
 function playerHasAnyCapture(pieces, color) {
@@ -127,7 +140,6 @@ async function handleGetState(body, res) {
   if (!game) return res.status(404).json({ error: "Game not found." });
 
   // Vérifier que uid est bien un des joueurs
-  // Accepter aussi si senderUid/receiverUid manquants (migration) — on vérifie via gameInvites
   let myColor = null;
   if (game.senderUid && game.receiverUid) {
     if (game.senderUid !== uid && game.receiverUid !== uid)
@@ -164,10 +176,6 @@ async function handleGetState(body, res) {
 }
 
 // ── move ──────────────────────────────────────────────────────────────────
-// Body: { uid, gameId, from, to }
-// Valide et exécute un déplacement.
-// Si capture double choix → retourne pendingCaptures sans écrire les captures
-// Sinon → applique tout et met à jour RTDB
 async function handleMove(body, res) {
   const { uid, gameId, from, to } = body;
   if (!uid || !gameId || !from || !to)
@@ -176,11 +184,12 @@ async function handleMove(body, res) {
   const game = await getGame(gameId);
   if (!game) return res.status(404).json({ error: "Game not found." });
 
-  const myColor = game.senderUid === uid ? "maintso" : "mena";
-
-  // Vérifications de base
+  // FIX: authorization check AVANT de déduire myColor
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
+
+  const myColor = game.senderUid === uid ? "maintso" : "mena";
+
   if (game.turn !== myColor)
     return res.status(400).json({ error: "Not your turn." });
   if (game.pendingCaptures)
@@ -190,11 +199,8 @@ async function handleMove(body, res) {
   const visited = game.visited || [];
   const lastDir = game.lastDir || "";
 
-  // Vérifier que 'from' appartient au joueur
   if (pieces[from] !== myColor)
     return res.status(400).json({ error: "Not your piece." });
-
-  // Vérifier que 'to' est un mouvement valide
   if (!( ALLOWED_MOVES[from] || [] ).includes(to))
     return res.status(400).json({ error: "Invalid move: not adjacent." });
   if (pieces[to])
@@ -202,21 +208,18 @@ async function handleMove(body, res) {
   if (visited.includes(to))
     return res.status(400).json({ error: "Already visited this spot." });
 
-  // Vérifier la direction (pas de retour en arrière en multi-capture)
   const r1 = ROWS.indexOf(from[0]), c1 = COLS.indexOf(from[1]);
   const r2 = ROWS.indexOf(to[0]),   c2 = COLS.indexOf(to[1]);
   const dir = `${r2-r1},${c2-c1}`;
   if (game.movingPiece && lastDir === dir)
     return res.status(400).json({ error: "Cannot move in the same direction." });
 
-  // Vérifier obligation de capturer
   const globalCapture = playerHasAnyCapture(pieces, myColor);
   const caps = getCaptures(pieces, from, to, myColor);
   const isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
   if (globalCapture && !isCaptureMove)
     return res.status(400).json({ error: "Must capture if possible." });
 
-  // Appliquer le déplacement (sans captures encore)
   const newPieces = { ...pieces };
   delete newPieces[from];
   newPieces[to] = myColor;
@@ -224,7 +227,6 @@ async function handleMove(body, res) {
 
   if (isCaptureMove) {
     if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
-      // Double choix → stocker pendingCaptures côté serveur, attendre choix du client
       await gamesRef.child(gameId).update({
         pieces:      newPieces,
         movingPiece: to,
@@ -239,26 +241,22 @@ async function handleMove(body, res) {
         }
       });
       return res.status(200).json({
-        success:         true,
+        success:           true,
         needChooseCapture: true,
-        approach:        caps.approach,
-        withdrawal:      caps.withdrawal
+        approach:          caps.approach,
+        withdrawal:        caps.withdrawal
       });
     } else {
-      // Capture automatique (un seul choix)
       const toRemove = [...caps.approach, ...caps.withdrawal];
       toRemove.forEach(t => delete newPieces[t]);
       return await applyFinalizeMove(res, gameId, newPieces, to, newVisited, dir, true, myColor, game);
     }
   } else {
-    // Déplacement simple sans capture
     return await applyFinalizeMove(res, gameId, newPieces, to, newVisited, dir, false, myColor, game);
   }
 }
 
 // ── choose-capture ────────────────────────────────────────────────────────
-// Body: { uid, gameId, type } — type: "approach" | "withdrawal"
-// Résout le choix de capture quand les deux sont possibles
 async function handleChooseCapture(body, res) {
   const { uid, gameId, type } = body;
   if (!uid || !gameId || !type)
@@ -269,9 +267,12 @@ async function handleChooseCapture(body, res) {
   const game = await getGame(gameId);
   if (!game) return res.status(404).json({ error: "Game not found." });
 
-  const myColor = game.senderUid === uid ? "maintso" : "mena";
+  // FIX: authorization check AVANT de déduire myColor
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
+
+  const myColor = game.senderUid === uid ? "maintso" : "mena";
+
   if (game.turn !== myColor)
     return res.status(400).json({ error: "Not your turn." });
   if (!game.pendingCaptures)
@@ -282,7 +283,6 @@ async function handleChooseCapture(body, res) {
   const toRemove = type === "approach" ? pc.approach : pc.withdrawal;
   toRemove.forEach(t => delete pieces[t]);
 
-  // Effacer pendingCaptures avant finalizeMove
   await gamesRef.child(gameId).update({ pendingCaptures: null });
 
   return await applyFinalizeMove(
@@ -291,8 +291,6 @@ async function handleChooseCapture(body, res) {
 }
 
 // ── stop-move ─────────────────────────────────────────────────────────────
-// Body: { uid, gameId }
-// Le joueur arrête son mouvement multi-capture (bouton OK)
 async function handleStopMove(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
@@ -300,9 +298,12 @@ async function handleStopMove(body, res) {
   const game = await getGame(gameId);
   if (!game) return res.status(404).json({ error: "Game not found." });
 
-  const myColor = game.senderUid === uid ? "maintso" : "mena";
+  // FIX: authorization check AVANT de déduire myColor
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
+
+  const myColor = game.senderUid === uid ? "maintso" : "mena";
+
   if (game.turn !== myColor)
     return res.status(400).json({ error: "Not your turn." });
   if (!game.movingPiece)
@@ -320,11 +321,9 @@ async function handleStopMove(body, res) {
   return res.status(200).json({ success: true });
 }
 
-// ── applyFinalizeMove (helper interne) ────────────────────────────────────
-// Détermine si le joueur peut continuer à capturer ou si le tour passe
+// ── applyFinalizeMove ─────────────────────────────────────────────────────
 async function applyFinalizeMove(res, gameId, pieces, cur, visited, dir, wasCapture, myColor, game) {
   if (wasCapture && checkAvailableCaptures(pieces, cur, visited, dir, myColor)) {
-    // Encore des captures possibles → même joueur continue
     await gamesRef.child(gameId).update({
       pieces,
       movingPiece:     cur,
@@ -334,7 +333,6 @@ async function applyFinalizeMove(res, gameId, pieces, cur, visited, dir, wasCapt
     });
     return res.status(200).json({ success: true, continueTurn: true });
   } else {
-    // Tour terminé → passer à l'adversaire
     const nextTurn = myColor === "mena" ? "maintso" : "mena";
     await gamesRef.child(gameId).update({
       pieces,
