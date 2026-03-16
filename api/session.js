@@ -481,30 +481,32 @@ async function handleCancelGameInvite(body, res) {
  * Body: { uid, inviteId }
  * Utilisé par l'expéditeur pour savoir si son invitation a été acceptée/refusée
  */
+// Cache simple en mémoire pour check-game-invite-status (TTL 2s)
+// Évite les lectures Firestore répétées dues au polling intensif
+const _inviteStatusCache = new Map();
+const _INVITE_STATUS_TTL = 2000;
+
 async function handleCheckGameInviteStatus(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
+  // Vérifier le cache (évite les lectures redondantes)
+  const cacheKey = inviteId;
+  const cached = _inviteStatusCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < _INVITE_STATUS_TTL) {
+    const invite = cached.data;
+    if (invite.fromUid !== uid && invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
+    return res.status(200).json({ success: true, ...invite });
+  }
+
+  // 1 seule lecture Firestore (plus les 2 user reads supprimés)
   const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
   if (!inviteDoc.exists) return res.status(200).json({ success: true, status: "not_found" });
 
   const invite = inviteDoc.data();
-  // Autorisé pour sender ET receiver
   if (invite.fromUid !== uid && invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
 
-  // Récupérer lastSeen des deux joueurs pour détecter offline
-  const now = Date.now();
-  const [senderDoc, receiverDoc] = await Promise.all([
-    usersCollection.doc(invite.fromUid).get(),
-    usersCollection.doc(invite.toUid).get()
-  ]);
-  const senderLastSeen = senderDoc.exists ? (senderDoc.data().lastSeen || 0) : 0;
-  const receiverLastSeen = receiverDoc.exists ? (receiverDoc.data().lastSeen || 0) : 0;
-  const senderOnline = (now - senderLastSeen) < ONLINE_THRESHOLD;
-  const receiverOnline = (now - receiverLastSeen) < ONLINE_THRESHOLD;
-
-  return res.status(200).json({
-    success: true,
+  const responseData = {
     status: invite.status,
     game: invite.game,
     color: invite.color,
@@ -512,11 +514,18 @@ async function handleCheckGameInviteStatus(body, res) {
     receiverReady: invite.receiverReady !== false,
     senderUid: invite.fromUid,
     senderUsername: invite.fromUsername,
-    senderOnline,
     receiverUid: invite.toUid,
-    receiverUsername: invite.toUsername,
-    receiverOnline
-  });
+    receiverUsername: invite.toUsername
+    // senderOnline/receiverOnline supprimés → détection offline via ping côté client
+  };
+
+  // Mettre en cache uniquement si statut stable (accepted/declined/cancelled)
+  // Pour "pending", cache court (évite surcharge sans bloquer les changements)
+  _inviteStatusCache.set(cacheKey, { data: responseData, ts: Date.now() });
+  // Nettoyer le cache automatiquement
+  setTimeout(() => _inviteStatusCache.delete(cacheKey), _INVITE_STATUS_TTL + 100);
+
+  return res.status(200).json({ success: true, ...responseData });
 }
 
 /**
