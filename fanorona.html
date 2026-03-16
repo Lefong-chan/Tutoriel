@@ -6,7 +6,18 @@
   <title>Fanorona - Lalao</title>
   <style>
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-    body { font-family: sans-serif; margin: 0; padding: 0; text-align: center; background: #0092FF; overflow: hidden; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #0092FF;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
     .flipped { transform: rotate(180deg); }
     .grid-line { stroke: #333; stroke-width: 2; }
     .piece-group { transition: transform 0.2s ease-in-out; }
@@ -19,9 +30,7 @@
     .lock-board .spot { pointer-events: none !important; }
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot { fill: #FFF700; opacity: 0.8; pointer-events: none; }
-    #stop-move-btn { width: 60px; height: 60px; border-radius: 50%; background: #f44336; color: white; border: 4px solid white; font-size: 30px; font-weight: bold; cursor: pointer; margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none; }
-    #stop-move-btn.active { opacity: 1; transform: scale(1.1); box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all; }
-    #info-box { color: white; margin-bottom: 10px; font-weight: bold; }
+
     #players-bar {
       display: flex;
       justify-content: space-between;
@@ -44,6 +53,39 @@
     .player-name { font-size: 0.95em; }
     .player-label { font-size: 0.7em; font-weight: 400; opacity: 0.75; margin-left: 2px; }
     .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
+
+    #info-box { color: white; margin-bottom: 10px; font-weight: bold; }
+    #turn-display { margin: 0; }
+
+    #stop-move-btn {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #f44336;
+      color: white;
+      border: 4px solid white;
+      font-size: 30px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 20px;
+      opacity: 0.3;
+      transition: 0.3s;
+      pointer-events: none;
+    }
+    #stop-move-btn.active {
+      opacity: 1;
+      transform: scale(1.1);
+      box-shadow: 0 0 15px rgba(255,255,255,0.5);
+      pointer-events: all;
+    }
+
+    #game-board {
+      width: 95vw;
+      max-width: 800px;
+      max-height: 75vh;
+      display: block;
+    }
+
     #loading-overlay {
       position: fixed;
       inset: 0;
@@ -59,8 +101,23 @@
       gap: 16px;
     }
     #loading-overlay.hidden { display: none; }
-    .spinner { width: 36px; height: 36px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    #error-msg {
+      display: none;
+      color: #fef08a;
+      font-size: 1em;
+      margin-top: 10px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -88,469 +145,446 @@
   </svg>
 
   <button id="stop-move-btn">OK</button>
+  <div id="error-msg"></div>
 
-  <script type="importmap">
-    {
-      "imports": {
-        "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
-        "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
-        "firebase/database": "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js"
+  <script>
+    (function() {
+      // ---------- Configuration ----------
+      const SESSION_API_URL = '/api/session';
+      const GAME_API_URL = '/api/game';
+      const POLL_INTERVAL = 2000; // 2 secondes
+
+      // ---------- Paramètres URL ----------
+      const params = new URLSearchParams(window.location.search);
+      const gameId = params.get('gameId');
+      const myColor = params.get('color');
+      const inviteId = params.get('inviteId');
+
+      // ---------- Constantes du jeu ----------
+      const rows = ['A','B','C','D','E'];
+      const cols = ['1','2','3','4','5','6','7','8','9'];
+
+      const allowedMoves = {
+        'A1': ['A2','B1','B2'], 'A2': ['A1','A3','B2'], 'A3': ['A2','A4','B2','B3','B4'],
+        'A4': ['A3','A5','B4'], 'A5': ['A4','A6','B4','B5','B6'], 'A6': ['A5','A7','B6'],
+        'A7': ['A6','A8','B6','B7','B8'], 'A8': ['A7','A9','B8'], 'A9': ['A8','B8','B9'],
+        'B1': ['A1','B2','C1'], 'B2': ['A1','A2','A3','B1','B3','C1','C2','C3'],
+        'B3': ['A3','B2','B4','C3'], 'B4': ['A3','A4','A5','B3','B5','C3','C4','C5'],
+        'B5': ['A5','B4','B6','C5'], 'B6': ['A5','A6','A7','B5','B7','C5','C6','C7'],
+        'B7': ['A7','B6','B8','C7'], 'B8': ['A7','A8','A9','B7','B9','C7','C8','C9'],
+        'B9': ['A9','B8','C9'], 'C1': ['B1','B2','C2','D1','D2'], 'C2': ['B2','C1','C3','D2'],
+        'C3': ['B2','B3','B4','C2','C4','D2','D3','D4'], 'C4': ['B4','C3','C5','D4'],
+        'C5': ['B4','B5','B6','C4','C6','D4','D5','D6'], 'C6': ['B6','C5','C7','D6'],
+        'C7': ['B6','B7','B8','C6','C8','D6','D7','D8'], 'C8': ['B8','C7','C9','D8'],
+        'C9': ['B8','B9','C8','D8','D9'], 'D1': ['C1','D2','E1'], 'D2': ['C1','C2','C3','D1','D3','E1','E2','E3'],
+        'D3': ['C3','D2','D4','E3'], 'D4': ['C3','C4','C5','D3','D5','E3','E4','E5'],
+        'D5': ['C5','D4','D6','E5'], 'D6': ['C5','C6','C7','D5','D7','E5','E6','E7'],
+        'D7': ['C7','D6','D8','E7'], 'D8': ['C7','C8','C9','D7','D9','E7','E8','E9'],
+        'D9': ['C9','D8','E9'], 'E1': ['D1','D2','E2'], 'E2': ['D2','E1','E3'],
+        'E3': ['D2','D3','D4','E2','E4'], 'E4': ['D4','E3','E5'], 'E5': ['D4','D5','D6','E4','E6'],
+        'E6': ['D6','E5','E7'], 'E7': ['D6','D7','D8','E6','E8'], 'E8': ['D8','E7','E9'],
+        'E9': ['D8','D9','E8']
+      };
+
+      // ---------- État local ----------
+      let currentGame = null;          // état complet du jeu depuis l'API
+      let selectedSpot = null;
+      let lastBlockedSpot = null;
+      let canChangePiece = true;
+      let pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
+      let pollingInterval = null;
+      let myUid = null;
+      let myUsername = null;
+      let opponentUsername = null;
+
+      // ---------- Fonctions utilitaires ----------
+      function showError(msg) {
+        const el = document.getElementById('error-msg');
+        el.textContent = msg;
+        el.style.display = 'block';
+        document.getElementById('loading-overlay').classList.add('hidden');
       }
-    }
-  </script>
 
-  <script type="module">
-    import { initializeApp } from "firebase/app";
-    import { getAuth, onAuthStateChanged } from "firebase/auth";
-    import { getDatabase, ref, onValue } from "firebase/database";
+      async function callSessionApi(action, payload) {
+        const res = await fetch(SESSION_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, ...payload })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Session error.');
+        return data;
+      }
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyCf_AYMYMeLrKFAAchyyL4h46CJr49YDEU",
-      authDomain: "fanorona-6e2eb.firebaseapp.com",
-      projectId: "fanorona-6e2eb",
-      appId: "1:853315152359:web:70e26104d4b992957eb542",
-      databaseURL: "https://fanorona-6e2eb-default-rtdb.firebaseio.com"
-    };
+      async function callGameApi(action, payload) {
+        const res = await fetch(GAME_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, ...payload })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Game API error');
+        return data;
+      }
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getDatabase(app);
+      // ---------- Fonctions de validation (pour l'affichage seulement) ----------
+      function getCaptures(pieces, from, to, color) {
+        const enemy = color === 'mena' ? 'maintso' : 'mena';
+        const r1 = rows.indexOf(from[0]), c1 = cols.indexOf(from[1]);
+        const r2 = rows.indexOf(to[0]), c2 = cols.indexOf(to[1]);
+        const dr = r2 - r1, dc = c2 - c1;
+        const scan = (sr, sc, dirR, dirC) => {
+          const captured = [];
+          let r = sr + dirR, c = sc + dirC;
+          while (r >= 0 && r < 5 && c >= 0 && c < 9 && pieces[rows[r] + cols[c]] === enemy) {
+            captured.push(rows[r] + cols[c]);
+            r += dirR;
+            c += dirC;
+          }
+          return captured;
+        };
+        return {
+          approach: scan(r2, c2, dr, dc),
+          withdrawal: scan(r1, c1, -dr, -dc)
+        };
+      }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const gameId = urlParams.get('gameId');
-    const myColor = urlParams.get('color');
-    const inviteId = urlParams.get('inviteId'); // peut être utilisé si besoin
-
-    const SESSION_API_URL = '/api/session';   // pour getUser ? mais on utilise localStorage
-    const GAME_API_URL = '/api/game';
-
-    const rows = ['A','B','C','D','E'], cols = ['1','2','3','4','5','6','7','8','9'];
-
-    // Variables d'état local
-    let currentGame = null;
-    let selectedSpot = null;
-    let lastBlockedSpot = null;
-    let canChangePiece = true;
-    let myUid = null;
-
-    // ─── Fonctions de validation locales (copie du backend) ─────────
-    const allowedMoves = {
-      'A1': ['A2','B1','B2'], 'A2': ['A1','A3','B2'], 'A3': ['A2','A4','B2','B3','B4'],
-      'A4': ['A3','A5','B4'], 'A5': ['A4','A6','B4','B5','B6'], 'A6': ['A5','A7','B6'],
-      'A7': ['A6','A8','B6','B7','B8'], 'A8': ['A7','A9','B8'], 'A9': ['A8','B8','B9'],
-      'B1': ['A1','B2','C1'], 'B2': ['A1','A2','A3','B1','B3','C1','C2','C3'],
-      'B3': ['A3','B2','B4','C3'], 'B4': ['A3','A4','A5','B3','B5','C3','C4','C5'],
-      'B5': ['A5','B4','B6','C5'], 'B6': ['A5','A6','A7','B5','B7','C5','C6','C7'],
-      'B7': ['A7','B6','B8','C7'], 'B8': ['A7','A8','A9','B7','B9','C7','C8','C9'],
-      'B9': ['A9','B8','C9'], 'C1': ['B1','B2','C2','D1','D2'], 'C2': ['B2','C1','C3','D2'],
-      'C3': ['B2','B3','B4','C2','C4','D2','D3','D4'], 'C4': ['B4','C3','C5','D4'],
-      'C5': ['B4','B5','B6','C4','C6','D4','D5','D6'], 'C6': ['B6','C5','C7','D6'],
-      'C7': ['B6','B7','B8','C6','C8','D6','D7','D8'], 'C8': ['B8','C7','C9','D8'],
-      'C9': ['B8','B9','C8','D8','D9'], 'D1': ['C1','D2','E1'], 'D2': ['C1','C2','C3','D1','D3','E1','E2','E3'],
-      'D3': ['C3','D2','D4','E3'], 'D4': ['C3','C4','C5','D3','D5','E3','E4','E5'],
-      'D5': ['C5','D4','D6','E5'], 'D6': ['C5','C6','C7','D5','D7','E5','E6','E7'],
-      'D7': ['C7','D6','D8','E7'], 'D8': ['C7','C8','C9','D7','D9','E7','E8','E9'],
-      'D9': ['C9','D8','E9'], 'E1': ['D1','D2','E2'], 'E2': ['D2','E1','E3'],
-      'E3': ['D2','D3','D4','E2','E4'], 'E4': ['D4','E3','E5'], 'E5': ['D4','D5','D6','E4','E6'],
-      'E6': ['D6','E5','E7'], 'E7': ['D6','D7','D8','E6','E8'], 'E8': ['D8','E7','E9'],
-      'E9': ['D8','D9','E8']
-    };
-
-    function getCaptures(pieces, from, to, color) {
-      const enemy = color === "mena" ? "maintso" : "mena";
-      const r1 = rows.indexOf(from[0]), c1 = cols.indexOf(from[1]);
-      const r2 = rows.indexOf(to[0]),   c2 = cols.indexOf(to[1]);
-      const dr = r2 - r1, dc = c2 - c1;
-
-      const scan = (startRow, startCol, dirRow, dirCol) => {
-        const captured = [];
-        let r = startRow + dirRow, c = startCol + dirCol;
-        while (r >= 0 && r < 5 && c >= 0 && c < 9 && pieces[rows[r] + cols[c]] === enemy) {
-          captured.push(rows[r] + cols[c]);
-          r += dirRow;
-          c += dirCol;
-        }
-        return captured;
-      };
-
-      return {
-        approach: scan(r2, c2, dr, dc),
-        withdrawal: scan(r1, c1, -dr, -dc)
-      };
-    }
-
-    function playerHasAnyCapture(pieces, color) {
-      for (let spot in pieces) {
-        if (pieces[spot] === color) {
-          const moves = allowedMoves[spot] || [];
-          for (let target of moves) {
-            if (!pieces[target]) {
-              const caps = getCaptures(pieces, spot, target, color);
-              if (caps.approach.length > 0 || caps.withdrawal.length > 0) return true;
+      function playerHasAnyCapture(pieces, color) {
+        for (let s in pieces) {
+          if (pieces[s] === color) {
+            const moves = allowedMoves[s] || [];
+            for (let t of moves) {
+              if (!pieces[t]) {
+                const c = getCaptures(pieces, s, t, color);
+                if (c.approach.length > 0 || c.withdrawal.length > 0) return true;
+              }
             }
           }
         }
+        return false;
       }
-      return false;
-    }
 
-    function canPieceMove(spot, pieces, color, globalCapture) {
-      const moves = allowedMoves[spot] || [];
-      return moves.some(target => {
-        if (pieces[target]) return false;
-        const caps = getCaptures(pieces, spot, target, color);
-        const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
-        return globalCapture ? isCap : true;
-      });
-    }
-
-    function checkAvailableCaptures(pieces, spot, visited, lastDir, color) {
-      const moves = allowedMoves[spot] || [];
-      return moves.some(target => {
-        if (pieces[target] || (visited && visited.includes(target))) return false;
-        const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
-        const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-        if (lastDir === `${r2 - r1},${c2 - c1}`) return false;
-        const caps = getCaptures(pieces, spot, target, color);
-        return caps.approach.length > 0 || caps.withdrawal.length > 0;
-      });
-    }
-
-    // ─── Initialisation ────────────────────────────────────────────
-    onAuthStateChanged(auth, (user) => {
-      if (!user) { window.location.href = "login&register.html"; return; }
-      myUid = user.uid;
-      if (!gameId || !myColor) { window.location.href = "index.html"; return; }
-      document.getElementById('game-board').classList.toggle('flipped', myColor === 'mena');
-      drawSpots();
-      watchGame();
-    });
-
-    function drawSpots() {
-      const grp = document.getElementById('spots-group');
-      grp.innerHTML = '';
-      rows.forEach((r, ri) => {
-        cols.forEach((c, ci) => {
-          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          circle.setAttribute("cx", ci * 50);
-          circle.setAttribute("cy", ri * 50);
-          circle.setAttribute("r", 22);
-          circle.setAttribute("fill", "transparent");
-          circle.setAttribute("class", "spot");
-          circle.onclick = () => handleSpotClick(r + c);
-          grp.appendChild(circle);
+      function canPieceMove(spot, pieces, color, globalCapture) {
+        const moves = allowedMoves[spot] || [];
+        return moves.some(target => {
+          if (pieces[target]) return false;
+          const caps = getCaptures(pieces, spot, target, color);
+          const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
+          return globalCapture ? isCap : true;
         });
-      });
-    }
+      }
 
-    function watchGame() {
-      onValue(ref(db, 'games/' + gameId), (snap) => {
-        const data = snap.val();
-        if (!data) return;
-        currentGame = data;
-        updateUI();
-      });
-    }
+      // ---------- Dessin ----------
+      function drawSpots() {
+        const grp = document.getElementById('spots-group');
+        grp.innerHTML = '';
+        rows.forEach((r, ri) => {
+          cols.forEach((c, ci) => {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', ci * 50);
+            circle.setAttribute('cy', ri * 50);
+            circle.setAttribute('r', 22);
+            circle.setAttribute('fill', 'transparent');
+            circle.setAttribute('class', 'spot');
+            circle.onclick = () => handleSpotClick(r + c);
+            grp.appendChild(circle);
+          });
+        });
+      }
 
-    function updateUI() {
-      if (!currentGame) return;
-      const game = currentGame;
-      const isMyTurn = game.turn === myColor;
-      const turnDisplay = document.getElementById('turn-display');
-      const stopBtn = document.getElementById('stop-move-btn');
+      function renderPieces(game) {
+        const pieces = game.pieces || {};
+        const grp = document.getElementById('pieces-group');
+        const isMyTurn = game.turn === myColor;
+        const globalCapture = playerHasAnyCapture(pieces, myColor);
 
-      if (isMyTurn) {
-        turnDisplay.innerText = "ANJARANAO";
-        turnDisplay.style.color = "#ADFF2F";
-        if (game.movingPiece) {
-          selectedSpot = game.movingPiece;
-          canChangePiece = false;
-          stopBtn.classList.add('active');
-        } else {
-          canChangePiece = true;
-          stopBtn.classList.remove('active');
+        grp.innerHTML = '';
+
+        for (let spot in pieces) {
+          const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+          if (ri < 0 || ci < 0) continue;
+          const color = pieces[spot];
+
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          g.setAttribute('class', 'piece-group');
+          g.setAttribute('transform', `translate(${ci * 50}, ${ri * 50})`);
+
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('r', 12);
+          circle.setAttribute('fill', `url(#${color}-pat)`);
+          circle.style.pointerEvents = 'none';
+
+          // Styles selon l'état
+          if (isMyTurn && color === myColor) {
+            if (selectedSpot === spot) {
+              circle.classList.add('selected-piece');
+            } else if (lastBlockedSpot === spot) {
+              circle.classList.add('blocked-piece');
+            } else if (!game.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) {
+              circle.classList.add('movable-piece');
+            }
+          }
+
+          // Marquer les pièces ennemies qui peuvent être capturées (pending)
+          if (game.awaitingCapture && color !== myColor) {
+            const isApproach = (game.pendingApproach || []).includes(spot);
+            const isWithdrawal = (game.pendingWithdrawal || []).includes(spot);
+            if (isApproach || isWithdrawal) {
+              circle.classList.add('capture-target');
+              circle.style.pointerEvents = 'all';
+              circle.onclick = (e) => {
+                e.stopPropagation();
+                resolveCapture(spot);
+              };
+              // Ajouter deux petites croix
+              const cross1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+              cross1.setAttribute('x1', -5); cross1.setAttribute('y1', -5);
+              cross1.setAttribute('x2', 5); cross1.setAttribute('y2', 5);
+              cross1.setAttribute('class', 'cross-line');
+              const cross2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+              cross2.setAttribute('x1', 5); cross2.setAttribute('y1', -5);
+              cross2.setAttribute('x2', -5); cross2.setAttribute('y2', 5);
+              cross2.setAttribute('class', 'cross-line');
+              g.appendChild(cross1);
+              g.appendChild(cross2);
+            }
+          }
+
+          g.appendChild(circle);
+          grp.appendChild(g);
         }
-        if (selectedSpot && !game.awaitingCapture) {
-          renderGuides(selectedSpot, game);
+      }
+
+      function renderGuides(spot, game) {
+        const grp = document.getElementById('guides-group');
+        grp.innerHTML = '';
+        if (!spot) return;
+        const pieces = game.pieces || {};
+        const visited = game.visited || [];
+        const lastDir = game.lastDir || '';
+        const globalCapture = playerHasAnyCapture(pieces, myColor);
+        const moves = allowedMoves[spot] || [];
+
+        moves.forEach(target => {
+          if (pieces[target] || visited.includes(target)) return;
+          const caps = getCaptures(pieces, spot, target, myColor);
+          const isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+          if (globalCapture && !isCaptureMove) return;
+          const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
+          const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
+          if (!canChangePiece && lastDir === `${r2 - r1},${c2 - c1}`) return;
+
+          const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', c2 * 50);
+          dot.setAttribute('cy', r2 * 50);
+          dot.setAttribute('r', 6);
+          dot.setAttribute('class', 'guide-dot');
+          grp.appendChild(dot);
+        });
+      }
+
+      function renderPlayersBar() {
+        const bar = document.getElementById('players-bar');
+        const myDotClass = myColor === 'maintso' ? 'dot-maintso' : 'dot-mena';
+        const oppDotClass = myColor === 'maintso' ? 'dot-mena' : 'dot-maintso';
+
+        bar.innerHTML = `
+          <div class="player-info">
+            <div class="player-dot ${oppDotClass}"></div>
+            <span class="player-name">${escapeHtml(opponentUsername || '???')}</span>
+            <span class="player-label">(adversaire)</span>
+          </div>
+          <span class="vs-sep">VS</span>
+          <div class="player-info">
+            <span class="player-label">(ianao)</span>
+            <span class="player-name">${escapeHtml(myUsername || myUid)}</span>
+            <div class="player-dot ${myDotClass}"></div>
+          </div>`;
+        bar.style.display = 'flex';
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+
+      function updateUI() {
+        if (!currentGame) return;
+        const game = currentGame;
+        const turnDisplay = document.getElementById('turn-display');
+        const stopBtn = document.getElementById('stop-move-btn');
+
+        if (game.turn === myColor) {
+          turnDisplay.innerText = 'ANJARANAO';
+          turnDisplay.style.color = '#ADFF2F';
+          if (game.movingPiece) {
+            selectedSpot = game.movingPiece;
+            canChangePiece = false;
+            stopBtn.classList.add('active');
+          } else {
+            canChangePiece = true;
+            stopBtn.classList.remove('active');
+          }
+          if (selectedSpot && !game.awaitingCapture) {
+            renderGuides(selectedSpot, game);
+          } else {
+            document.getElementById('guides-group').innerHTML = '';
+          }
         } else {
+          turnDisplay.innerText = 'Miandry ny hafa...';
+          turnDisplay.style.color = 'white';
+          selectedSpot = null;
+          lastBlockedSpot = null;
+          stopBtn.classList.remove('active');
           document.getElementById('guides-group').innerHTML = '';
         }
-      } else {
-        turnDisplay.innerText = "Miandry ny hafa...";
-        turnDisplay.style.color = "white";
-        selectedSpot = null;
-        lastBlockedSpot = null;
-        stopBtn.classList.remove('active');
-        document.getElementById('guides-group').innerHTML = '';
+
+        renderPieces(game);
+        renderPlayersBar();
       }
 
-      renderPieces(game);
-      renderPlayersBar(game);
-      document.getElementById('loading-overlay').classList.add('hidden');
-      document.getElementById('game-board').style.display = 'block';
-    }
-
-    function renderPlayersBar(game) {
-      const bar = document.getElementById('players-bar');
-      const myUsername = localStorage.getItem('username') || myUid;
-      const oppUsername = game.senderUid === myUid ? game.receiverUsername : game.senderUsername;
-      const myDotClass = myColor === 'maintso' ? 'dot-maintso' : 'dot-mena';
-      const oppDotClass = myColor === 'maintso' ? 'dot-mena' : 'dot-maintso';
-
-      bar.innerHTML = `
-        <div class="player-info">
-          <div class="player-dot ${oppDotClass}"></div>
-          <span class="player-name">${escapeHtml(oppUsername)}</span>
-          <span class="player-label">(adversaire)</span>
-        </div>
-        <span class="vs-sep">VS</span>
-        <div class="player-info">
-          <span class="player-label">(ianao)</span>
-          <span class="player-name">${escapeHtml(myUsername)}</span>
-          <div class="player-dot ${myDotClass}"></div>
-        </div>`;
-      bar.style.display = 'flex';
-    }
-
-    function escapeHtml(s) {
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    function renderPieces(game) {
-      const pieces = game.pieces || {};
-      const grp = document.getElementById('pieces-group');
-      grp.innerHTML = '';
-
-      for (let spot in pieces) {
-        const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
-        if (ri < 0 || ci < 0) continue;
-        const color = pieces[spot];
-
-        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.setAttribute("class", "piece-group");
-        g.setAttribute("transform", `translate(${ci * 50}, ${ri * 50})`);
-
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("r", 12);
-        circle.setAttribute("fill", `url(#${color}-pat)`);
-        circle.style.pointerEvents = "none";
-
-        // Styles selon l'état
-        const isMyTurn = game.turn === myColor;
-        if (isMyTurn && color === myColor) {
-          if (game.awaitingCapture && game.movingPiece === spot) {
-            // La pièce qui peut capturer (plusieurs directions)
-            circle.classList.add("capture-target");
-            circle.style.pointerEvents = "all";
-            circle.onclick = (e) => { e.stopPropagation(); handleCaptureChoice(spot); };
-          } else if (selectedSpot === spot) {
-            circle.classList.add("selected-piece");
-          } else if (lastBlockedSpot === spot) {
-            circle.classList.add("blocked-piece");
-          } else if (!game.movingPiece && canPieceMove(spot, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
-            circle.classList.add("movable-piece");
-          }
-        }
-
-        g.appendChild(circle);
-        grp.appendChild(g);
-      }
-    }
-
-    function renderGuides(spot, game) {
-      const grp = document.getElementById('guides-group');
-      grp.innerHTML = '';
-      const pieces = game.pieces || {};
-      const visited = game.visited || [];
-      const lastDir = game.lastDir || '';
-      const globalCapture = playerHasAnyCapture(pieces, myColor);
-      const moves = allowedMoves[spot] || [];
-
-      moves.forEach(target => {
-        if (pieces[target] || visited.includes(target)) return;
-        const caps = getCaptures(pieces, spot, target, myColor);
-        const isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-        if (globalCapture && !isCaptureMove) return;
-        const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
-        const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-        if (!canChangePiece && lastDir === `${r2 - r1},${c2 - c1}`) return;
-
-        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        dot.setAttribute("cx", c2 * 50);
-        dot.setAttribute("cy", r2 * 50);
-        dot.setAttribute("r", 6);
-        dot.setAttribute("class", "guide-dot");
-        grp.appendChild(dot);
-      });
-    }
-
-    async function handleSpotClick(spotID) {
-      if (!currentGame || currentGame.turn !== myColor) return;
-      if (currentGame.awaitingCapture) return; // doit cliquer sur la pièce pour choisir
-
-      const pieces = currentGame.pieces || {};
-      const isMyPiece = pieces[spotID] === myColor;
-
-      if (canChangePiece && isMyPiece) {
-        if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
-          selectedSpot = spotID;
-          lastBlockedSpot = null;
-        } else {
-          selectedSpot = null;
-          lastBlockedSpot = spotID;
-        }
-        renderGuides(selectedSpot || '', currentGame);
-        renderPieces(currentGame);
-        return;
-      }
-
-      if (selectedSpot && (allowedMoves[selectedSpot] || []).includes(spotID) && !pieces[spotID]) {
-        if (currentGame.visited && currentGame.visited.includes(spotID)) return;
-        const caps = getCaptures(pieces, selectedSpot, spotID, myColor);
-        const isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-        if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
-
-        const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
-        const r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
-        const dir = `${r2 - r1},${c2 - c1}`;
-        if (!canChangePiece && currentGame.lastDir === dir) return;
-
-        // Envoi au backend
+      // ---------- Actions API ----------
+      async function fetchGame() {
+        if (!myUid) return;
         try {
-          const resp = await fetch(GAME_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'make-move',
+          const data = await callGameApi('get-game', { uid: myUid, gameId });
+          if (data.success && data.game) {
+            currentGame = data.game;
+            updateUI();
+          }
+        } catch (err) {
+          console.error('Erreur fetchGame:', err);
+        }
+      }
+
+      async function handleSpotClick(spotID) {
+        if (!currentGame || currentGame.turn !== myColor) return;
+        if (currentGame.awaitingCapture) return; // la capture se fait en cliquant sur l'ennemi
+
+        const pieces = currentGame.pieces || {};
+
+        if (canChangePiece && pieces[spotID] === myColor) {
+          if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
+            selectedSpot = spotID;
+            lastBlockedSpot = null;
+          } else {
+            selectedSpot = null;
+            lastBlockedSpot = spotID;
+          }
+          renderGuides(selectedSpot || '', currentGame);
+          renderPieces(currentGame);
+          return;
+        }
+
+        if (selectedSpot && (allowedMoves[selectedSpot] || []).includes(spotID) && !pieces[spotID]) {
+          if (currentGame.visited && currentGame.visited.includes(spotID)) return;
+          const caps = getCaptures(pieces, selectedSpot, spotID, myColor);
+          const isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+          if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+
+          const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
+          const r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
+          const dir = `${r2 - r1},${c2 - c1}`;
+          if (!canChangePiece && currentGame.lastDir === dir) return;
+
+          try {
+            await callGameApi('make-move', {
               uid: myUid,
               gameId,
               origin: selectedSpot,
               target: spotID
-            })
+            });
+            // L'état sera mis à jour par le polling
+          } catch (err) {
+            alert('Erreur: ' + err.message);
+          }
+        }
+      }
+
+      async function resolveCapture(capturedSpot) {
+        try {
+          await callGameApi('resolve-capture', {
+            uid: myUid,
+            gameId,
+            capturedSpot
           });
-          const data = await resp.json();
-          if (!resp.ok) throw new Error(data.error || 'Move error');
-          // L'état sera mis à jour via le listener RTDB
         } catch (err) {
           alert('Erreur: ' + err.message);
         }
       }
-    }
 
-    async function handleCaptureChoice(spot) {
-      // spot = la pièce du joueur (movingPiece) qui a des captures multiples
-      if (!currentGame || !currentGame.awaitingCapture || currentGame.movingPiece !== spot) return;
-      // On ne sait pas encore quel type l'utilisateur veut ; on lui montre une boîte de dialogue ?
-      // Idée : on peut ajouter deux boutons ou utiliser un menu contextuel.
-      // Pour simplifier, on va afficher une popup avec deux choix.
-      const choice = confirm("Tsindrio OK raha approach, Annuler raha withdrawal"); // approche: OK, withdrawal: Annuler
-      const captureType = choice ? 'approach' : 'withdrawal';
-      // Mais il faut savoir quel spot ennemi est concerné. En réalité, dans l'UI originale, on clique sur une pièce ennemie.
-      // Ici on a cliqué sur sa propre pièce. On va plutôt modifier l'UI : on ne met pas de capture-target sur sa propre pièce,
-      // mais on laisse les pièces ennemies avec des croix. Donc le joueur doit cliquer sur une pièce ennemie.
-      // On va donc modifier renderPieces pour afficher les croix sur les pièces ennemies quand awaitingCapture est vrai.
-      // Pour l'instant, on laisse la logique suivante : on envoie le spot cliqué (qui est une pièce ennemie) au backend.
-    }
+      async function handleStopTurn() {
+        if (!currentGame || currentGame.turn !== myColor || !currentGame.movingPiece) return;
+        try {
+          await callGameApi('stop-turn', { uid: myUid, gameId });
+        } catch (err) {
+          alert('Erreur: ' + err.message);
+        }
+      }
 
-    // Version corrigée : on affiche les croix sur les pièces ennemies
-    function renderPieces(game) {
-      const pieces = game.pieces || {};
-      const grp = document.getElementById('pieces-group');
-      grp.innerHTML = '';
-
-      for (let spot in pieces) {
-        const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
-        if (ri < 0 || ci < 0) continue;
-        const color = pieces[spot];
-
-        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.setAttribute("class", "piece-group");
-        g.setAttribute("transform", `translate(${ci * 50}, ${ri * 50})`);
-
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("r", 12);
-        circle.setAttribute("fill", `url(#${color}-pat)`);
-        circle.style.pointerEvents = "none";
-
-        const isMyTurn = game.turn === myColor;
-        if (isMyTurn && color === myColor) {
-          if (selectedSpot === spot) {
-            circle.classList.add("selected-piece");
-          } else if (lastBlockedSpot === spot) {
-            circle.classList.add("blocked-piece");
-          } else if (!game.movingPiece && canPieceMove(spot, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
-            circle.classList.add("movable-piece");
-          }
+      // ---------- Initialisation ----------
+      async function init() {
+        if (!gameId || !myColor) {
+          showError('Diso ny fampidirana: tsy misy gameId na color.');
+          return;
+        }
+        if (myColor !== 'maintso' && myColor !== 'mena') {
+          showError('Diso ny color: ' + myColor);
+          return;
         }
 
-        // Marquer les pièces ennemies qui peuvent être capturées (pendingApproach/Withdrawal)
-        if (game.awaitingCapture && color !== myColor) {
-          const isApproach = (game.pendingApproach || []).includes(spot);
-          const isWithdrawal = (game.pendingWithdrawal || []).includes(spot);
-          if (isApproach || isWithdrawal) {
-            circle.classList.add("capture-target");
-            circle.style.pointerEvents = "all";
-            circle.onclick = (e) => {
-              e.stopPropagation();
-              resolveCapture(spot);
-            };
-            // Ajouter deux petites croix
-            const cross1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            cross1.setAttribute("x1", -5); cross1.setAttribute("y1", -5);
-            cross1.setAttribute("x2", 5); cross1.setAttribute("y2", 5);
-            cross1.setAttribute("class", "cross-line");
-            const cross2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            cross2.setAttribute("x1", 5); cross2.setAttribute("y1", -5);
-            cross2.setAttribute("x2", -5); cross2.setAttribute("y2", 5);
-            cross2.setAttribute("class", "cross-line");
-            g.appendChild(cross1);
-            g.appendChild(cross2);
-          }
+        const stored = localStorage.getItem('user');
+        if (!stored) { window.location.href = 'login&register.html'; return; }
+        try {
+          const localUser = JSON.parse(stored);
+          if (!localUser || !localUser.uid) throw new Error();
+          myUid = localUser.uid;
+          myUsername = localUser.username || myUid;
+        } catch (e) {
+          window.location.href = 'login&register.html';
+          return;
         }
 
-        g.appendChild(circle);
-        grp.appendChild(g);
-      }
-    }
-
-    async function resolveCapture(capturedSpot) {
-      try {
-        const resp = await fetch(GAME_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'resolve-capture',
+        // Appel initial à session.js pour obtenir les données de la partie (pièces, adversaire)
+        try {
+          const data = await callSessionApi('get-fanorona-game', {
             uid: myUid,
-            gameId,
-            capturedSpot
-          })
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Capture error');
-        // Attendre mise à jour RTDB
-      } catch (err) {
-        alert('Erreur: ' + err.message);
-      }
-    }
+            gameId: gameId
+          });
+          if (!data.success) {
+            showError('Tsy hita ny lalao.');
+            return;
+          }
+          opponentUsername = data.opponentUsername || '???';
+          currentGame = { pieces: data.pieces, turn: data.turn }; // On initialise avec ce qu'on a
+        } catch (err) {
+          showError('Nisy olana tamin\'ny fahazoana ny lalao: ' + err.message);
+          return;
+        }
 
-    document.getElementById('stop-move-btn').onclick = async () => {
-      if (!currentGame || currentGame.turn !== myColor || !currentGame.movingPiece) return;
-      try {
-        const resp = await fetch(GAME_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'stop-turn',
-            uid: myUid,
-            gameId
-          })
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Stop error');
-      } catch (err) {
-        alert('Erreur: ' + err.message);
+        // Orientation du plateau
+        const board = document.getElementById('game-board');
+        board.classList.toggle('flipped', myColor === 'mena');
+
+        drawSpots();
+        renderPlayersBar();
+        renderPieces(currentGame);
+        updateUI(); // met à jour l'affichage du tour
+
+        document.getElementById('game-board').style.display = 'block';
+        document.getElementById('loading-overlay').classList.add('hidden');
+
+        // Démarrer le polling
+        pollingInterval = setInterval(fetchGame, POLL_INTERVAL);
       }
-    };
+
+      window.addEventListener('beforeunload', () => {
+        if (pollingInterval) clearInterval(pollingInterval);
+      });
+
+      document.getElementById('stop-move-btn').onclick = handleStopTurn;
+
+      init();
+    })();
   </script>
 </body>
 </html>
