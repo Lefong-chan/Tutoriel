@@ -1,3 +1,4 @@
+// session.js
 import admin from "firebase-admin";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
@@ -8,16 +9,21 @@ if (!admin.apps.length) {
   if (serviceAccount.private_key) {
     serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
   }
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: process.env.FIREBASE_DATABASE_URL  // ← RTDB URL required
+  });
 }
 
 const db = admin.firestore();
 const usersCollection = db.collection("users");
-const gameInvitesCollection = db.collection("gameInvites");
+// gameInvitesCollection (Firestore) supprimé → remplacé par RTDB ci-dessous
+const rtdb = admin.database();
+const gameInvitesRef = rtdb.ref("gameInvites");
 
 const FRIEND_LIMIT = 100;
 const ONLINE_THRESHOLD = 12 * 1000; // ping toutes les 10s + 2s marge
-const GAME_INVITE_TTL = 12 * 1000; // 12s (10s display + 2s margin)
+const GAME_INVITE_TTL = 12 * 1000;  // 12s (10s display + 2s margin)
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
@@ -33,28 +39,28 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
-      case "get-session": return await handleGetSession(payload, res);
-      case "set-username": return await handleSetUsername(payload, res);
-      case "check-username": return await handleCheckUsername(payload, res);
-      case "ping": return await handlePing(payload, res);
-      case "search-users": return await handleSearchUsers(payload, res);
-      case "send-friend-request": return await handleSendFriendRequest(payload, res);
-      case "accept-friend-request": return await handleAcceptFriendRequest(payload, res);
-      case "reject-friend-request": return await handleRejectFriendRequest(payload, res);
-      case "cancel-friend-request": return await handleCancelFriendRequest(payload, res);
-      case "remove-friend": return await handleRemoveFriend(payload, res);
-      case "get-friends": return await handleGetFriends(payload, res);
-      case "get-friend-requests": return await handleGetFriendRequests(payload, res);
-      case "get-sent-requests": return await handleGetSentRequests(payload, res);
-      // ── Game Invites ──
-      case "send-game-invite": return await handleSendGameInvite(payload, res);
-      case "check-game-invite": return await handleCheckGameInvite(payload, res);
-      case "accept-game-invite": return await handleAcceptGameInvite(payload, res);
-      case "decline-game-invite": return await handleDeclineGameInvite(payload, res);
-      case "cancel-game-invite": return await handleCancelGameInvite(payload, res);
-      case "check-game-invite-status": return await handleCheckGameInviteStatus(payload, res);
-      case "update-room-ready": return await handleUpdateRoomReady(payload, res);
-      case "update-room-settings": return await handleUpdateRoomSettings(payload, res);
+      case "get-session":             return await handleGetSession(payload, res);
+      case "set-username":            return await handleSetUsername(payload, res);
+      case "check-username":          return await handleCheckUsername(payload, res);
+      case "ping":                    return await handlePing(payload, res);
+      case "search-users":            return await handleSearchUsers(payload, res);
+      case "send-friend-request":     return await handleSendFriendRequest(payload, res);
+      case "accept-friend-request":   return await handleAcceptFriendRequest(payload, res);
+      case "reject-friend-request":   return await handleRejectFriendRequest(payload, res);
+      case "cancel-friend-request":   return await handleCancelFriendRequest(payload, res);
+      case "remove-friend":           return await handleRemoveFriend(payload, res);
+      case "get-friends":             return await handleGetFriends(payload, res);
+      case "get-friend-requests":     return await handleGetFriendRequests(payload, res);
+      case "get-sent-requests":       return await handleGetSentRequests(payload, res);
+      // ── Game Invites (RTDB) ──
+      case "send-game-invite":        return await handleSendGameInvite(payload, res);
+      case "check-game-invite":       return await handleCheckGameInvite(payload, res);
+      case "accept-game-invite":      return await handleAcceptGameInvite(payload, res);
+      case "decline-game-invite":     return await handleDeclineGameInvite(payload, res);
+      case "cancel-game-invite":      return await handleCancelGameInvite(payload, res);
+      case "check-game-invite-status":return await handleCheckGameInviteStatus(payload, res);
+      case "update-room-ready":       return await handleUpdateRoomReady(payload, res);
+      case "update-room-settings":    return await handleUpdateRoomSettings(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -311,12 +317,20 @@ async function handleGetSentRequests(body, res) {
   return res.status(200).json({ success: true, sent, sentCount: sentUids.length });
 }
 
-// ── Game Invite handlers ───────────────────────────────────────────────────
+// ── Game Invite handlers (Realtime Database) ───────────────────────────────
+
+/**
+ * Utilitaire: lire un nœud RTDB une fois → retourne null si inexistant
+ */
+async function rtdbGet(ref) {
+  const snap = await ref.once("value");
+  return snap.exists() ? snap.val() : null;
+}
 
 /**
  * send-game-invite
  * Body: { uid, toUid, game, color, minutes }
- * Crée un document gameInvites/{inviteId} avec statut "pending"
+ * Crée gameInvites/{inviteId} dans RTDB avec statut "pending"
  */
 async function handleSendGameInvite(body, res) {
   const { uid, toUid, game, color, minutes } = body;
@@ -333,33 +347,47 @@ async function handleSendGameInvite(body, res) {
   const senderUsername = senderDoc.data().username || uid;
   const receiverUsername = receiverDoc.data().username || toUid;
 
-  // Annuler toute invitation en attente existante du même expéditeur vers le même receveur
-  const existingSnap = await gameInvitesCollection
-    .where("fromUid", "==", uid)
-    .where("toUid", "==", toUid)
-    .where("status", "==", "pending")
-    .limit(1)
-    .get();
-  if (!existingSnap.empty) {
-    await existingSnap.docs[0].ref.update({ status: "cancelled" });
+  // Annuler toute invitation pending existante du même expéditeur vers le même receveur
+  // En RTDB: on cherche parmi les invitations dont fromUid==uid et toUid==toUid et status==pending
+  const existingSnap = await gameInvitesRef
+    .orderByChild("fromUid")
+    .equalTo(uid)
+    .once("value");
+
+  if (existingSnap.exists()) {
+    const updates = {};
+    existingSnap.forEach(child => {
+      const data = child.val();
+      if (data.toUid === toUid && data.status === "pending") {
+        updates[`${child.key}/status`] = "cancelled";
+      }
+    });
+    if (Object.keys(updates).length > 0) {
+      await gameInvitesRef.update(updates);
+    }
   }
 
-  const inviteRef = gameInvitesCollection.doc();
-  await inviteRef.set({
-    inviteId: inviteRef.id,
+  // Créer la nouvelle invitation avec une clé générée par RTDB (push)
+  const newInviteRef = gameInvitesRef.push();
+  const inviteId = newInviteRef.key;
+  const now = Date.now();
+
+  await newInviteRef.set({
+    inviteId,
     fromUid: uid,
     fromUsername: senderUsername,
-    toUid: toUid,
+    toUid,
     toUsername: receiverUsername,
-    game: game,
+    game,
     color: color || "green",
     minutes: minutes || 5,
-    status: "pending", // pending | accepted | declined | cancelled | expired
-    createdAt: Date.now(),
-    expiresAt: Date.now() + GAME_INVITE_TTL
+    status: "pending",   // pending | accepted | declined | cancelled | expired
+    createdAt: now,
+    expiresAt: now + GAME_INVITE_TTL,
+    receiverReady: false
   });
 
-  return res.status(200).json({ success: true, inviteId: inviteRef.id });
+  return res.status(200).json({ success: true, inviteId });
 }
 
 /**
@@ -372,34 +400,41 @@ async function handleCheckGameInvite(body, res) {
   if (!uid) return res.status(400).json({ error: "UID is required." });
 
   const now = Date.now();
-  // Pas de orderBy pour éviter l'exigence d'un index composite Firestore
-  const snap = await gameInvitesCollection
-    .where("toUid", "==", uid)
-    .where("status", "==", "pending")
-    .limit(10)
-    .get();
 
-  if (snap.empty) return res.status(200).json({ success: true, invite: null });
+  const snap = await gameInvitesRef
+    .orderByChild("toUid")
+    .equalTo(uid)
+    .once("value");
 
-  // Trier manuellement par createdAt desc et séparer expired/valid
-  const docs = snap.docs.map(doc => ({ ref: doc.ref, data: { ...doc.data(), inviteId: doc.id } }));
+  if (!snap.exists()) return res.status(200).json({ success: true, invite: null });
+
+  const docs = [];
+  snap.forEach(child => {
+    const data = child.val();
+    if (data.status === "pending") {
+      docs.push({ key: child.key, data: { ...data, inviteId: child.key } });
+    }
+  });
+
+  if (docs.length === 0) return res.status(200).json({ success: true, invite: null });
+
+  // Trier par createdAt desc
   docs.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
 
   let validInvite = null;
-  const expiredIds = [];
-  for (const { ref, data } of docs) {
+  const expiredUpdates = {};
+
+  for (const { key, data } of docs) {
     if (data.expiresAt < now) {
-      expiredIds.push(ref);
+      expiredUpdates[`${key}/status`] = "expired";
     } else {
       if (!validInvite) validInvite = data;
     }
   }
 
   // Expirer les anciennes en arrière-plan
-  if (expiredIds.length > 0) {
-    const batch = db.batch();
-    expiredIds.forEach(ref => batch.update(ref, { status: "expired" }));
-    batch.commit().catch(() => {});
+  if (Object.keys(expiredUpdates).length > 0) {
+    gameInvitesRef.update(expiredUpdates).catch(() => {});
   }
 
   return res.status(200).json({ success: true, invite: validInvite });
@@ -414,18 +449,18 @@ async function handleAcceptGameInvite(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
-  const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
-  if (!inviteDoc.exists) return res.status(404).json({ error: "Invitation not found." });
+  const inviteRef = gameInvitesRef.child(inviteId);
+  const invite = await rtdbGet(inviteRef);
 
-  const invite = inviteDoc.data();
+  if (!invite) return res.status(404).json({ error: "Invitation not found." });
   if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
   if (invite.status !== "pending") return res.status(400).json({ error: "Invitation is no longer valid." });
   if (invite.expiresAt < Date.now()) {
-    await inviteDoc.ref.update({ status: "expired" });
+    await inviteRef.update({ status: "expired" });
     return res.status(400).json({ error: "Invitation has expired." });
   }
 
-  await inviteDoc.ref.update({ status: "accepted", acceptedAt: Date.now() });
+  await inviteRef.update({ status: "accepted", acceptedAt: Date.now() });
 
   return res.status(200).json({
     success: true,
@@ -447,13 +482,13 @@ async function handleDeclineGameInvite(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
-  const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
-  if (!inviteDoc.exists) return res.status(404).json({ error: "Invitation not found." });
+  const inviteRef = gameInvitesRef.child(inviteId);
+  const invite = await rtdbGet(inviteRef);
 
-  const invite = inviteDoc.data();
+  if (!invite) return res.status(404).json({ error: "Invitation not found." });
   if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
 
-  await inviteDoc.ref.update({ status: "declined", declinedAt: Date.now() });
+  await inviteRef.update({ status: "declined", declinedAt: Date.now() });
   return res.status(200).json({ success: true });
 }
 
@@ -466,13 +501,13 @@ async function handleCancelGameInvite(body, res) {
   const { uid, inviteId } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
-  const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
-  if (!inviteDoc.exists) return res.status(200).json({ success: true }); // déjà supprimé
+  const inviteRef = gameInvitesRef.child(inviteId);
+  const invite = await rtdbGet(inviteRef);
 
-  const invite = inviteDoc.data();
+  if (!invite) return res.status(200).json({ success: true }); // déjà supprimé
   if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
 
-  await inviteDoc.ref.update({ status: "cancelled" });
+  await inviteRef.update({ status: "cancelled" });
   return res.status(200).json({ success: true });
 }
 
@@ -482,7 +517,7 @@ async function handleCancelGameInvite(body, res) {
  * Utilisé par l'expéditeur pour savoir si son invitation a été acceptée/refusée
  */
 // Cache simple en mémoire pour check-game-invite-status (TTL 2s)
-// Évite les lectures Firestore répétées dues au polling intensif
+// Évite les lectures RTDB répétées dues au polling intensif
 const _inviteStatusCache = new Map();
 const _INVITE_STATUS_TTL = 2000;
 
@@ -491,19 +526,17 @@ async function handleCheckGameInviteStatus(body, res) {
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
   // Vérifier le cache (évite les lectures redondantes)
-  const cacheKey = inviteId;
-  const cached = _inviteStatusCache.get(cacheKey);
+  const cached = _inviteStatusCache.get(inviteId);
   if (cached && (Date.now() - cached.ts) < _INVITE_STATUS_TTL) {
-    const invite = cached.data;
-    if (invite.fromUid !== uid && invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
-    return res.status(200).json({ success: true, ...invite });
+    const inv = cached.data;
+    if (inv.senderUid !== uid && inv.receiverUid !== uid) return res.status(403).json({ error: "Not authorized." });
+    return res.status(200).json({ success: true, ...inv });
   }
 
-  // 1 seule lecture Firestore (plus les 2 user reads supprimés)
-  const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
-  if (!inviteDoc.exists) return res.status(200).json({ success: true, status: "not_found" });
+  const inviteRef = gameInvitesRef.child(inviteId);
+  const invite = await rtdbGet(inviteRef);
 
-  const invite = inviteDoc.data();
+  if (!invite) return res.status(200).json({ success: true, status: "not_found" });
   if (invite.fromUid !== uid && invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
 
   const responseData = {
@@ -516,14 +549,11 @@ async function handleCheckGameInviteStatus(body, res) {
     senderUsername: invite.fromUsername,
     receiverUid: invite.toUid,
     receiverUsername: invite.toUsername
-    // senderOnline/receiverOnline supprimés → détection offline via ping côté client
   };
 
-  // Mettre en cache uniquement si statut stable (accepted/declined/cancelled)
-  // Pour "pending", cache court (évite surcharge sans bloquer les changements)
-  _inviteStatusCache.set(cacheKey, { data: responseData, ts: Date.now() });
-  // Nettoyer le cache automatiquement
-  setTimeout(() => _inviteStatusCache.delete(cacheKey), _INVITE_STATUS_TTL + 100);
+  // Mettre en cache
+  _inviteStatusCache.set(inviteId, { data: responseData, ts: Date.now() });
+  setTimeout(() => _inviteStatusCache.delete(inviteId), _INVITE_STATUS_TTL + 100);
 
   return res.status(200).json({ success: true, ...responseData });
 }
@@ -537,30 +567,30 @@ async function handleUpdateRoomReady(body, res) {
   const { uid, inviteId, ready } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
-  const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
-  if (!inviteDoc.exists) return res.status(404).json({ error: "Invitation not found." });
+  const inviteRef = gameInvitesRef.child(inviteId);
+  const invite = await rtdbGet(inviteRef);
 
-  const invite = inviteDoc.data();
+  if (!invite) return res.status(404).json({ error: "Invitation not found." });
   if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
   if (invite.status !== "accepted") return res.status(400).json({ error: "Invitation is not active." });
 
-  await inviteDoc.ref.update({ receiverReady: ready === true || ready === "true" });
+  await inviteRef.update({ receiverReady: ready === true || ready === "true" });
   return res.status(200).json({ success: true });
 }
 
 /**
  * update-room-settings
- * Body: { uid, inviteId, color, minutes }
- * Sender met à jour color/minutes dans Firestore pour que le receiver les voie
+ * Body: { uid, inviteId, color, minutes, game }
+ * Sender met à jour color/minutes/game dans RTDB pour que le receiver les voie
  */
 async function handleUpdateRoomSettings(body, res) {
   const { uid, inviteId, color, minutes, game } = body;
   if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
 
-  const inviteDoc = await gameInvitesCollection.doc(inviteId).get();
-  if (!inviteDoc.exists) return res.status(404).json({ error: "Invitation not found." });
+  const inviteRef = gameInvitesRef.child(inviteId);
+  const invite = await rtdbGet(inviteRef);
 
-  const invite = inviteDoc.data();
+  if (!invite) return res.status(404).json({ error: "Invitation not found." });
   if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
   if (invite.status !== "accepted") return res.status(400).json({ error: "Invitation is not active." });
 
@@ -568,6 +598,6 @@ async function handleUpdateRoomSettings(body, res) {
   if (color) update.color = color;
   if (minutes) update.minutes = parseInt(minutes);
   if (game) update.game = game;
-  await inviteDoc.ref.update(update);
+  await inviteRef.update(update);
   return res.status(200).json({ success: true });
 }
