@@ -21,14 +21,63 @@
     #stop-move-btn { width: 60px; height: 60px; border-radius: 50%; background: #f44336; color: white; border: 4px solid white; font-size: 30px; font-weight: bold; cursor: pointer; margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none; }
     #stop-move-btn.active { opacity: 1; transform: scale(1.1); box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all; }
     #info-box { color: white; margin-bottom: 10px; font-weight: bold; }
-    .loading-spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-left: 8px; }
+
+    /* ── Status row: turn label + spinner + error side by side ── */
+    #status-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    #turn-display { margin: 0; font-size: 1.3em; }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 22px; height: 22px;
+      border: 3px solid rgba(255,255,255,0.35);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    .loading-spinner.hidden { display: none; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    #error-box {
+      display: none;
+      align-items: flex-start;
+      gap: 7px;
+      background: rgba(0,0,0,0.38);
+      border: 1.5px solid rgba(255,80,80,0.6);
+      border-radius: 10px;
+      padding: 7px 13px;
+      font-size: 0.8em;
+      color: #fff;
+      max-width: 260px;
+      text-align: left;
+      line-height: 1.45;
+    }
+    #error-box.visible { display: flex; }
+    #error-icon { font-size: 1.15em; flex-shrink: 0; margin-top: 1px; }
+    #error-text { word-break: break-word; font-weight: 600; }
+    #retry-info { font-size: 0.88em; color: rgba(255,255,255,0.65); margin-top: 2px; font-weight: 400; }
   </style>
 </head>
 <body>
 
   <div id="info-box">
-    <h2 id="turn-display">Mampiditra...<span class="loading-spinner" id="init-spinner"></span></h2>
+    <div id="status-row">
+      <h2 id="turn-display">Mampiditra...</h2>
+      <span class="loading-spinner" id="init-spinner"></span>
+      <div id="error-box">
+        <span id="error-icon">⚠️</span>
+        <div>
+          <div id="error-text"></div>
+          <div id="retry-info"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <svg id="game-board" viewBox="-50 -50 500 300">
@@ -49,20 +98,12 @@
   <button id="stop-move-btn">OK</button>
 
   <script>
-    // ================================================================
-    // FANORONA — Frontend (affichage uniquement)
-    // Toute la logique du jeu est dans /api/game (game.js)
-    // Le client envoie les actions → le serveur valide et met à jour RTDB
-    // ================================================================
-
     var GAME_API_URL = '/api/game';
 
-    // ── Paramètres URL ───────────────────────────────────────────
     var urlParams = new URLSearchParams(window.location.search);
     var gameId    = urlParams.get('gameId');
-    var myColor   = urlParams.get('color');   // "maintso" ou "mena"
+    var myColor   = urlParams.get('color');
 
-    // ── Session ──────────────────────────────────────────────────
     var currentUser = null;
     (function checkSession() {
       var stored = localStorage.getItem('user');
@@ -72,7 +113,6 @@
       initGame();
     })();
 
-    // ── Constantes plateau (affichage uniquement) ────────────────
     var ROWS = ['A','B','C','D','E'];
     var COLS = ['1','2','3','4','5','6','7','8','9'];
 
@@ -94,15 +134,29 @@
       'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
     };
 
-    // ── État local (affichage uniquement) ────────────────────────
     var selectedSpot    = null;
     var lastBlockedSpot = null;
     var piecesOnBoard   = {};
     var _pollTimer      = null;
     var _lastDataStr    = '';
-    var _busy           = false;  // bloque les clics pendant une requête API
+    var _busy           = false;
 
-    // ── API helper ───────────────────────────────────────────────
+    // ── UI refs ───────────────────────────────────────────────────
+    var _spinnerEl   = document.getElementById('init-spinner');
+    var _errorBox    = document.getElementById('error-box');
+    var _errorText   = document.getElementById('error-text');
+    var _retryInfo   = document.getElementById('retry-info');
+    var _turnDisplay = document.getElementById('turn-display');
+
+    function showError(msg, sub) {
+      _errorText.textContent = msg;
+      _retryInfo.textContent = sub || '';
+      _errorBox.classList.add('visible');
+    }
+    function hideError() { _errorBox.classList.remove('visible'); }
+    function hideSpinner() { _spinnerEl.classList.add('hidden'); }
+
+    // ── API helper ────────────────────────────────────────────────
     async function callGameApi(action, payload) {
       var r = await fetch(GAME_API_URL, {
         method:  'POST',
@@ -114,45 +168,65 @@
       return d;
     }
 
-    // ── Init ─────────────────────────────────────────────────────
+    // ── Init avec retry + affichage erreur ────────────────────────
     async function initGame() {
       drawBoardSpots();
-      var maxRetry = 10;   // miandry 10 × 900ms = ~9s
+      var maxRetry = 10;
       var attempts = 0;
-      var display  = document.getElementById('turn-display');
-      display.innerText = 'Mampiditra...';
 
       async function tryInit() {
         try {
           var data = await callGameApi('get-state', { uid: currentUser.uid, gameId: gameId });
-          if (!data.success) {
-            // Raha mbola tsy hita ny game → retry
+
+          if (!data.success || !data.pieces || Object.keys(data.pieces).length === 0) {
             attempts++;
-            if (attempts < maxRetry) { setTimeout(tryInit, 900); return; }
-            display.innerText = 'Erreur: ' + (data.error || 'partie introuvable');
+            if (attempts < maxRetry) {
+              showError(
+                !data.success
+                  ? (data.error || 'Partie introuvable...')
+                  : 'Plateau en cours de création...',
+                'Tentative ' + attempts + '/' + maxRetry
+              );
+              setTimeout(tryInit, 900);
+            } else {
+              hideSpinner();
+              showError(
+                !data.success
+                  ? ('Erreur: ' + (data.error || 'partie introuvable'))
+                  : 'Plateau introuvable après ' + maxRetry + ' tentatives.',
+                'Revenez au dashboard et réessayez.'
+              );
+            }
             return;
           }
-          // Raha tsy mbola misy pieces (game mbola tsy voaforona ao RTDB) → retry
-          if (!data.pieces || Object.keys(data.pieces).length === 0) {
-            attempts++;
-            if (attempts < maxRetry) { setTimeout(tryInit, 900); return; }
-            display.innerText = 'Erreur: plateau introuvable';
-            return;
-          }
-          // Confirmer myColor depuis le serveur (ignore URL param si différent)
+
+          // ✅ Miasa tsara → manomboka ny lalao
+          hideError();
+          hideSpinner();
           myColor = data.myColor;
-          var spinner = document.getElementById('init-spinner');
-          if (spinner) spinner.remove();
           if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
           _lastDataStr = JSON.stringify(data);
           applyGameState(data);
           startPolling();
+
         } catch(e) {
           attempts++;
-          if (attempts < maxRetry) { setTimeout(tryInit, 900); return; }
-          display.innerText = 'Erreur de connexion';
+          if (attempts < maxRetry) {
+            showError(
+              'Erreur réseau: ' + (e.message || 'connexion échouée'),
+              'Tentative ' + attempts + '/' + maxRetry
+            );
+            setTimeout(tryInit, 900);
+          } else {
+            hideSpinner();
+            showError(
+              'Erreur: ' + (e.message || 'connexion impossible'),
+              'Vérifiez votre connexion et revenez au dashboard.'
+            );
+          }
         }
       }
+
       tryInit();
     }
 
@@ -175,8 +249,8 @@
 
     // ── Appliquer l'état reçu du serveur ─────────────────────────
     function applyGameState(data) {
-      var display = document.getElementById('turn-display');
-      var stopBtn = document.getElementById('stop-move-btn');
+      var display  = _turnDisplay;
+      var stopBtn  = document.getElementById('stop-move-btn');
       var isMyTurn = data.turn === myColor;
 
       if (isMyTurn) {
@@ -188,7 +262,6 @@
           if (!data.pendingCaptures) selectedSpot = null;
           stopBtn.classList.remove('active');
         }
-        // Si pendingCaptures → afficher le choix (approach/withdrawal)
         if (data.pendingCaptures) {
           renderPieces(data.pieces, data);
           renderCapturePending(data.pendingCaptures, data.pieces);
@@ -205,7 +278,7 @@
       renderPieces(data.pieces, data);
     }
 
-    // ── drawBoardSpots ───────────────────────────────────────────
+    // ── drawBoardSpots ────────────────────────────────────────────
     function drawBoardSpots() {
       var grp = document.getElementById('spots-group');
       grp.innerHTML = "";
@@ -221,14 +294,12 @@
       });
     }
 
-    // ── handleSpotClick → envoie au serveur ──────────────────────
+    // ── handleSpotClick ───────────────────────────────────────────
     async function handleSpotClick(spotID) {
       if (_busy) return;
       _busy = true;
       try {
-        // Sélection de pièce (UI locale uniquement)
         if (!selectedSpot || spotID === selectedSpot) {
-          // Essai de sélection — vérifier via get-state
           var state = await callGameApi('get-state', { uid: currentUser.uid, gameId: gameId });
           if (!state.success || state.turn !== myColor || state.pendingCaptures) { _busy = false; return; }
           if (state.pieces[spotID] === myColor) {
@@ -241,7 +312,6 @@
           _busy = false; return;
         }
 
-        // Déplacement → envoyer au serveur
         var res = await callGameApi('move', {
           uid:    currentUser.uid,
           gameId: gameId,
@@ -250,17 +320,13 @@
         });
 
         if (res.needChooseCapture) {
-          // Serveur demande de choisir approach ou withdrawal
-          // Le polling va récupérer pendingCaptures et afficher le choix
           selectedSpot = spotID;
         } else {
           selectedSpot = res.continueTurn ? spotID : null;
           lastBlockedSpot = null;
         }
-        // Forcer un refresh immédiat
         await fetchAndApply();
       } catch(e) {
-        // Move invalide → re-sélection
         selectedSpot = null; lastBlockedSpot = null;
         await fetchAndApply();
       } finally {
@@ -268,11 +334,8 @@
       }
     }
 
-    // ── renderCapturePending: affiche les boutons approach/withdrawal ─
+    // ── renderCapturePending ──────────────────────────────────────
     function renderCapturePending(pendingCaptures, pieces) {
-      // Marquer visuellement les pièces à capturer pour chaque choix
-      // On réutilise le mécanisme capture-target existant
-      var grp = document.getElementById('pieces-group');
       for (var spot in pieces) {
         var g = piecesOnBoard[spot] && piecesOnBoard[spot].el;
         if (!g) continue;
@@ -299,19 +362,13 @@
       if (_busy) return;
       _busy = true;
       try {
-        await callGameApi('choose-capture', {
-          uid:    currentUser.uid,
-          gameId: gameId,
-          type:   type
-        });
+        await callGameApi('choose-capture', { uid: currentUser.uid, gameId: gameId, type: type });
         await fetchAndApply();
       } catch(e) { await fetchAndApply(); }
       finally { _busy = false; }
     }
 
-    // ── renderGuides (affichage local des destinations possibles) ─
-    // Note: on affiche toutes les destinations adjacentes libres —
-    // le serveur validera si le move est légal
+    // ── renderGuides ──────────────────────────────────────────────
     function renderGuides(startSpot, gameData) {
       var grp = document.getElementById('guides-group');
       grp.innerHTML = "";
@@ -330,7 +387,7 @@
       });
     }
 
-    // ── renderPieces (inchangé — affichage uniquement) ────────────
+    // ── renderPieces ──────────────────────────────────────────────
     function renderPieces(pieces, gameData) {
       var grp      = document.getElementById('pieces-group');
       var isMyTurn = gameData.turn === myColor;
@@ -390,7 +447,7 @@
       return l;
     }
 
-    // ── Bouton OK (stop-move) → envoie au serveur ─────────────────
+    // ── Bouton OK (stop-move) ─────────────────────────────────────
     document.getElementById('stop-move-btn').onclick = async function() {
       if (_busy) return;
       _busy = true;
