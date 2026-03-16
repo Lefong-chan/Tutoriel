@@ -148,11 +148,13 @@
 (function() {
   
   const GAME_API_URL = "/api/game"
+  const SESSION_API_URL = "/api/session"
   
   var params = new URLSearchParams(window.location.search)
   
   var gameId = params.get("gameId")
   var myColor = params.get("color")
+  var inviteId = params.get("inviteId")
   
   var rows = ['A', 'B', 'C', 'D', 'E']
   var cols = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
@@ -160,14 +162,48 @@
   var selectedSpot = null
   var gameState = null
   
-  function callGameApi(action, payload) {
+  function showError(msg) {
+    let el = document.getElementById("error-msg")
+    el.textContent = msg
+    el.style.display = "block"
+    document.getElementById("loading-overlay").classList.add("hidden")
+  }
+  
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+  }
+  
+  async function callSessionApi(action, payload) {
     
-    return fetch(GAME_API_URL, {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ action }, payload))
-      })
-      .then(r => r.json())
+    let r = await fetch(SESSION_API_URL, {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ action: action }, payload))
+    })
+    
+    let d = await r.json()
+    
+    if (!r.ok) throw new Error(d.error || "Session error")
+    
+    return d
+    
+  }
+  
+  async function callGameApi(action, payload) {
+    
+    let r = await fetch(GAME_API_URL, {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ action: action }, payload))
+    })
+    
+    let d = await r.json()
+    
+    return d
     
   }
   
@@ -231,7 +267,36 @@
     
   }
   
+  function renderPlayersBar(myCol, myUsername, oppUsername) {
+    
+    var bar = document.getElementById("players-bar")
+    
+    var myDot = myCol === "maintso" ? "dot-maintso" : "dot-mena"
+    var oppDot = myCol === "maintso" ? "dot-mena" : "dot-maintso"
+    
+    bar.innerHTML =
+      
+      '<div class="player-info">' +
+      '<div class="player-dot ' + oppDot + '"></div>' +
+      '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
+      '<span class="player-label">(adversaire)</span>' +
+      '</div>' +
+      
+      '<span class="vs-sep">VS</span>' +
+      
+      '<div class="player-info">' +
+      '<span class="player-label">(ianao)</span>' +
+      '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
+      '<div class="player-dot ' + myDot + '"></div>' +
+      '</div>'
+    
+    bar.style.display = "flex"
+    
+  }
+  
   function selectPiece(spot) {
+    
+    if (!gameState) return
     
     if (gameState.turn !== myColor) return
     
@@ -259,21 +324,9 @@
       
       selectedSpot = null
       
-      await loadGame()
+      setTimeout(loadGame, 300)
       
     }
-    
-  }
-  
-  async function loadGame() {
-    
-    let r = await callGameApi("get", { gameId })
-    
-    if (!r.success) return
-    
-    gameState = r.data
-    
-    drawPieces(gameState.pieces, myColor)
     
   }
   
@@ -300,15 +353,87 @@
     
   }
   
+  async function loadGame() {
+    
+    let r = await callGameApi("get", { gameId })
+    
+    if (!r.success) return
+    
+    gameState = r.data
+    
+    drawPieces(gameState.pieces, myColor)
+    
+  }
+  
   async function init() {
     
-    await callGameApi("init", { gameId })
+    if (!gameId || !myColor || !inviteId) {
+      
+      showError("Diso ny paramètres.")
+      return
+      
+    }
     
-    setupBoardClick()
+    var stored = localStorage.getItem("user")
     
-    await loadGame()
+    if (!stored) {
+      
+      window.location.href = "login&register.html"
+      return
+      
+    }
     
-    setInterval(loadGame, 1500)
+    var localUser = null
+    
+    try {
+      
+      localUser = JSON.parse(stored)
+      
+    } catch (e) {}
+    
+    if (!localUser || !localUser.uid) {
+      
+      window.location.href = "login&register.html"
+      return
+      
+    }
+    
+    try {
+      
+      var data = await callSessionApi("get-fanorona-game", {
+        uid: localUser.uid,
+        gameId: gameId
+      })
+      
+      if (!data.success) {
+        
+        showError("Tsy hita ny lalao.")
+        return
+        
+      }
+      
+      var myUsername = localUser.username || localUser.uid
+      var oppUsername = data.opponentUsername || "???"
+      
+      renderPlayersBar(myColor, myUsername, oppUsername)
+      
+      await callGameApi("init", { gameId })
+      
+      setupBoardClick()
+      
+      await loadGame()
+      
+      setInterval(loadGame, 1500)
+      
+      document.getElementById("game-board").style.display = "block"
+      
+      document.getElementById("loading-overlay").classList.add("hidden")
+      
+    } catch (err) {
+      
+      showError("Erreur: " + err.message)
+      
+    }
     
   }
   
