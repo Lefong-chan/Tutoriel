@@ -101,7 +101,7 @@ export default async function handler(req,res){
 
 try{
 
-const {action,gameId,uid,origin,target}=req.body
+const {action,gameId,origin,target}=req.body
 
 const gameRef=db.ref("games/"+gameId)
 
@@ -144,7 +144,9 @@ let game=snap.val()
 
 if(!game) return res.status(400).json({error:"game not found"})
 
-let pieces=game.pieces
+let pieces={...game.pieces}
+
+if(!pieces[origin]) return res.status(400).json({error:"no piece"})
 
 if(pieces[target]) return res.status(400).json({error:"occupied"})
 
@@ -169,7 +171,7 @@ delete pieces[k]
 })
 
 await gameRef.update({
-pieces,
+pieces:pieces,
 turn:color==="mena"?"maintso":"mena",
 movingPiece:"",
 visited:[],
