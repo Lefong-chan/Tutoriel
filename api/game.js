@@ -44,7 +44,7 @@ const allowedMoves = {
   'E9': ['D8','D9','E8']
 };
 
-// ─── Fonctions d'aide (copiées du frontend) ───────────────────────
+// ─── Fonctions de validation ───────────────────────────────────────
 function getCaptures(pieces, from, to, color) {
   const enemy = color === "mena" ? "maintso" : "mena";
   const r1 = ROWS.indexOf(from[0]), c1 = COLS.indexOf(from[1]);
@@ -81,16 +81,6 @@ function playerHasAnyCapture(pieces, color) {
     }
   }
   return false;
-}
-
-function canPieceMove(spot, pieces, color, globalCapture) {
-  const moves = allowedMoves[spot] || [];
-  return moves.some(target => {
-    if (pieces[target]) return false;
-    const caps = getCaptures(pieces, spot, target, color);
-    const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
-    return globalCapture ? isCap : true;
-  });
 }
 
 function checkAvailableCaptures(pieces, spot, visited, lastDir, color) {
@@ -154,21 +144,18 @@ async function handleMakeMove({ uid, gameId, origin, target }, res) {
   if (!snap.exists()) return res.status(404).json({ error: "Game not found." });
   const game = snap.val();
 
-  // Autorisation
   const isSender = game.senderUid === uid;
   const isReceiver = game.receiverUid === uid;
   if (!isSender && !isReceiver) return res.status(403).json({ error: "Not authorized." });
-  const myColor = isSender ? "maintso" : "mena"; // comme dans session.js handleStartFanoronaGame
+  const myColor = isSender ? "maintso" : "mena";
   if (game.turn !== myColor) return res.status(400).json({ error: "Not your turn." });
 
-  // État de base (valeurs par défaut si manquantes)
   const pieces = game.pieces || {};
   const movingPiece = game.movingPiece || null;
   const visited = game.visited || [];
   const lastDir = game.lastDir || "";
   const awaitingCapture = game.awaitingCapture || false;
 
-  // Vérifications préliminaires
   if (awaitingCapture) return res.status(400).json({ error: "You must resolve pending capture first." });
   if (movingPiece && origin !== movingPiece)
     return res.status(400).json({ error: "You must continue with the same piece." });
@@ -184,64 +171,48 @@ async function handleMakeMove({ uid, gameId, origin, target }, res) {
   const dir = `${r2 - r1},${c2 - c1}`;
   if (movingPiece && lastDir === dir) return res.status(400).json({ error: "Cannot reverse direction." });
 
-  // Vérification capture obligatoire
   const anyCapture = playerHasAnyCapture(pieces, myColor);
   const caps = getCaptures(pieces, origin, target, myColor);
   const isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
   if (anyCapture && !isCaptureMove) return res.status(400).json({ error: "You must capture." });
 
-  // Nouvel état
   let newPieces = { ...pieces };
   delete newPieces[origin];
   newPieces[target] = myColor;
 
   const newVisited = [...visited, origin];
-  const newMovingPiece = target;
-  const newLastDir = dir;
+  let newMovingPiece = target;
+  let newLastDir = dir;
   let newAwaitingCapture = false;
   let newPendingApproach = [];
   let newPendingWithdrawal = [];
+  let newTurn = game.turn;
 
-  // Gestion des captures multiples possibles
   if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
-    // Les deux types sont possibles → on attend le choix du joueur
     newAwaitingCapture = true;
     newPendingApproach = caps.approach;
     newPendingWithdrawal = caps.withdrawal;
-    // On ne supprime aucune pièce ennemie pour l'instant
-    // La pièce reste à target, on ne change pas turn
   } else if (isCaptureMove) {
-    // Un seul type de capture
     const toRemove = caps.approach.length > 0 ? caps.approach : caps.withdrawal;
     toRemove.forEach(spot => delete newPieces[spot]);
 
-    // Vérifier si d'autres captures sont possibles depuis target
     const further = checkAvailableCaptures(newPieces, target, newVisited, newLastDir, myColor);
-    if (further) {
-      // Continue la chaîne
-      newMovingPiece = target;
-      // visited déjà mis à jour
-      // lastDir reste
-      // turn inchangé
-    } else {
-      // Fin du tour
+    if (!further) {
       newMovingPiece = null;
       newVisited.length = 0;
       newLastDir = "";
-      game.turn = game.turn === "maintso" ? "mena" : "maintso";
+      newTurn = game.turn === "maintso" ? "mena" : "maintso";
     }
   } else {
-    // Coup simple sans capture
     newMovingPiece = null;
     newVisited.length = 0;
     newLastDir = "";
-    game.turn = game.turn === "maintso" ? "mena" : "maintso";
+    newTurn = game.turn === "maintso" ? "mena" : "maintso";
   }
 
-  // Mise à jour RTDB
   await gameRef.update({
     pieces: newPieces,
-    turn: game.turn,
+    turn: newTurn,
     movingPiece: newMovingPiece,
     visited: newVisited,
     lastDir: newLastDir,
@@ -280,12 +251,10 @@ async function handleResolveCapture({ uid, gameId, capturedSpot }, res) {
     return res.status(400).json({ error: "Invalid capture target." });
   }
 
-  // Appliquer la capture
   let newPieces = { ...game.pieces };
   toRemove.forEach(spot => delete newPieces[spot]);
 
-  // Vérifier si d'autres captures sont possibles depuis movingPiece
-  const movingPiece = game.movingPiece; // doit être défini
+  const movingPiece = game.movingPiece;
   const visited = game.visited || [];
   const lastDir = game.lastDir || "";
   const further = checkAvailableCaptures(newPieces, movingPiece, visited, lastDir, myColor);
@@ -298,12 +267,7 @@ async function handleResolveCapture({ uid, gameId, capturedSpot }, res) {
   let newPendingWithdrawal = [];
   let newTurn = game.turn;
 
-  if (further) {
-    // Continue la chaîne
-    newMovingPiece = movingPiece;
-    // visited reste, lastDir reste
-  } else {
-    // Fin du tour
+  if (!further) {
     newMovingPiece = null;
     newVisited = [];
     newLastDir = "";
@@ -339,7 +303,6 @@ async function handleStopTurn({ uid, gameId }, res) {
   if (game.turn !== myColor) return res.status(400).json({ error: "Not your turn." });
   if (!game.movingPiece) return res.status(400).json({ error: "No ongoing capture chain." });
 
-  // Terminer le tour
   await gameRef.update({
     turn: game.turn === "maintso" ? "mena" : "maintso",
     movingPiece: null,
