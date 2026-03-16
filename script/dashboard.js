@@ -43,7 +43,14 @@
 
   function setPageLoading(on) { loadingOverlay.classList.toggle('active', on); }
   function openModal(m) { if (m) m.classList.add('active'); }
-  function closeModal(m) { if (m) m.classList.remove('active'); }
+  function closeModal(m) {
+    if (!m) return;
+    m.classList.remove('active');
+    // Arrêter le room sync polling si on ferme le gameSetupModal
+    if (m.id === 'gameSetupModal' && roomSyncTimer) {
+      clearInterval(roomSyncTimer); roomSyncTimer = null;
+    }
+  }
 
   function updateUsernameDisplay() {
     var el = document.getElementById('UsernameDisplay');
@@ -78,14 +85,14 @@
         callSessionApi('ping', { uid: currentUser.uid }).catch(function(){});
         setTimeout(loadRequestsBadge, 500);
         if (!currentUser.username) setTimeout(function () { openModal(document.getElementById('setUsernameModal')); }, 500);
-        setInterval(function () { if (currentUser) callSessionApi('ping', { uid: currentUser.uid }).catch(function(){}); }, 10000);
+        setInterval(function () { if (currentUser) callSessionApi('ping', { uid: currentUser.uid }).catch(function(){}); }, 15000);
         setInterval(function () {
           if (currentUser && !playersModal.classList.contains('active')) loadRequestsBadge();
           if (currentUser && playersModal.classList.contains('active')) {
             var ap = document.querySelector('.content-panel.active-panel');
             if (ap && ap.id === 'friends-panel') loadFriendsPanel();
           }
-        }, 8000);
+        }, 30000);
         // Démarrer le polling des invitations de jeu (toutes les 3s)
         startGameInvitePolling();
       } else throw new Error('Session failed.');
@@ -443,7 +450,7 @@
           ctxInviteId = null; ctxInviteUid = null;
         }
       } catch(e) {}
-    }, 500);
+    }, 2000);
   }
   document.getElementById('ctxRemoveBtn').addEventListener('click', function () { closeCtxMenu(); openRemoveOverlay(activeFriendUid, activeFriendName); });
 
@@ -965,7 +972,7 @@
           if (sRes.status === 'declined') showToast(friend.username + ' declined your invitation.', 'info');
         }
       } catch(e) {}
-    }, 500);
+    }, 2000);
     roomFriendStatusTimers[inviteId] = statusIvl;
   }
   var roomFriendStatusTimers = {};
@@ -973,7 +980,7 @@
   function startRoomSyncPolling(inviteId, isSender) {
     if (!inviteId) return;
     if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-    var pollInterval = isSender ? 800 : 400;
+    var pollInterval = isSender ? 5000 : 3000;
     roomSyncTimer = setInterval(async function() {
       if (!gameSetupModal.classList.contains('active')) {
         clearInterval(roomSyncTimer); roomSyncTimer = null; return;
@@ -981,42 +988,6 @@
       try {
         var res = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
         if (res.status === 'accepted') {
-          // ── Offline detection: si l'autre joueur est offline → fermer room après 15s ══
-          var opponentOnline = isSender ? (res.receiverOnline !== false) : (res.senderOnline !== false);
-          if (!opponentOnline) {
-            if (!window._roomOfflineTimer) {
-              window._roomOfflineTimer = setTimeout(function() {
-                window._roomOfflineTimer = null;
-                if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-                var offlineName = isSender
-                  ? (matchupData && matchupData.receiverUsername ? matchupData.receiverUsername : 'Opponent')
-                  : (matchupData && matchupData.senderUsername ? matchupData.senderUsername : 'Host');
-                if (isSender) {
-                  // Sender: receiver offline → reset room, sender peut réinviter
-                  var offEvtKey = inviteId + ':offline';
-                  if (_handledRoomEvents.has(offEvtKey)) return;
-                  _handledRoomEvents.add(offEvtKey);
-                  matchupData = null;
-                  openGameSetup(selectedGame, null);
-                  showToast(offlineName + ' went offline.', 'info', '⚠ Offline');
-                } else {
-                  // Receiver: sender offline → fermer tout
-                  closeModal(gameSetupModal);
-                  closeModal(gameSelectModal);
-                  matchupData = null;
-                  showToast(offlineName + ' went offline. Room closed.', 'info', '⚠ Offline');
-                  if (_receiverCameFromFriends) {
-                    _receiverCameFromFriends = false;
-                    var pm2 = document.getElementById('playersModal');
-                    if (pm2) { _friendsFirstLoad = true; openModal(pm2); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); }
-                  }
-                }
-              }, 15000);
-            }
-          } else {
-            if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
-          }
-
           if (isSender) {
             // Sender: vérifier ready state du receiver
             var rReady = (res.receiverReady !== false);
@@ -1341,7 +1312,7 @@
           if (statusRes.status === 'declined') showToast(friend.username + ' declined your invitation.', 'info');
         }
       } catch(e) {}
-    }, 500);
+    }, 2000);
     inviteStatusTimers[inviteId] = statusIvl;
   }
 
@@ -1393,7 +1364,7 @@
           }
         }
       } catch(e) {}
-    }, 800);
+    }, 2500);
   }
 
   function showGameInviteNotif(invite) {
