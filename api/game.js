@@ -1,8 +1,7 @@
-// pages/api/game.js
 import admin from "firebase-admin";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
-const allowedOrigin = process.env.ALLOWED_ORIGIN || "*";
+const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -51,7 +50,7 @@ function getCaptures(pieces, from, to, color) {
   const scan = (startRow, startCol, dirRow, dirCol) => {
     const captured = [];
     let r = startRow + dirRow, c = startCol + dirCol;
-    while (r >= 0 && r < ROWS.length && c >= 0 && c < COLS.length && pieces[ROWS[r] + COLS[c]] === enemy) {
+    while (r >= 0 && r < 5 && c >= 0 && c < 9 && pieces[ROWS[r] + COLS[c]] === enemy) {
       captured.push(ROWS[r] + COLS[c]);
       r += dirRow;
       c += dirCol;
@@ -91,61 +90,13 @@ function checkAvailableCaptures(pieces, spot, visited, lastDir, color) {
   });
 }
 
-// Helper: atomic update with processedMoves idempotency
-async function runIdempotentUpdate(gameId, clientMoveId, worker) {
-  const gameRef = gamesRef.child(gameId);
-  const processedRef = gamesRef.child(gameId).child('processedMoves').child(clientMoveId);
-
-  // Quick check if already processed
-  const procSnap = await processedRef.once('value');
-  if (procSnap.exists()) {
-    return { alreadyProcessed: true, result: procSnap.val() };
-  }
-
-  // Transaction on the entire game node: compute and apply update and add processedMoves entry.
-  const txResult = await gameRef.transaction(current => {
-    if (current === null) return current; // game missing -> abort
-
-    // If processedMoves already contains clientMoveId (concurrent), abort transaction
-    if (current.processedMoves && current.processedMoves[clientMoveId]) {
-      return; // abort (transaction will not commit)
-    }
-
-    const { success, update } = worker(current);
-    if (!success) {
-      return; // abort
-    }
-
-    // Apply update keys to current snapshot
-    for (const k in update) current[k] = update[k];
-
-    if (!current.processedMoves) current.processedMoves = {};
-    // Store the update as the processedMoves entry (includes timestamp and the update result)
-    current.processedMoves[clientMoveId] = { timestamp: Date.now(), result: update };
-
-    return current;
-  }, { applyLocally: false });
-
-  if (!txResult.committed) {
-    // transaction aborted - maybe concurrently processed; try to read processed entry
-    const procSnap2 = await processedRef.once('value');
-    if (procSnap2.exists()) return { alreadyProcessed: true, result: procSnap2.val() };
-    return { error: 'Transaction aborted' };
-  }
-
-  // Return the processedMoves entry
-  const finalProc = await processedRef.once('value');
-  return { alreadyProcessed: false, result: finalProc.val() };
-}
-
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
-  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin || "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed." });
-
   const { action, ...payload } = req.body;
   try {
     switch (action) {
@@ -156,128 +107,70 @@ export default async function handler(req, res) {
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
-    console.error("API handler error:", err);
     return res.status(500).json({ error: "Server error." });
   }
 }
 
 async function handleGetGame({ uid, gameId }, res) {
-  if (!gameId) return res.status(400).json({ error: "gameId required" });
   const snap = await gamesRef.child(gameId).once("value");
   if (!snap.exists()) return res.status(404).json({ error: "Not found." });
   const game = snap.val();
   return res.status(200).json({ success: true, game });
 }
 
-async function handleMakeMove({ uid, gameId, origin, target, clientMoveId }, res) {
-  if (!clientMoveId) return res.status(400).json({ error: "clientMoveId required" });
-  if (!uid || !gameId || !origin || !target) return res.status(400).json({ error: "Missing params" });
-
-  const result = await runIdempotentUpdate(gameId, clientMoveId, (game) => {
-    // validate game exists & turn
-    const myColor = game.senderUid === uid ? "maintso" : "mena";
-    if (game.turn !== myColor) return { success: false };
-    const pieces = game.pieces || {};
-    if (pieces[origin] !== myColor) return { success: false };
-    if (pieces[target]) return { success: false };
-
-    const newVisited = [...(game.visited || []), origin];
-    const r1 = ROWS.indexOf(origin[0]), c1 = COLS.indexOf(origin[1]);
-    const r2 = ROWS.indexOf(target[0]), c2 = COLS.indexOf(target[1]);
-    const dir = `${r2 - r1},${c2 - c1}`;
-    const caps = getCaptures(pieces, origin, target, myColor);
-
-    let newPieces = { ...pieces };
-    delete newPieces[origin];
-    newPieces[target] = myColor;
-
-    let newMovingPiece = target;
-    let newLastDir = dir;
-    let newAwaitingCapture = false;
-    let newPendingApproach = [];
-    let newPendingWithdrawal = [];
-    let newTurn = game.turn;
-
-    if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
-      newAwaitingCapture = true;
-      newPendingApproach = caps.approach;
-      newPendingWithdrawal = caps.withdrawal;
-    } else if (caps.approach.length > 0 || caps.withdrawal.length > 0) {
-      const toRem = caps.approach.length > 0 ? caps.approach : caps.withdrawal;
-      toRem.forEach(s => delete newPieces[s]);
-      if (!checkAvailableCaptures(newPieces, target, newVisited, dir, myColor)) {
-        newMovingPiece = null;
-        newTurn = myColor === "maintso" ? "mena" : "maintso";
-      }
-    } else {
-      newMovingPiece = null;
-      newTurn = myColor === "maintso" ? "mena" : "maintso";
+async function handleMakeMove({ uid, gameId, origin, target }, res) {
+  const gameRef = gamesRef.child(gameId);
+  const snap = await gameRef.once("value");
+  const game = snap.val();
+  const myColor = game.senderUid === uid ? "maintso" : "mena";
+  if (game.turn !== myColor) return res.status(400).json({ error: "Not your turn." });
+  const pieces = game.pieces || {};
+  const newVisited = [...(game.visited || []), origin];
+  const r1 = ROWS.indexOf(origin[0]), c1 = COLS.indexOf(origin[1]);
+  const r2 = ROWS.indexOf(target[0]), c2 = COLS.indexOf(target[1]);
+  const dir = `${r2 - r1},${c2 - c1}`;
+  const caps = getCaptures(pieces, origin, target, myColor);
+  let newPieces = { ...pieces };
+  delete newPieces[origin];
+  newPieces[target] = myColor;
+  let newMovingPiece = target, newLastDir = dir, newAwaitingCapture = false, newPendingApproach = [], newPendingWithdrawal = [], newTurn = game.turn;
+  if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
+    newAwaitingCapture = true;
+    newPendingApproach = caps.approach;
+    newPendingWithdrawal = caps.withdrawal;
+  } else if (caps.approach.length > 0 || caps.withdrawal.length > 0) {
+    (caps.approach.length > 0 ? caps.approach : caps.withdrawal).forEach(s => delete newPieces[s]);
+    if (!checkAvailableCaptures(newPieces, target, newVisited, dir, myColor)) {
+      newMovingPiece = null; newTurn = myColor === "maintso" ? "mena" : "maintso";
     }
-
-    const update = {
-      pieces: newPieces,
-      turn: newTurn,
-      movingPiece: newMovingPiece,
-      visited: newMovingPiece ? newVisited : [],
-      lastDir: newMovingPiece ? newLastDir : "",
-      awaitingCapture: newAwaitingCapture,
-      pendingApproach: newPendingApproach,
-      pendingWithdrawal: newPendingWithdrawal
-    };
-    return { success: true, update };
-  });
-
-  if (result.error) return res.status(500).json({ error: "Transaction failed." });
-
-  // result.result is object stored in processedMoves for this clientMoveId
-  return res.status(200).json({ success: true, game: result.result.result, clientMoveId });
+  } else {
+    newMovingPiece = null; newTurn = myColor === "maintso" ? "mena" : "maintso";
+  }
+  const update = { pieces: newPieces, turn: newTurn, movingPiece: newMovingPiece, visited: newMovingPiece ? newVisited : [], lastDir: newMovingPiece ? newLastDir : "", awaitingCapture: newAwaitingCapture, pendingApproach: newPendingApproach, pendingWithdrawal: newPendingWithdrawal };
+  await gameRef.update(update);
+  return res.status(200).json({ success: true, game: update });
 }
 
-async function handleResolveCapture({ uid, gameId, capturedSpot, clientMoveId }, res) {
-  if (!clientMoveId) return res.status(400).json({ error: "clientMoveId required" });
-  if (!uid || !gameId || !capturedSpot) return res.status(400).json({ error: "Missing params" });
-
-  const result = await runIdempotentUpdate(gameId, clientMoveId, (game) => {
-    const myColor = game.senderUid === uid ? "maintso" : "mena";
-    const toRemove = (game.pendingApproach || []).includes(capturedSpot) ? game.pendingApproach : game.pendingWithdrawal;
-    let newPieces = { ...game.pieces };
-    toRemove.forEach(s => delete newPieces[s]);
-    const further = checkAvailableCaptures(newPieces, game.movingPiece, game.visited, game.lastDir, myColor);
-    const update = {
-      pieces: newPieces,
-      turn: further ? game.turn : (myColor === "maintso" ? "mena" : "maintso"),
-      movingPiece: further ? game.movingPiece : null,
-      visited: further ? game.visited : [],
-      lastDir: further ? game.lastDir : "",
-      awaitingCapture: false,
-      pendingApproach: [],
-      pendingWithdrawal: []
-    };
-    return { success: true, update };
-  });
-
-  if (result.error) return res.status(500).json({ error: "Transaction failed." });
-  return res.status(200).json({ success: true, game: result.result.result, clientMoveId });
+async function handleResolveCapture({ uid, gameId, capturedSpot }, res) {
+  const gameRef = gamesRef.child(gameId);
+  const snap = await gameRef.once("value");
+  const game = snap.val();
+  const myColor = game.senderUid === uid ? "maintso" : "mena";
+  const toRemove = (game.pendingApproach || []).includes(capturedSpot) ? game.pendingApproach : game.pendingWithdrawal;
+  let newPieces = { ...game.pieces };
+  toRemove.forEach(s => delete newPieces[s]);
+  const further = checkAvailableCaptures(newPieces, game.movingPiece, game.visited, game.lastDir, myColor);
+  const update = { pieces: newPieces, turn: further ? game.turn : (myColor === "maintso" ? "mena" : "maintso"), movingPiece: further ? game.movingPiece : null, visited: further ? game.visited : [], lastDir: further ? game.lastDir : "", awaitingCapture: false, pendingApproach: [], pendingWithdrawal: [] };
+  await gameRef.update(update);
+  return res.status(200).json({ success: true, game: update });
 }
 
-async function handleStopTurn({ uid, gameId, clientMoveId }, res) {
-  if (!clientMoveId) return res.status(400).json({ error: "clientMoveId required" });
-  if (!uid || !gameId) return res.status(400).json({ error: "Missing params" });
-
-  const result = await runIdempotentUpdate(gameId, clientMoveId, (game) => {
-    const nextTurn = game.turn === "maintso" ? "mena" : "maintso";
-    const update = {
-      turn: nextTurn,
-      movingPiece: null,
-      visited: [],
-      lastDir: "",
-      awaitingCapture: false,
-      pendingApproach: [],
-      pendingWithdrawal: []
-    };
-    return { success: true, update };
-  });
-
-  if (result.error) return res.status(500).json({ error: "Transaction failed." });
-  return res.status(200).json({ success: true, game: result.result.result, clientMoveId });
+async function handleStopTurn({ uid, gameId }, res) {
+  const gameRef = gamesRef.child(gameId);
+  const snap = await gameRef.once("value");
+  const game = snap.val();
+  const nextTurn = game.turn === "maintso" ? "mena" : "maintso";
+  const update = { turn: nextTurn, movingPiece: null, visited: [], lastDir: "", awaitingCapture: false, pendingApproach: [], pendingWithdrawal: [] };
+  await gameRef.update(update);
+  return res.status(200).json({ success: true, game: update });
 }
