@@ -190,13 +190,9 @@
   let myUsername = null;
   let opponentUsername = null;
 
-  // ===== VAHAOLANA: moveSeq counter sy localMoveInProgress =====
-  // moveSeq: mitombo isaky ny manao mouvement (make-move, resolve-capture, stop-turn).
-  // Ny polling dia mitahiry ny moveSeq talohan'ny fetch, ary tsy mampiasa ny valiny
-  // raha niova ny moveSeq nandritra ny fotoana niandrasana ny response.
-  // Izany no misakana ny state taloha (stale) tsy hamerina ny pièce amin'ny toerany taloha.
+  // Lojika hisakanana ny fifandonana (Race condition)
   let moveSeq = 0;
-  let localMoveInProgress = false;
+  let isActionPending = false;
 
   function showError(msg) {
     const el = document.getElementById('error-msg');
@@ -316,11 +312,19 @@
       circle.setAttribute('r', 12);
       circle.setAttribute('fill', `url(#${color}-pat)`);
       circle.style.pointerEvents = 'none';
+      
       if (isMyTurn && color === myColor) {
-        if (selectedSpot === spot) circle.classList.add('selected-piece');
-        else if (lastBlockedSpot === spot) circle.classList.add('blocked-piece');
-        else if (!game.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) circle.classList.add('movable-piece');
+        // Raha vao anjarany dia asehoy hoe iza no azo ahetsika
+        if (selectedSpot === spot) {
+          circle.classList.add('selected-piece');
+        } else if (lastBlockedSpot === spot) {
+          circle.classList.add('blocked-piece');
+        } else if (!game.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) {
+          circle.classList.add('movable-piece');
+        }
       }
+      
+      // Target capture
       if (game.awaitingCapture && color !== myColor) {
         if ((game.pendingApproach || []).includes(spot) || (game.pendingWithdrawal || []).includes(spot)) {
           circle.classList.add('capture-target');
@@ -379,24 +383,33 @@
     if (!currentGame) return;
     const turnDisplay = document.getElementById('turn-display');
     const stopBtn = document.getElementById('stop-move-btn');
+    
     if (currentGame.turn === myColor) {
       turnDisplay.innerText = 'ANJARANAO';
       turnDisplay.style.color = '#ADFF2F';
+      
+      // Raha mbola manohy capture dia lock-ena ny pièce
       if (currentGame.movingPiece) {
         selectedSpot = currentGame.movingPiece;
         canChangePiece = false;
         stopBtn.classList.add('active');
       } else {
+        // Raha vao manomboka tour dia afaka mifidy
         canChangePiece = true;
         stopBtn.classList.remove('active');
       }
-      if (selectedSpot && !currentGame.awaitingCapture) renderGuides(selectedSpot, currentGame);
-      else document.getElementById('guides-group').innerHTML = '';
+      
+      if (selectedSpot && !currentGame.awaitingCapture) {
+        renderGuides(selectedSpot, currentGame);
+      } else {
+        document.getElementById('guides-group').innerHTML = '';
+      }
     } else {
       turnDisplay.innerText = 'Miandry ny hafa...';
       turnDisplay.style.color = 'white';
       selectedSpot = null;
       lastBlockedSpot = null;
+      canChangePiece = true;
       stopBtn.classList.remove('active');
       document.getElementById('guides-group').innerHTML = '';
     }
@@ -404,39 +417,14 @@
     renderPlayersBar();
   }
 
-  // ===== VAHAOLANA: fetchGame manana anti-bounce =====
-  // Mitahiry ny moveSeq talohan'ny fetch.
-  // Rehefa tonga ny response, jerena raha mbola mitovy ny moveSeq.
-  // Raha niova (= nisy mouvement nataon'ny mpilalao nandritra ny fetch),
-  // dia tsy ampiasaina ny response (satria state taloha io, mety hampiova ny optimistic UI).
   async function fetchGame() {
-    if (!myUid) return;
-
-    // Raha eo am-panaovana mouvement, aza manao fetch mihitsy
-    if (localMoveInProgress) return;
-
-    // Tahirizo ny moveSeq amin'izao fotoana izao
-    const seqBeforeFetch = moveSeq;
-
-    let data;
-    try {
-      const res = await fetch(GAME_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get-game', uid: myUid, gameId })
-      });
-      data = await res.json();
-    } catch (e) {
-      return;
-    }
-
-    // VAHAOLANA LEHIBE: Raha niova ny moveSeq nandritra ny fetch,
-    // na eo am-panaovana mouvement, dia aza ovaina ny state.
-    // Izany no misakana ny "bounce" satria ny response dia misy state taloha
-    // (talohan'ny mouvement farany) ka mamerina ny pièce amin'ny toerany taloha.
-    if (moveSeq !== seqBeforeFetch) return;
-    if (localMoveInProgress) return;
-
+    if (!myUid || isActionPending) return;
+    const currentMoveSeq = moveSeq;
+    const data = await callGameApi('get-game', { uid: myUid, gameId });
+    
+    // Raha nisy hetsika nataon'ny user nandritra ny fetch dia aza raisina ny valiny
+    if (currentMoveSeq !== moveSeq) return;
+    
     if (data && data.success && data.game) {
       currentGame = { ...currentGame, ...data.game };
       updateUI();
@@ -444,12 +432,11 @@
   }
 
   async function handleSpotClick(spotID) {
-    if (!currentGame || currentGame.turn !== myColor || currentGame.awaitingCapture) return;
-    // Raha eo am-panaovana mouvement hafa, aza manao na inona na inona
-    if (localMoveInProgress) return;
+    if (!currentGame || currentGame.turn !== myColor || currentGame.awaitingCapture || isActionPending) return;
 
     const pieces = currentGame.pieces || {};
 
+    // 1. Mifidy pièce (Raha vao anjarany na afaka manova)
     if (canChangePiece && pieces[spotID] === myColor) {
       if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
         selectedSpot = spotID;
@@ -462,45 +449,43 @@
       return;
     }
 
+    // 2. Mifidy toerana haleha (Move)
     if (selectedSpot && (allowedMoves[selectedSpot] || []).includes(spotID) && !pieces[spotID]) {
       if ((currentGame.visited || []).includes(spotID)) return;
 
       const caps = getCaptures(pieces, selectedSpot, spotID, myColor);
       const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
+      
+      // Fitsipika: tsy maintsy mihinana raha misy azo hanina
       if (playerHasAnyCapture(pieces, myColor) && !isCap) return;
 
       const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
       const r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
       const dir = `${r2 - r1},${c2 - c1}`;
+      
+      // Fitsipika: tsy azo averina ny lalana vao nidirana
       if (!canChangePiece && currentGame.lastDir === dir) return;
 
-      const origin = selectedSpot;
-      const oldGame = JSON.parse(JSON.stringify(currentGame));
-
-      // Ampitomboy ny moveSeq ary asio lock
+      // START ACTION
+      isActionPending = true;
       moveSeq++;
-      localMoveInProgress = true;
-
-      // OPTIMISTIC UI: Ovao avy hatrany ny sary eo an-toerana
-      let newVisited = [...(currentGame.visited || []), origin];
-      let newPieces = { ...currentGame.pieces };
-      delete newPieces[origin];
-      newPieces[spotID] = myColor;
-
+      const origin = selectedSpot;
+      
+      // OPTIMISTIC UPDATE (Hetsika eo no ho eo)
+      let nextPieces = { ...pieces };
+      delete nextPieces[origin];
+      nextPieces[spotID] = myColor;
+      
+      // Jereo raha mbola afaka mihinana
       let nextMovingPiece = spotID;
-      let nextDir = dir;
       let nextAwaiting = false;
       let nextTurn = currentGame.turn;
-      let pApproach = [], pWithdrawal = [];
-
+      
       if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
         nextAwaiting = true;
-        pApproach = caps.approach;
-        pWithdrawal = caps.withdrawal;
       } else if (isCap) {
-        const toRem = caps.approach.length > 0 ? caps.approach : caps.withdrawal;
-        toRem.forEach(s => delete newPieces[s]);
-        if (!checkAvailableCaptures(newPieces, spotID, newVisited, dir, myColor)) {
+        (caps.approach.length > 0 ? caps.approach : caps.withdrawal).forEach(s => delete nextPieces[s]);
+        if (!checkAvailableCaptures(nextPieces, spotID, [...(currentGame.visited || []), origin], dir, myColor)) {
           nextMovingPiece = null;
           nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso');
         }
@@ -509,109 +494,55 @@
         nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso');
       }
 
-      currentGame.pieces = newPieces;
+      // Fanovana sary vonjimaika
+      const backupGame = JSON.stringify(currentGame);
+      currentGame.pieces = nextPieces;
       currentGame.turn = nextTurn;
       currentGame.movingPiece = nextMovingPiece;
-      currentGame.visited = nextMovingPiece ? newVisited : [];
-      currentGame.lastDir = nextMovingPiece ? nextDir : "";
       currentGame.awaitingCapture = nextAwaiting;
-      currentGame.pendingApproach = pApproach;
-      currentGame.pendingWithdrawal = pWithdrawal;
-
       updateUI();
 
-      // Alefa any amin'ny Backend ny hetsika
       const apiRes = await callGameApi('make-move', { uid: myUid, gameId, origin, target: spotID });
-
-      if (!apiRes.success) {
-        // Raha tsy nahomby ny API, avereno ny state taloha
-        currentGame = oldGame;
-        updateUI();
-      } else if (apiRes.game) {
-        // Raha nahomby, ampiasao ny valiny avy amin'ny server
-        // mba hahazoana antoka fa mitovy amin'ny server ny state
+      
+      if (apiRes.success) {
         currentGame = { ...currentGame, ...apiRes.game };
-        updateUI();
+      } else {
+        currentGame = JSON.parse(backupGame);
       }
-
-      localMoveInProgress = false;
+      isActionPending = false;
+      updateUI();
     }
   }
 
   async function resolveCapture(capturedSpot) {
-    // Raha eo am-panaovana mouvement hafa, aza manao na inona na inona
-    if (localMoveInProgress) return;
-
-    const oldGame = JSON.parse(JSON.stringify(currentGame));
-
-    // Ampitomboy ny moveSeq ary asio lock
+    if (isActionPending) return;
+    isActionPending = true;
     moveSeq++;
-    localMoveInProgress = true;
-
-    // OPTIMISTIC UI
-    const toRemove = (currentGame.pendingApproach || []).includes(capturedSpot) ? currentGame.pendingApproach : currentGame.pendingWithdrawal;
-    let newPieces = { ...currentGame.pieces };
-    toRemove.forEach(s => delete newPieces[s]);
-
-    const further = checkAvailableCaptures(newPieces, currentGame.movingPiece, currentGame.visited, currentGame.lastDir, myColor);
-    currentGame.pieces = newPieces;
-    if (!further) {
-      currentGame.turn = (myColor === 'maintso' ? 'mena' : 'maintso');
-      currentGame.movingPiece = null;
-      currentGame.visited = [];
-      currentGame.lastDir = "";
-    }
-    currentGame.awaitingCapture = false;
-    currentGame.pendingApproach = [];
-    currentGame.pendingWithdrawal = [];
-
-    updateUI();
-
+    
     const apiRes = await callGameApi('resolve-capture', { uid: myUid, gameId, capturedSpot });
-
-    if (!apiRes.success) {
-      currentGame = oldGame;
-      updateUI();
-    } else if (apiRes.game) {
+    if (apiRes.success) {
       currentGame = { ...currentGame, ...apiRes.game };
-      updateUI();
+      // Raha tapitra ny turn-ny dia esory ny selection
+      if (currentGame.turn !== myColor) {
+        selectedSpot = null;
+      }
     }
-
-    localMoveInProgress = false;
+    isActionPending = false;
+    updateUI();
   }
 
   async function handleStopTurn() {
-    if (!currentGame || currentGame.turn !== myColor || !currentGame.movingPiece) return;
-    // Raha eo am-panaovana mouvement hafa, aza manao na inona na inona
-    if (localMoveInProgress) return;
-
-    const oldGame = JSON.parse(JSON.stringify(currentGame));
-
-    // Ampitomboy ny moveSeq ary asio lock
+    if (!currentGame || currentGame.turn !== myColor || !currentGame.movingPiece || isActionPending) return;
+    isActionPending = true;
     moveSeq++;
-    localMoveInProgress = true;
-
-    // OPTIMISTIC UI
-    currentGame.turn = (myColor === 'maintso' ? 'mena' : 'maintso');
-    currentGame.movingPiece = null;
-    currentGame.visited = [];
-    currentGame.lastDir = "";
-    currentGame.awaitingCapture = false;
-    currentGame.pendingApproach = [];
-    currentGame.pendingWithdrawal = [];
-    updateUI();
-
+    
     const apiRes = await callGameApi('stop-turn', { uid: myUid, gameId });
-
-    if (!apiRes.success) {
-      currentGame = oldGame;
-      updateUI();
-    } else if (apiRes.game) {
+    if (apiRes.success) {
       currentGame = { ...currentGame, ...apiRes.game };
-      updateUI();
+      selectedSpot = null;
     }
-
-    localMoveInProgress = false;
+    isActionPending = false;
+    updateUI();
   }
 
   async function init() {
@@ -625,25 +556,12 @@
     const data = await callSessionApi('get-fanorona-game', { uid: myUid, gameId });
     if (data.success) {
       opponentUsername = data.opponentUsername;
-      currentGame = {
-        pieces: data.pieces,
-        turn: data.turn,
-        senderUid: data.senderUid,
-        receiverUid: data.receiverUid,
-        movingPiece: data.movingPiece || null,
-        visited: data.visited || [],
-        lastDir: data.lastDir || "",
-        awaitingCapture: data.awaitingCapture || false,
-        pendingApproach: data.pendingApproach || [],
-        pendingWithdrawal: data.pendingWithdrawal || []
-      };
+      currentGame = data;
       document.getElementById('game-board').classList.toggle('flipped', myColor === 'mena');
       drawSpots();
       updateUI();
       document.getElementById('game-board').style.display = 'block';
       document.getElementById('loading-overlay').classList.add('hidden');
-
-      // Mandefa polling isaky ny 2 segaondra
       setInterval(fetchGame, POLL_INTERVAL);
     }
   }
