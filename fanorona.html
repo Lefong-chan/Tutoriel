@@ -20,20 +20,16 @@
     }
     .flipped { transform: rotate(180deg); }
     .grid-line { stroke: #333; stroke-width: 2; fill: none; }
-    .piece-group { transition: transform 0.2s ease-in-out; }
     
     /* Styles ho an'ny pièce */
     .selected-piece { stroke: #FFF700; stroke-width: 6px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
     .movable-piece { stroke: #00FF00; stroke-width: 5px; paint-order: stroke; cursor: pointer; }
-    
-    /* Tsy misy mena ary tsy misy opacity intsony eto */
     .blocked-piece { stroke: none; } 
 
     .capture-target { stroke: darkorange; stroke-width: 5px; cursor: pointer; pointer-events: all !important; stroke-dasharray: 5; animation: dash 1s linear infinite; }
     
     @keyframes dash { to { stroke-dashoffset: 10; } }
     .spot { cursor: pointer; pointer-events: all; }
-    .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot { fill: #FFF700; opacity: 0.9; pointer-events: none; }
 
     #players-bar {
@@ -42,7 +38,7 @@
       align-items: center;
       width: 95vw;
       max-width: 800px;
-      margin-bottom: 10px;
+      margin-bottom: 20px;
       padding: 8px 14px;
       background: rgba(0,0,0,0.25);
       border-radius: 12px;
@@ -54,9 +50,6 @@
     .player-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6); }
     .dot-maintso { background: #22c55e; }
     .dot-mena { background: #ef4444; }
-    .player-label { font-size: 0.7em; opacity: 0.75; }
-
-    #turn-display { margin: 0; color: white; font-weight: bold; margin-bottom: 10px; }
 
     #stop-move-btn {
       width: 65px;
@@ -79,22 +72,11 @@
     #stop-move-btn.active { opacity: 1; transform: scale(1.1); pointer-events: all; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
 
     #game-board { width: 95vw; max-width: 800px; max-height: 70vh; display: block; }
-
-    #loading-overlay {
-      position: fixed; inset: 0; background: #0092FF;
-      display: flex; justify-content: center; align-items: center;
-      z-index: 100; color: white; flex-direction: column;
-    }
-    #loading-overlay.hidden { display: none; }
   </style>
 </head>
 <body>
-  <div id="loading-overlay">
-    <span>Andraso kely...</span>
-  </div>
 
   <div id="players-bar" style="display:none;"></div>
-  <h2 id="turn-display">Mampiditra...</h2>
 
   <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
     <defs>
@@ -189,13 +171,10 @@
 
   function updateUI() {
     if (!currentGame) return;
-    const turnDisp = document.getElementById('turn-display');
     const stopBtn = document.getElementById('stop-move-btn');
     const isMyTurn = currentGame.turn === myColor;
 
     if (isMyTurn) {
-      turnDisp.innerText = "ANJARANAO";
-      turnDisp.style.color = "#ADFF2F";
       if (currentGame.movingPiece) {
         selectedSpot = currentGame.movingPiece;
         stopBtn.classList.add('active');
@@ -203,8 +182,6 @@
         stopBtn.classList.remove('active');
       }
     } else {
-      turnDisp.innerText = "Miandry ny hafa...";
-      turnDisp.style.color = "white";
       selectedSpot = null;
       stopBtn.classList.remove('active');
     }
@@ -238,7 +215,7 @@
           circle.classList.add('movable-piece');
           circle.onclick = () => { selectedSpot = spot; updateUI(); };
         } else {
-          circle.classList.add('blocked-piece'); // Sisiny tsotra
+          circle.classList.add('blocked-piece');
         }
       }
 
@@ -355,7 +332,6 @@
       drawSpots();
       updateUI();
       document.getElementById('game-board').style.display = 'block';
-      document.getElementById('loading-overlay').classList.add('hidden');
       setInterval(async () => {
         if (isActionPending) return;
         const sync = await callApi(GAME_API_URL, 'get-game', { uid: myUid, gameId });
