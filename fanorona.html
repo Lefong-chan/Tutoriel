@@ -25,7 +25,10 @@
     /* Styles ho an'ny pièce */
     .selected-piece { stroke: #FFF700; stroke-width: 6px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
     .movable-piece { stroke: #00FF00; stroke-width: 5px; paint-order: stroke; cursor: pointer; }
-    .blocked-piece { stroke: #FF4500; stroke-width: 4px; paint-order: stroke; opacity: 0.8; }
+    
+    /* Tsy misy mena ary tsy misy opacity intsony eto */
+    .blocked-piece { stroke: none; } 
+
     .capture-target { stroke: darkorange; stroke-width: 5px; cursor: pointer; pointer-events: all !important; stroke-dasharray: 5; animation: dash 1s linear infinite; }
     
     @keyframes dash { to { stroke-dashoffset: 10; } }
@@ -80,16 +83,13 @@
     #loading-overlay {
       position: fixed; inset: 0; background: #0092FF;
       display: flex; justify-content: center; align-items: center;
-      z-index: 100; color: white; flex-direction: column; gap: 16px;
+      z-index: 100; color: white; flex-direction: column;
     }
     #loading-overlay.hidden { display: none; }
-    .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div id="loading-overlay">
-    <div class="spinner"></div>
     <span>Andraso kely...</span>
   </div>
 
@@ -126,7 +126,6 @@
   const rows = ['A','B','C','D','E'];
   const cols = ['1','2','3','4','5','6','7','8','9'];
 
-  // Ny lalan'ny Fanorona (Allowed connections)
   const allowedMoves = {
     'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
     'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
@@ -197,8 +196,6 @@
     if (isMyTurn) {
       turnDisp.innerText = "ANJARANAO";
       turnDisp.style.color = "#ADFF2F";
-      
-      // Force selection if continuing a move
       if (currentGame.movingPiece) {
         selectedSpot = currentGame.movingPiece;
         stopBtn.classList.add('active');
@@ -241,11 +238,10 @@
           circle.classList.add('movable-piece');
           circle.onclick = () => { selectedSpot = spot; updateUI(); };
         } else {
-          circle.classList.add('blocked-piece');
+          circle.classList.add('blocked-piece'); // Sisiny tsotra
         }
       }
 
-      // Ambience for captures
       if (currentGame.awaitingCapture && color !== myColor) {
         if ((currentGame.pendingApproach || []).includes(spot) || (currentGame.pendingWithdrawal || []).includes(spot)) {
           circle.classList.add('capture-target');
@@ -268,13 +264,9 @@
     
     (allowedMoves[selectedSpot] || []).forEach(t => {
       if (pieces[t] || (currentGame.visited || []).includes(t)) return;
-      
       const caps = getCaptures(pieces, selectedSpot, t, myColor);
-      const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
+      if (globalCap && !(caps.approach.length > 0 || caps.withdrawal.length > 0)) return;
       
-      if (globalCap && !isCap) return;
-      
-      // Rule: cannot return to previous direction in same turn
       if (currentGame.movingPiece && currentGame.lastDir) {
         const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
         const r2 = rows.indexOf(t[0]), c2 = cols.indexOf(t[1]);
@@ -308,8 +300,6 @@
 
   async function handleSpotClick(spotID) {
     if (!currentGame || currentGame.turn !== myColor || isActionPending || currentGame.awaitingCapture) return;
-
-    // Move logic
     if (selectedSpot && !currentGame.pieces[spotID]) {
       isActionPending = true;
       const res = await callApi(GAME_API_URL, 'make-move', { uid: myUid, gameId, origin: selectedSpot, target: spotID });
