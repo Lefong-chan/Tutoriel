@@ -7,12 +7,21 @@
   <style>
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
     body { font-family: sans-serif; margin: 0; padding: 0; text-align: center; background: #0092FF; overflow: hidden; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+    
+    /* Player Bar Styling */
+    #players-bar { display: none; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.3); padding: 10px 20px; border-radius: 30px; margin-bottom: 15px; width: 90%; max-width: 450px; color: white; border: 2px solid rgba(255,255,255,0.2); }
+    .player-info { display: flex; align-items: center; gap: 8px; }
+    .player-name { font-weight: bold; font-size: 14px; }
+    .player-label { font-size: 10px; opacity: 0.7; text-transform: uppercase; }
+    .player-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; }
+    .dot-maintso { background: #ADFF2F; box-shadow: 0 0 8px #ADFF2F; }
+    .dot-mena { background: #FF4500; box-shadow: 0 0 8px #FF4500; }
+    .vs-sep { font-style: italic; font-weight: bold; opacity: 0.5; }
+
     .flipped { transform: rotate(180deg); }
     .grid-line { stroke: #333; stroke-width: 2; }
     
-    /* Animation hisosa tsara (0.2s) */
     .piece-group { transition: transform 0.2s ease-in-out; }
-    
     .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
     .movable-piece { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
     .blocked-piece { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
@@ -21,16 +30,17 @@
     @keyframes dash { to { stroke-dashoffset: 10; } }
     
     .spot { cursor: pointer; pointer-events: all; }
-    .lock-board .spot { pointer-events: none !important; }
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot { fill: #FFF700; opacity: 0.8; pointer-events: none; }
     
     #stop-move-btn { width: 60px; height: 60px; border-radius: 50%; background: #f44336; color: white; border: 4px solid white; font-size: 30px; font-weight: bold; cursor: pointer; margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none; }
     #stop-move-btn.active { opacity: 1; transform: scale(1.1); box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all; }
-    #info-box { color: white; margin-bottom: 10px; font-weight: bold; }
+    #info-box { color: white; margin-bottom: 5px; font-weight: bold; }
   </style>
 </head>
 <body>
+
+  <div id="players-bar"></div>
 
   <div id="info-box">
     <h2 id="turn-display">Mampiditra...</h2>
@@ -53,35 +63,22 @@
 
   <button id="stop-move-btn">OK</button>
 
-  <script type="importmap">
-    {
-      "imports": {
-        "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
-        "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
-        "firebase/database": "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js"
-      }
-    }
-  </script>
-
   <script>
   (function() {
-    // --- API URLs ---
     const GAME_API_URL = '/api/game';
     const SESSION_API_URL = '/api/session';
 
-    // --- Paramètres URL ---
     const urlParams = new URLSearchParams(window.location.search);
-    const gameID = urlParams.get('gameID') || urlParams.get('gameId'); // Manaiky na kely na ngeza ny 'd'
+    const gameID = urlParams.get('gameId') || urlParams.get('gameID');
     const myColor = urlParams.get('color');
     const inviteId = urlParams.get('inviteId');
 
     const rows = ['A','B','C','D','E'], cols = ['1','2','3','4','5','6','7','8','9'];
-    let selectedSpot = null, lastBlockedSpot = null, canChangePiece = true;
+    let selectedSpot = null, canChangePiece = true, lastBlockedSpot = null;
     let pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
     let piecesOnBoard = {}; 
     let currentGameData = null;
 
-    // --- Allowed Moves (Lojika ny lalana) ---
     const allowedMoves = {
       'A1': ['A2','B1','B2'], 'A2': ['A1','A3','B2'], 'A3': ['A2','A4','B2','B3','B4'],
       'A4': ['A3','A5','B4'], 'A5': ['A4','A6','B4','B5','B6'], 'A6': ['A5','A7','B6'],
@@ -100,345 +97,271 @@
       'E7': ['D6','D7','D8','E6','E8'], 'E8': ['D8','E7','E9'], 'E9': ['D8','D9','E8'],
     };
 
-    // --- Helpers ---
     function escapeHtml(s) {
-        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     async function callApi(url, action, payload = {}) {
-        const stored = localStorage.getItem('user');
-        if (!stored) { window.location.href = 'login&register.html'; return; }
-        const localUser = JSON.parse(stored);
+      const stored = localStorage.getItem('user');
+      if (!stored) { window.location.href = 'login&register.html'; return; }
+      const localUser = JSON.parse(stored);
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(Object.assign({ action, uid: localUser.uid, gameID: gameID, gameId: gameID }, payload))
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'API Error');
-        return data;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ action, uid: localUser.uid, gameId: gameID, gameID: gameID }, payload))
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'API Error');
+      return data;
     }
 
-    // --- Player Info (Bande Joueurs) ---
     function renderPlayersBar(myCol, myUsername, oppUsername) {
-        const bar = document.getElementById('players-bar');
-        if (!bar) return; // Raha tsy misy id="players-bar" ao amin'ny HTML
+      const bar = document.getElementById('players-bar');
+      const myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
+      const oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
 
-        const myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
-        const oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-
-        bar.innerHTML = `
-            <div class="player-info">
-                <div class="player-dot ${oppDotClass}"></div>
-                <span class="player-name">${escapeHtml(oppUsername)}</span>
-                <span class="player-label">(adversaire)</span>
-            </div>
-            <span class="vs-sep">VS</span>
-            <div class="player-info">
-                <span class="player-label">(ianao)</span>
-                <span class="player-name">${escapeHtml(myUsername)}</span>
-                <div class="player-dot ${myDotClass}"></div>
-            </div>`;
-        bar.style.display = 'flex';
+      bar.innerHTML = `
+        <div class="player-info">
+          <div class="player-dot ${oppDotClass}"></div>
+          <span class="player-name">${escapeHtml(oppUsername)}</span>
+          <span class="player-label">(adversaire)</span>
+        </div>
+        <span class="vs-sep">VS</span>
+        <div class="player-info">
+          <span class="player-label">(ianao)</span>
+          <span class="player-name">${escapeHtml(myUsername)}</span>
+          <div class="player-dot ${myDotClass}"></div>
+        </div>`;
+      bar.style.display = 'flex';
     }
 
-    // --- Core Logic ---
     async function initGame() {
-        if (!gameID || !myColor) {
-            alert("Diso ny fampidirana: tsy misy gameID na color.");
-            return;
+      if (!gameID || !myColor) { alert("Diso ny URL"); return; }
+      const board = document.getElementById('game-board');
+      if (myColor === "mena") board.classList.add('flipped');
+      drawBoardSpots();
+
+      try {
+        const stored = JSON.parse(localStorage.getItem('user'));
+        const sessionData = await callApi(SESSION_API_URL, 'get-fanorona-game');
+        if (sessionData.success) {
+          renderPlayersBar(myColor, stored.username || "Ianao", sessionData.opponentUsername || "???");
         }
+      } catch (e) { console.error("Session API Error:", e); }
 
-        const board = document.getElementById('game-board');
-        if (myColor === "mena") board.classList.add('flipped');
-        
-        drawBoardSpots();
-
-        // 1. Alaina aloha ny mombamomba ny mpifanandrina avy amin'ny Session
-        try {
-            const stored = JSON.parse(localStorage.getItem('user'));
-            const sessionData = await callApi(SESSION_API_URL, 'get-fanorona-game', { gameId: gameID });
-            
-            if (sessionData.success) {
-                renderPlayersBar(myColor, stored.username || "Ianao", sessionData.opponentUsername || "???");
-            }
-        } catch (e) {
-            console.error("Tsy nahazo info momba ny mpifanandrina:", e);
-        }
-
-        // 2. Atombohy ny polling hijerena ny lalao
-        setInterval(refreshGameStatus, 2000);
-        refreshGameStatus();
+      setInterval(refreshGameStatus, 2000);
+      refreshGameStatus();
     }
 
     async function refreshGameStatus() {
-        try {
-            const data = await callApi(GAME_API_URL, 'get-status');
-            if (data.success && data.game) {
-                currentGameData = data.game;
-                updateUI(currentGameData);
-            }
-        } catch (e) { console.error("Error refreshing game:", e); }
+      try {
+        const data = await callApi(GAME_API_URL, 'get-status');
+        if (data.success && data.game) {
+          currentGameData = data.game;
+          updateUI(currentGameData);
+        }
+      } catch (e) { console.error("Refresh Error:", e); }
     }
 
     function updateUI(data) {
-        const display = document.getElementById('turn-display');
-        const stopBtn = document.getElementById('stop-move-btn');
-        const isMyTurn = data.turn === myColor;
-        
-        if (isMyTurn) {
-            display.innerText = "ANJARANAO"; display.style.color = "#ADFF2F";
-            if (data.movingPiece) { 
-                selectedSpot = data.movingPiece; 
-                canChangePiece = false; 
-                stopBtn.classList.add('active'); 
-            } else { 
-                canChangePiece = true; 
-                stopBtn.classList.remove('active'); 
-            }
-            if (selectedSpot && pendingCaptures.approach.length === 0) renderGuides(selectedSpot, data);
-        } else {
-            display.innerText = "Miandry ny hafa..."; display.style.color = "white";
-            selectedSpot = null; lastBlockedSpot = null; stopBtn.classList.remove('active');
-            document.getElementById('guides-group').innerHTML = "";
-        }
-        renderPieces(data.pieces, data);
+      const display = document.getElementById('turn-display');
+      const stopBtn = document.getElementById('stop-move-btn');
+      const isMyTurn = data.turn === myColor;
+      
+      if (isMyTurn) {
+        display.innerText = "ANJARANAO"; display.style.color = "#ADFF2F";
+        if (data.movingPiece) { selectedSpot = data.movingPiece; canChangePiece = false; stopBtn.classList.add('active'); }
+        else { canChangePiece = true; stopBtn.classList.remove('active'); }
+        if (selectedSpot && pendingCaptures.approach.length === 0) renderGuides(selectedSpot, data);
+      } else {
+        display.innerText = "Miandry ny hafa..."; display.style.color = "white";
+        selectedSpot = null; lastBlockedSpot = null; stopBtn.classList.remove('active');
+        document.getElementById('guides-group').innerHTML = "";
+      }
+      renderPieces(data.pieces, data);
     }
 
     function drawBoardSpots() {
-        const grp = document.getElementById('spots-group');
-        grp.innerHTML = "";
-        rows.forEach((r, ri) => {
-            cols.forEach((c, ci) => {
-                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                circle.setAttribute("cx", ci * 50); circle.setAttribute("cy", ri * 50);
-                circle.setAttribute("r", 22); circle.setAttribute("fill", "transparent");
-                circle.setAttribute("class", "spot");
-                circle.onclick = () => handleSpotClick(r + c);
-                grp.appendChild(circle);
-            });
+      const grp = document.getElementById('spots-group');
+      grp.innerHTML = "";
+      rows.forEach((r, ri) => {
+        cols.forEach((c, ci) => {
+          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          circle.setAttribute("cx", ci * 50); circle.setAttribute("cy", ri * 50);
+          circle.setAttribute("r", 22); circle.setAttribute("fill", "transparent");
+          circle.setAttribute("class", "spot");
+          circle.onclick = () => handleSpotClick(r + c);
+          grp.appendChild(circle);
         });
+      });
     }
 
     function renderPieces(pieces, gameData) {
-        const grp = document.getElementById('pieces-group');
-        const isMyTurn = gameData.turn === myColor;
-        const globalCapture = playerHasAnyCapture(pieces, myColor);
+      const grp = document.getElementById('pieces-group');
+      const isMyTurn = gameData.turn === myColor;
+      const globalCapture = playerHasAnyCapture(pieces, myColor);
+      let newPiecesOnBoard = {};
+      let vanished = Object.keys(piecesOnBoard).filter(k => !pieces[k]);
+      let appeared = Object.keys(pieces).filter(k => !piecesOnBoard[k]);
 
-        let newPiecesOnBoard = {};
-        let vanished = Object.keys(piecesOnBoard).filter(k => !pieces[k]);
-        let appeared = Object.keys(pieces).filter(k => !piecesOnBoard[k]);
+      vanished.forEach(vKey => {
+        let color = piecesOnBoard[vKey].color;
+        let target = appeared.find(aKey => pieces[aKey] === color);
+        if (target) { newPiecesOnBoard[target] = piecesOnBoard[vKey]; appeared = appeared.filter(a => a !== target); }
+        else { piecesOnBoard[vKey].el.remove(); }
+      });
 
-        vanished.forEach(vKey => {
-            let color = piecesOnBoard[vKey].color;
-            let target = appeared.find(aKey => pieces[aKey] === color);
-            if (target) {
-                newPiecesOnBoard[target] = piecesOnBoard[vKey];
-                appeared = appeared.filter(a => a !== target);
-            } else {
-                piecesOnBoard[vKey].el.remove();
-            }
-        });
+      appeared.forEach(aKey => {
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.setAttribute("class", "piece-group");
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("r", 12);
+        g.appendChild(c);
+        grp.appendChild(g);
+        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+      });
 
-        appeared.forEach(aKey => {
-            const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-            g.setAttribute("class", "piece-group");
-            const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-            c.setAttribute("r", 12); // Nalehibiazina kely mba hitovy amin'ilay taloha
-            g.appendChild(c);
-            grp.appendChild(g);
-            newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
-        });
+      Object.keys(pieces).forEach(k => { if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k]; });
+      piecesOnBoard = newPiecesOnBoard;
 
-        Object.keys(pieces).forEach(k => {
-            if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
-        });
-
-        piecesOnBoard = newPiecesOnBoard;
-
-        for (let spot in pieces) {
-            const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
-            const g = piecesOnBoard[spot].el;
-            const circle = g.querySelector('circle');
-
-            g.setAttribute("transform", `translate(${ci * 50}, ${ri * 50})`);
-            circle.setAttribute("fill", `url(#${pieces[spot]}-pat)`);
-            circle.removeAttribute("class");
-            circle.style.pointerEvents = "none";
-
-            if (isMyTurn && pieces[spot] === myColor) {
-                if (selectedSpot === spot) circle.setAttribute("class", "selected-piece");
-                else if (lastBlockedSpot === spot) circle.setAttribute("class", "blocked-piece");
-                else if (!gameData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) {
-                    circle.setAttribute("class", "movable-piece");
-                }
-            }
-
-            const isApp = pendingCaptures.approach.includes(spot);
-            const isWith = pendingCaptures.withdrawal.includes(spot);
-            g.querySelectorAll('.cross-line').forEach(l => l.remove());
-
-            if (isApp || isWith) {
-                circle.classList.add("capture-target");
-                circle.style.pointerEvents = "all";
-                circle.onclick = (e) => { e.stopPropagation(); confirmCapture(isApp ? 'approach' : 'withdrawal'); };
-                g.appendChild(createCross(-5, -5, 5, 5));
-                g.appendChild(createCross(5, -5, -5, 5));
-            }
+      for (let spot in pieces) {
+        const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+        const g = piecesOnBoard[spot].el;
+        const circle = g.querySelector('circle');
+        g.setAttribute("transform", `translate(${ci * 50}, ${ri * 50})`);
+        circle.setAttribute("fill", `url(#${pieces[spot]}-pat)`);
+        circle.removeAttribute("class"); circle.style.pointerEvents = "none";
+        if (isMyTurn && pieces[spot] === myColor) {
+          if (selectedSpot === spot) circle.setAttribute("class", "selected-piece");
+          else if (lastBlockedSpot === spot) circle.setAttribute("class", "blocked-piece");
+          else if (!gameData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) circle.setAttribute("class", "movable-piece");
         }
+        const isApp = pendingCaptures.approach.includes(spot), isWith = pendingCaptures.withdrawal.includes(spot);
+        g.querySelectorAll('.cross-line').forEach(l => l.remove());
+        if (isApp || isWith) {
+          circle.classList.add("capture-target"); circle.style.pointerEvents = "all";
+          circle.onclick = (e) => { e.stopPropagation(); confirmCapture(isApp ? 'approach' : 'withdrawal'); };
+          g.appendChild(createCross(-5, -5, 5, 5)); g.appendChild(createCross(5, -5, -5, 5));
+        }
+      }
     }
 
     function createCross(x1, y1, x2, y2) {
-        const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2);
-        l.setAttribute("class", "cross-line");
-        return l;
+      const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+      l.setAttribute("class", "cross-line"); return l;
     }
 
     function playerHasAnyCapture(pieces, color) {
-        for (let s in pieces) {
-            if (pieces[s] === color) {
-                const moves = allowedMoves[s] || [];
-                for (let t of moves) {
-                    if (!pieces[t]) {
-                        const c = getCaptures(pieces, s, t, color);
-                        if (c.approach.length > 0 || c.withdrawal.length > 0) return true;
-                    }
-                }
-            }
+      for (let s in pieces) {
+        if (pieces[s] === color) {
+          const moves = allowedMoves[s] || [];
+          for (let t of moves) { if (!pieces[t]) { const c = getCaptures(pieces, s, t, color); if (c.approach.length > 0 || c.withdrawal.length > 0) return true; } }
         }
-        return false;
+      }
+      return false;
     }
 
     function canPieceMove(spot, pieces, color, globalCapture) {
-        const moves = allowedMoves[spot] || [];
-        return moves.some(target => {
-            if (pieces[target]) return false;
-            const caps = getCaptures(pieces, spot, target, color);
-            const isCap = (caps.approach.length > 0 || caps.withdrawal.length > 0);
-            return globalCapture ? isCap : true;
-        });
+      const moves = allowedMoves[spot] || [];
+      return moves.some(target => {
+        if (pieces[target]) return false;
+        const caps = getCaptures(pieces, spot, target, color);
+        return globalCapture ? (caps.approach.length > 0 || caps.withdrawal.length > 0) : true;
+      });
     }
 
     function renderGuides(startSpot, gameData) {
-        const grp = document.getElementById('guides-group');
-        grp.innerHTML = "";
-        const { pieces, visited, lastDir } = gameData;
-        const globalCapturePossible = playerHasAnyCapture(pieces, myColor);
-        const moves = allowedMoves[startSpot] || [];
-
-        moves.forEach(target => {
-            if (pieces[target] || (visited && visited.includes(target))) return;
-            const caps = getCaptures(pieces, startSpot, target, myColor);
-            const isCaptureMove = (caps.approach.length > 0 || caps.withdrawal.length > 0);
-            if (globalCapturePossible && !isCaptureMove) return;
-            const r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
-            const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-            if (!canChangePiece && lastDir === `${r2-r1},${c2-c1}`) return;
-            const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-            dot.setAttribute("cx", cols.indexOf(target[1]) * 50); dot.setAttribute("cy", rows.indexOf(target[0]) * 50);
-            dot.setAttribute("r", 6); dot.setAttribute("class", "guide-dot");
-            grp.appendChild(dot);
-        });
+      const grp = document.getElementById('guides-group'); grp.innerHTML = "";
+      const { pieces, visited, lastDir } = gameData;
+      const globalCapture = playerHasAnyCapture(pieces, myColor);
+      (allowedMoves[startSpot] || []).forEach(target => {
+        if (pieces[target] || (visited && visited.includes(target))) return;
+        const caps = getCaptures(pieces, startSpot, target, myColor);
+        const isCap = (caps.approach.length > 0 || caps.withdrawal.length > 0);
+        if (globalCapture && !isCap) return;
+        const r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]), r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
+        if (!canChangePiece && lastDir === `${r2-r1},${c2-c1}`) return;
+        const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute("cx", c2 * 50); dot.setAttribute("cy", r2 * 50); dot.setAttribute("r", 6); dot.setAttribute("class", "guide-dot");
+        grp.appendChild(dot);
+      });
     }
 
     async function handleSpotClick(spotID) {
-        if (!currentGameData || currentGameData.turn !== myColor || (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0)) return;
-
-        if (canChangePiece && currentGameData.pieces[spotID] === myColor) { 
-            if (canPieceMove(spotID, currentGameData.pieces, myColor, playerHasAnyCapture(currentGameData.pieces, myColor))) {
-                selectedSpot = spotID; lastBlockedSpot = null;
-            } else {
-                selectedSpot = null; lastBlockedSpot = spotID;
-            }
-            updateUI(currentGameData);
-            return; 
-        }
-
-        if (selectedSpot && (allowedMoves[selectedSpot]||[]).includes(spotID) && !currentGameData.pieces[spotID]) {
-            if (currentGameData.visited && currentGameData.visited.includes(spotID)) return;
-            const caps = getCaptures(currentGameData.pieces, selectedSpot, spotID, myColor);
-            const isCaptureMove = (caps.approach.length > 0 || caps.withdrawal.length > 0);
-            if (playerHasAnyCapture(currentGameData.pieces, myColor) && !isCaptureMove) return;
-
-            const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]), r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
-            const dir = `${r2-r1},${c2-c1}`;
-            if (!canChangePiece && currentGameData.lastDir === dir) return;
-
-            const moveData = { origin: selectedSpot, target: spotID, pieces: {...currentGameData.pieces}, dir };
-            delete moveData.pieces[selectedSpot]; 
-            moveData.pieces[spotID] = myColor;
-            const newV = [...(currentGameData.visited || []), selectedSpot];
-
-            if (isCaptureMove) {
-                if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
-                    pendingCaptures = { approach: caps.approach, withdrawal: caps.withdrawal, moveData, newVisited: newV };
-                    renderPieces(moveData.pieces, currentGameData);
-                } else {
-                    [...caps.approach, ...caps.withdrawal].forEach(t => delete moveData.pieces[t]);
-                    finalizeMove(moveData.pieces, spotID, newV, dir, true);
-                }
-            } else {
-                finalizeMove(moveData.pieces, spotID, newV, dir, false);
-            }
-        }
+      if (!currentGameData || currentGameData.turn !== myColor || pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
+      if (canChangePiece && currentGameData.pieces[spotID] === myColor) {
+        if (canPieceMove(spotID, currentGameData.pieces, myColor, playerHasAnyCapture(currentGameData.pieces, myColor))) { selectedSpot = spotID; lastBlockedSpot = null; }
+        else { selectedSpot = null; lastBlockedSpot = spotID; }
+        updateUI(currentGameData); return;
+      }
+      if (selectedSpot && (allowedMoves[selectedSpot]||[]).includes(spotID) && !currentGameData.pieces[spotID]) {
+        if (currentGameData.visited && currentGameData.visited.includes(spotID)) return;
+        const caps = getCaptures(currentGameData.pieces, selectedSpot, spotID, myColor);
+        const isCap = (caps.approach.length > 0 || caps.withdrawal.length > 0);
+        if (playerHasAnyCapture(currentGameData.pieces, myColor) && !isCap) return;
+        const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]), r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]), dir = `${r2-r1},${c2-c1}`;
+        if (!canChangePiece && currentGameData.lastDir === dir) return;
+        const moveData = { origin: selectedSpot, target: spotID, pieces: {...currentGameData.pieces}, dir };
+        delete moveData.pieces[selectedSpot]; moveData.pieces[spotID] = myColor;
+        const newV = [...(currentGameData.visited || []), selectedSpot];
+        if (isCap) {
+          if (caps.approach.length > 0 && caps.withdrawal.length > 0) { pendingCaptures = { approach: caps.approach, withdrawal: caps.withdrawal, moveData, newVisited: newV }; renderPieces(moveData.pieces, currentGameData); }
+          else { [...caps.approach, ...caps.withdrawal].forEach(t => delete moveData.pieces[t]); finalizeMove(moveData.pieces, spotID, newV, dir, true); }
+        } else { finalizeMove(moveData.pieces, spotID, newV, dir, false); }
+      }
     }
 
     function getCaptures(pieces, s, e, color) {
-        const r1 = rows.indexOf(s[0]), c1 = cols.indexOf(s[1]), r2 = rows.indexOf(e[0]), c2 = cols.indexOf(e[1]), enemy = color === "mena" ? "maintso" : "mena", dr = r2-r1, dc = c2-c1;
-        const scan = (row, col, sr, sc) => {
-            let res = [], cr = row+sr, cc = col+sc;
-            while(cr>=0 && cr<5 && cc>=0 && cc<9 && pieces[rows[cr]+cols[cc]] === enemy) { res.push(rows[cr]+cols[cc]); cr+=sr; cc+=sc; }
-            return res;
-        };
-        return { approach: scan(r2, c2, dr, dc), withdrawal: scan(r1, c1, -dr, -dc) };
+      const r1 = rows.indexOf(s[0]), c1 = cols.indexOf(s[1]), r2 = rows.indexOf(e[0]), c2 = cols.indexOf(e[1]), enemy = color === "mena" ? "maintso" : "mena", dr = r2-r1, dc = c2-c1;
+      const scan = (row, col, sr, sc) => {
+        let res = [], cr = row+sr, cc = col+sc;
+        while(cr>=0 && cr<5 && cc>=0 && cc<9 && pieces[rows[cr]+cols[cc]] === enemy) { res.push(rows[cr]+cols[cc]); cr+=sr; cc+=sc; }
+        return res;
+      };
+      return { approach: scan(r2, c2, dr, dc), withdrawal: scan(r1, c1, -dr, -dc) };
     }
 
     async function confirmCapture(type) {
-        const { moveData, approach, withdrawal, newVisited } = pendingCaptures;
-        const final = {...moveData.pieces};
-        (type==='approach' ? approach : withdrawal).forEach(t => delete final[t]);
-        pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
-        finalizeMove(final, moveData.target, newVisited, moveData.dir, true);
+      const { moveData, approach, withdrawal, newVisited } = pendingCaptures;
+      const final = {...moveData.pieces};
+      (type==='approach' ? approach : withdrawal).forEach(t => delete final[t]);
+      pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
+      finalizeMove(final, moveData.target, newVisited, moveData.dir, true);
     }
 
     async function finalizeMove(p, cur, v, d, wasCapture) {
-        if (wasCapture && checkAvailableCaptures(p, cur, v, d)) {
-            selectedSpot = cur; canChangePiece = false;
-            await callApi(GAME_API_URL, 'update-move', { moveData: { pieces: p, movingPiece: cur, visited: v, lastDir: d } });
-        } else {
-            await stopMoveManually(p);
-        }
-        refreshGameStatus();
+      if (wasCapture && checkAvailableCaptures(p, cur, v, d)) {
+        selectedSpot = cur; canChangePiece = false;
+        await callApi(GAME_API_URL, 'update-move', { moveData: { pieces: p, movingPiece: cur, visited: v, lastDir: d } });
+      } else { await stopMoveManually(p); }
+      refreshGameStatus();
     }
 
     function checkAvailableCaptures(pieces, s, v, d) {
-        const moves = allowedMoves[s] || [];
-        return moves.some(t => {
-            if (pieces[t] || (v && v.includes(t))) return false;
-            const r1 = rows.indexOf(s[0]), c1 = cols.indexOf(s[1]), r2 = rows.indexOf(t[0]), c2 = cols.indexOf(t[1]);
-            if (d === `${r2-r1},${c2-c1}`) return false;
-            const caps = getCaptures(pieces, s, t, myColor);
-            return (caps.approach.length > 0 || caps.withdrawal.length > 0);
-        });
+      return (allowedMoves[s] || []).some(t => {
+        if (pieces[t] || (v && v.includes(t))) return false;
+        const r1 = rows.indexOf(s[0]), c1 = cols.indexOf(s[1]), r2 = rows.indexOf(t[0]), c2 = cols.indexOf(t[1]);
+        if (d === `${r2-r1},${c2-c1}`) return false;
+        const caps = getCaptures(pieces, s, t, myColor);
+        return (caps.approach.length > 0 || caps.withdrawal.length > 0);
+      });
     }
 
     async function stopMoveManually(p) {
-        selectedSpot = null; lastBlockedSpot = null;
-        await callApi(GAME_API_URL, 'stop-move', { pieces: p });
+      selectedSpot = null; lastBlockedSpot = null;
+      await callApi(GAME_API_URL, 'stop-move', { pieces: p });
     }
 
     document.getElementById('stop-move-btn').onclick = async () => {
-        if (currentGameData && currentGameData.turn === myColor && currentGameData.movingPiece) {
-            await stopMoveManually(currentGameData.pieces);
-            refreshGameStatus();
-        }
+      if (currentGameData && currentGameData.turn === myColor && currentGameData.movingPiece) {
+        await stopMoveManually(currentGameData.pieces); refreshGameStatus();
+      }
     };
 
     initGame();
-})();
-
+  })();
   </script>
 </body>
 </html>
