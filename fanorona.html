@@ -19,17 +19,19 @@
       align-items: center;
     }
     .flipped { transform: rotate(180deg); }
-    .grid-line { stroke: #333; stroke-width: 2; }
+    .grid-line { stroke: #333; stroke-width: 2; fill: none; }
     .piece-group { transition: transform 0.2s ease-in-out; }
-    .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
-    .movable-piece { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
-    .blocked-piece { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
+    
+    /* Styles ho an'ny pièce */
+    .selected-piece { stroke: #FFF700; stroke-width: 6px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
+    .movable-piece { stroke: #00FF00; stroke-width: 5px; paint-order: stroke; cursor: pointer; }
+    .blocked-piece { stroke: #FF4500; stroke-width: 4px; paint-order: stroke; opacity: 0.8; }
     .capture-target { stroke: darkorange; stroke-width: 5px; cursor: pointer; pointer-events: all !important; stroke-dasharray: 5; animation: dash 1s linear infinite; }
+    
     @keyframes dash { to { stroke-dashoffset: 10; } }
     .spot { cursor: pointer; pointer-events: all; }
-    .lock-board .spot { pointer-events: none !important; }
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
-    .guide-dot { fill: #FFF700; opacity: 0.8; pointer-events: none; }
+    .guide-dot { fill: #FFF700; opacity: 0.9; pointer-events: none; }
 
     #players-bar {
       display: flex;
@@ -44,90 +46,55 @@
       color: white;
       font-size: 1em;
       font-weight: 700;
-      min-height: 44px;
     }
     .player-info { display: flex; align-items: center; gap: 8px; }
-    .player-dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); }
+    .player-dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.6); }
     .dot-maintso { background: #22c55e; }
-    .dot-mena    { background: #ef4444; }
-    .player-name { font-size: 0.95em; }
-    .player-label { font-size: 0.7em; font-weight: 400; opacity: 0.75; margin-left: 2px; }
-    .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
+    .dot-mena { background: #ef4444; }
+    .player-label { font-size: 0.7em; opacity: 0.75; }
 
-    #info-box { color: white; margin-bottom: 10px; font-weight: bold; }
-    #turn-display { margin: 0; }
+    #turn-display { margin: 0; color: white; font-weight: bold; margin-bottom: 10px; }
 
     #stop-move-btn {
-      width: 60px;
-      height: 60px;
+      width: 65px;
+      height: 65px;
       border-radius: 50%;
-      background: #f44336;
+      background: #ef4444;
       color: white;
       border: 4px solid white;
-      font-size: 30px;
+      font-size: 22px;
       font-weight: bold;
       cursor: pointer;
-      margin-top: 20px;
+      margin-top: 15px;
       opacity: 0.3;
       transition: 0.3s;
       pointer-events: none;
-    }
-    #stop-move-btn.active {
-      opacity: 1;
-      transform: scale(1.1);
-      box-shadow: 0 0 15px rgba(255,255,255,0.5);
-      pointer-events: all;
-    }
-
-    #game-board {
-      width: 95vw;
-      max-width: 800px;
-      max-height: 75vh;
-      display: block;
-    }
-
-    #loading-overlay {
-      position: fixed;
-      inset: 0;
-      background: #0092FF;
       display: flex;
       justify-content: center;
       align-items: center;
-      z-index: 100;
-      color: white;
-      font-size: 1.2em;
-      font-weight: 700;
-      flex-direction: column;
-      gap: 16px;
+    }
+    #stop-move-btn.active { opacity: 1; transform: scale(1.1); pointer-events: all; box-shadow: 0 0 15px rgba(255,255,255,0.4); }
+
+    #game-board { width: 95vw; max-width: 800px; max-height: 70vh; display: block; }
+
+    #loading-overlay {
+      position: fixed; inset: 0; background: #0092FF;
+      display: flex; justify-content: center; align-items: center;
+      z-index: 100; color: white; flex-direction: column; gap: 16px;
     }
     #loading-overlay.hidden { display: none; }
-    .spinner {
-      width: 36px;
-      height: 36px;
-      border: 4px solid rgba(255,255,255,0.3);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
+    .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    #error-msg {
-      display: none;
-      color: #fef08a;
-      font-size: 1em;
-      margin-top: 10px;
-      text-align: center;
-    }
   </style>
 </head>
 <body>
   <div id="loading-overlay">
     <div class="spinner"></div>
-    <span>Fananganana ny lalao…</span>
+    <span>Andraso kely...</span>
   </div>
 
   <div id="players-bar" style="display:none;"></div>
-  <div id="info-box"><h2 id="turn-display">Mampiditra...</h2></div>
+  <h2 id="turn-display">Mampiditra...</h2>
 
   <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
     <defs>
@@ -145,12 +112,11 @@
   </svg>
 
   <button id="stop-move-btn">OK</button>
-  <div id="error-msg"></div>
 
   <script>
 (function() {
-  const SESSION_API_URL = '/api/session';
   const GAME_API_URL = '/api/game';
+  const SESSION_API_URL = '/api/session';
   const POLL_INTERVAL = 2000;
 
   const params = new URLSearchParams(window.location.search);
@@ -160,59 +126,23 @@
   const rows = ['A','B','C','D','E'];
   const cols = ['1','2','3','4','5','6','7','8','9'];
 
+  // Ny lalan'ny Fanorona (Allowed connections)
   const allowedMoves = {
-    'A1': ['A2','B1','B2'], 'A2': ['A1','A3','B2'], 'A3': ['A2','A4','B2','B3','B4'],
-    'A4': ['A3','A5','B4'], 'A5': ['A4','A6','B4','B5','B6'], 'A6': ['A5','A7','B6'],
-    'A7': ['A6','A8','B6','B7','B8'], 'A8': ['A7','A9','B8'], 'A9': ['A8','B8','B9'],
-    'B1': ['A1','B2','C1'], 'B2': ['A1','A2','A3','B1','B3','C1','C2','C3'],
-    'B3': ['A3','B2','B4','C3'], 'B4': ['A3','A4','A5','B3','B5','C3','C4','C5'],
-    'B5': ['A5','B4','B6','C5'], 'B6': ['A5','A6','A7','B5','B7','C5','C6','C7'],
-    'B7': ['A7','B6','B8','C7'], 'B8': ['A7','A8','A9','B7','B9','C7','C8','C9'],
-    'B9': ['A9','B8','C9'], 'C1': ['B1','B2','C2','D1','D2'], 'C2': ['B2','C1','C3','D2'],
-    'C3': ['B2','B3','B4','C2','C4','D2','D3','D4'], 'C4': ['B4','C3','C5','D4'],
-    'C5': ['B4','B5','B6','C4','C6','D4','D5','D6'], 'C6': ['B6','C5','C7','D6'],
-    'C7': ['B6','B7','B8','C6','C8','D6','D7','D8'], 'C8': ['B8','C7','C9','D8'],
-    'C9': ['B8','B9','C8','D8','D9'], 'D1': ['C1','D2','E1'], 'D2': ['C1','C2','C3','D1','D3','E1','E2','E3'],
-    'D3': ['C3','D2','D4','E3'], 'D4': ['C3','C4','C5','D3','D5','E3','E4','E5'],
-    'D5': ['C5','D4','D6','E5'], 'D6': ['C5','C6','C7','D5','D7','E5','E6','E7'],
-    'D7': ['C7','D6','D8','E7'], 'D8': ['C7','C8','C9','D7','D9','E7','E8','E9'],
-    'D9': ['C9','D8','E9'], 'E1': ['D1','D2','E2'], 'E2': ['D2','E1','E3'],
-    'E3': ['D2','D3','D4','E2','E4'], 'E4': ['D4','E3','E5'], 'E5': ['D4','D5','D6','E4','E6'],
-    'E6': ['D6','E5','E7'], 'E7': ['D6','D7','D8','E6','E8'], 'E8': ['D8','E7','E9'],
-    'E9': ['D8','D9','E8']
+    'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
+    'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
+    'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],'C6':['B6','C5','C7','D6'],'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],'C9':['B8','B9','C8','D8','D9'],
+    'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
+    'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8']
   };
 
   let currentGame = null;
   let selectedSpot = null;
-  let lastBlockedSpot = null;
-  let canChangePiece = true;
   let myUid = null;
-  let myUsername = null;
-  let opponentUsername = null;
-
-  // Lojika hisakanana ny fifandonana (Race condition)
-  let moveSeq = 0;
   let isActionPending = false;
 
-  function showError(msg) {
-    const el = document.getElementById('error-msg');
-    if (el) { el.textContent = msg; el.style.display = 'block'; }
-  }
-
-  async function callSessionApi(action, payload) {
+  async function callApi(url, action, payload) {
     try {
-      const res = await fetch(SESSION_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...payload })
-      });
-      return await res.json();
-    } catch (e) { return { success: false }; }
-  }
-
-  async function callGameApi(action, payload) {
-    try {
-      const res = await fetch(GAME_API_URL, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ...payload })
@@ -226,27 +156,20 @@
     const r1 = rows.indexOf(from[0]), c1 = cols.indexOf(from[1]);
     const r2 = rows.indexOf(to[0]), c2 = cols.indexOf(to[1]);
     const dr = r2 - r1, dc = c2 - c1;
-    const scan = (sr, sc, dirR, dirC) => {
-      const captured = [];
-      let r = sr + dirR, c = sc + dirC;
-      while (r >= 0 && r < 5 && c >= 0 && c < 9 && pieces[rows[r] + cols[c]] === enemy) {
-        captured.push(rows[r] + cols[c]);
-        r += dirR;
-        c += dirC;
+    const scan = (sr, sc, dR, dC) => {
+      let captured = [], r = sr + dR, c = sc + dC;
+      while (r>=0 && r<5 && c>=0 && c<9 && pieces[rows[r]+cols[c]] === enemy) {
+        captured.push(rows[r]+cols[c]); r += dR; c += dC;
       }
       return captured;
     };
-    return {
-      approach: scan(r2, c2, dr, dc),
-      withdrawal: scan(r1, c1, -dr, -dc)
-    };
+    return { approach: scan(r2, c2, dr, dc), withdrawal: scan(r1, c1, -dr, -dc) };
   }
 
-  function playerHasAnyCapture(pieces, color) {
+  function hasGlobalCapture(pieces, color) {
     for (let s in pieces) {
       if (pieces[s] === color) {
-        const moves = allowedMoves[s] || [];
-        for (let t of moves) {
+        for (let t of (allowedMoves[s] || [])) {
           if (!pieces[t]) {
             const c = getCaptures(pieces, s, t, color);
             if (c.approach.length > 0 || c.withdrawal.length > 0) return true;
@@ -258,36 +181,123 @@
   }
 
   function canPieceMove(spot, pieces, color, globalCapture) {
-    const moves = allowedMoves[spot] || [];
-    return moves.some(target => {
-      if (pieces[target]) return false;
-      const caps = getCaptures(pieces, spot, target, color);
-      const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
-      return globalCapture ? isCap : true;
+    return (allowedMoves[spot] || []).some(t => {
+      if (pieces[t]) return false;
+      const c = getCaptures(pieces, spot, t, color);
+      return globalCapture ? (c.approach.length > 0 || c.withdrawal.length > 0) : true;
     });
   }
 
-  function checkAvailableCaptures(pieces, spot, visited, lastDir, color) {
-    const moves = allowedMoves[spot] || [];
-    return moves.some(target => {
-      if (pieces[target] || (visited && visited.includes(target))) return false;
-      const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
-      const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-      if (lastDir === `${r2 - r1},${c2 - c1}`) return false;
-      const caps = getCaptures(pieces, spot, target, color);
-      return caps.approach.length > 0 || caps.withdrawal.length > 0;
+  function updateUI() {
+    if (!currentGame) return;
+    const turnDisp = document.getElementById('turn-display');
+    const stopBtn = document.getElementById('stop-move-btn');
+    const isMyTurn = currentGame.turn === myColor;
+
+    if (isMyTurn) {
+      turnDisp.innerText = "ANJARANAO";
+      turnDisp.style.color = "#ADFF2F";
+      
+      // Force selection if continuing a move
+      if (currentGame.movingPiece) {
+        selectedSpot = currentGame.movingPiece;
+        stopBtn.classList.add('active');
+      } else {
+        stopBtn.classList.remove('active');
+      }
+    } else {
+      turnDisp.innerText = "Miandry ny hafa...";
+      turnDisp.style.color = "white";
+      selectedSpot = null;
+      stopBtn.classList.remove('active');
+    }
+
+    renderPieces();
+    renderGuides();
+    renderPlayersBar();
+  }
+
+  function renderPieces() {
+    const grp = document.getElementById('pieces-group');
+    grp.innerHTML = '';
+    const pieces = currentGame.pieces || {};
+    const globalCap = hasGlobalCapture(pieces, myColor);
+    const isMyTurn = currentGame.turn === myColor;
+
+    for (let spot in pieces) {
+      const r = rows.indexOf(spot[0]), c = cols.indexOf(spot[1]);
+      const color = pieces[spot];
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', `translate(${c * 50}, ${r * 50})`);
+      
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('r', 13);
+      circle.setAttribute('fill', `url(#${color}-pat)`);
+      
+      if (isMyTurn && color === myColor) {
+        if (selectedSpot === spot) {
+          circle.classList.add('selected-piece');
+        } else if (!currentGame.movingPiece && canPieceMove(spot, pieces, myColor, globalCap)) {
+          circle.classList.add('movable-piece');
+          circle.onclick = () => { selectedSpot = spot; updateUI(); };
+        } else {
+          circle.classList.add('blocked-piece');
+        }
+      }
+
+      // Ambience for captures
+      if (currentGame.awaitingCapture && color !== myColor) {
+        if ((currentGame.pendingApproach || []).includes(spot) || (currentGame.pendingWithdrawal || []).includes(spot)) {
+          circle.classList.add('capture-target');
+          circle.onclick = (e) => { e.stopPropagation(); resolveCapture(spot); };
+        }
+      }
+
+      g.appendChild(circle);
+      grp.appendChild(g);
+    }
+  }
+
+  function renderGuides() {
+    const grp = document.getElementById('guides-group');
+    grp.innerHTML = '';
+    if (!selectedSpot || currentGame.turn !== myColor || currentGame.awaitingCapture) return;
+
+    const pieces = currentGame.pieces || {};
+    const globalCap = hasGlobalCapture(pieces, myColor);
+    
+    (allowedMoves[selectedSpot] || []).forEach(t => {
+      if (pieces[t] || (currentGame.visited || []).includes(t)) return;
+      
+      const caps = getCaptures(pieces, selectedSpot, t, myColor);
+      const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
+      
+      if (globalCap && !isCap) return;
+      
+      // Rule: cannot return to previous direction in same turn
+      if (currentGame.movingPiece && currentGame.lastDir) {
+        const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
+        const r2 = rows.indexOf(t[0]), c2 = cols.indexOf(t[1]);
+        if (currentGame.lastDir === `${r2-r1},${c2-c1}`) return;
+      }
+
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', cols.indexOf(t[1]) * 50);
+      dot.setAttribute('cy', rows.indexOf(t[0]) * 50);
+      dot.setAttribute('r', 6);
+      dot.setAttribute('class', 'guide-dot');
+      grp.appendChild(dot);
     });
   }
 
   function drawSpots() {
     const grp = document.getElementById('spots-group');
-    grp.innerHTML = '';
     rows.forEach((r, ri) => {
       cols.forEach((c, ci) => {
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', ci * 50);
         circle.setAttribute('cy', ri * 50);
-        circle.setAttribute('r', 22);
+        circle.setAttribute('r', 20);
         circle.setAttribute('fill', 'transparent');
         circle.setAttribute('class', 'spot');
         circle.onclick = () => handleSpotClick(r + c);
@@ -296,218 +306,16 @@
     });
   }
 
-  function renderPieces(game) {
-    const pieces = game.pieces || {};
-    const grp = document.getElementById('pieces-group');
-    const isMyTurn = game.turn === myColor;
-    const globalCapture = playerHasAnyCapture(pieces, myColor);
-    grp.innerHTML = '';
-    for (let spot in pieces) {
-      const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
-      const color = pieces[spot];
-      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('class', 'piece-group');
-      g.setAttribute('transform', `translate(${ci * 50}, ${ri * 50})`);
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('r', 12);
-      circle.setAttribute('fill', `url(#${color}-pat)`);
-      circle.style.pointerEvents = 'none';
-      
-      if (isMyTurn && color === myColor) {
-        // Raha vao anjarany dia asehoy hoe iza no azo ahetsika
-        if (selectedSpot === spot) {
-          circle.classList.add('selected-piece');
-        } else if (lastBlockedSpot === spot) {
-          circle.classList.add('blocked-piece');
-        } else if (!game.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) {
-          circle.classList.add('movable-piece');
-        }
-      }
-      
-      // Target capture
-      if (game.awaitingCapture && color !== myColor) {
-        if ((game.pendingApproach || []).includes(spot) || (game.pendingWithdrawal || []).includes(spot)) {
-          circle.classList.add('capture-target');
-          circle.style.pointerEvents = 'all';
-          circle.onclick = (e) => { e.stopPropagation(); resolveCapture(spot); };
-          const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          l1.setAttribute('x1',-5); l1.setAttribute('y1',-5); l1.setAttribute('x2',5); l1.setAttribute('y2',5);
-          l1.setAttribute('class','cross-line');
-          const l2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          l2.setAttribute('x1',5); l2.setAttribute('y1',-5); l2.setAttribute('x2',-5); l2.setAttribute('y2',5);
-          l2.setAttribute('class','cross-line');
-          g.appendChild(l1); g.appendChild(l2);
-        }
-      }
-      g.appendChild(circle);
-      grp.appendChild(g);
-    }
-  }
-
-  function renderGuides(spot, game) {
-    const grp = document.getElementById('guides-group');
-    grp.innerHTML = '';
-    if (!spot) return;
-    const pieces = game.pieces || {};
-    const globalCapture = playerHasAnyCapture(pieces, myColor);
-    (allowedMoves[spot] || []).forEach(target => {
-      if (pieces[target] || (game.visited || []).includes(target)) return;
-      const caps = getCaptures(pieces, spot, target, myColor);
-      if (globalCapture && !(caps.approach.length > 0 || caps.withdrawal.length > 0)) return;
-      if (!canChangePiece) {
-        const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
-        const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-        if (game.lastDir === `${r2 - r1},${c2 - c1}`) return;
-      }
-      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      dot.setAttribute('cx', cols.indexOf(target[1]) * 50);
-      dot.setAttribute('cy', rows.indexOf(target[0]) * 50);
-      dot.setAttribute('r', 6);
-      dot.setAttribute('class', 'guide-dot');
-      grp.appendChild(dot);
-    });
-  }
-
-  function renderPlayersBar() {
-    const bar = document.getElementById('players-bar');
-    if (!bar) return;
-    const myDot = myColor === 'maintso' ? 'dot-maintso' : 'dot-mena';
-    const oppDot = myColor === 'maintso' ? 'dot-mena' : 'dot-maintso';
-    bar.innerHTML = `<div class="player-info"><div class="player-dot ${oppDot}"></div><span class="player-name">${escapeHtml(opponentUsername || '???')}</span><span class="player-label">(adversaire)</span></div><span class="vs-sep">VS</span><div class="player-info"><span class="player-label">(ianao)</span><span class="player-name">${escapeHtml(myUsername || myUid)}</span><div class="player-dot ${myDot}"></div></div>`;
-    bar.style.display = 'flex';
-  }
-
-  function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-  function updateUI() {
-    if (!currentGame) return;
-    const turnDisplay = document.getElementById('turn-display');
-    const stopBtn = document.getElementById('stop-move-btn');
-    
-    if (currentGame.turn === myColor) {
-      turnDisplay.innerText = 'ANJARANAO';
-      turnDisplay.style.color = '#ADFF2F';
-      
-      // Raha mbola manohy capture dia lock-ena ny pièce
-      if (currentGame.movingPiece) {
-        selectedSpot = currentGame.movingPiece;
-        canChangePiece = false;
-        stopBtn.classList.add('active');
-      } else {
-        // Raha vao manomboka tour dia afaka mifidy
-        canChangePiece = true;
-        stopBtn.classList.remove('active');
-      }
-      
-      if (selectedSpot && !currentGame.awaitingCapture) {
-        renderGuides(selectedSpot, currentGame);
-      } else {
-        document.getElementById('guides-group').innerHTML = '';
-      }
-    } else {
-      turnDisplay.innerText = 'Miandry ny hafa...';
-      turnDisplay.style.color = 'white';
-      selectedSpot = null;
-      lastBlockedSpot = null;
-      canChangePiece = true;
-      stopBtn.classList.remove('active');
-      document.getElementById('guides-group').innerHTML = '';
-    }
-    renderPieces(currentGame);
-    renderPlayersBar();
-  }
-
-  async function fetchGame() {
-    if (!myUid || isActionPending) return;
-    const currentMoveSeq = moveSeq;
-    const data = await callGameApi('get-game', { uid: myUid, gameId });
-    
-    // Raha nisy hetsika nataon'ny user nandritra ny fetch dia aza raisina ny valiny
-    if (currentMoveSeq !== moveSeq) return;
-    
-    if (data && data.success && data.game) {
-      currentGame = { ...currentGame, ...data.game };
-      updateUI();
-    }
-  }
-
   async function handleSpotClick(spotID) {
-    if (!currentGame || currentGame.turn !== myColor || currentGame.awaitingCapture || isActionPending) return;
+    if (!currentGame || currentGame.turn !== myColor || isActionPending || currentGame.awaitingCapture) return;
 
-    const pieces = currentGame.pieces || {};
-
-    // 1. Mifidy pièce (Raha vao anjarany na afaka manova)
-    if (canChangePiece && pieces[spotID] === myColor) {
-      if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
-        selectedSpot = spotID;
-        lastBlockedSpot = null;
-      } else {
-        selectedSpot = null;
-        lastBlockedSpot = spotID;
-      }
-      updateUI();
-      return;
-    }
-
-    // 2. Mifidy toerana haleha (Move)
-    if (selectedSpot && (allowedMoves[selectedSpot] || []).includes(spotID) && !pieces[spotID]) {
-      if ((currentGame.visited || []).includes(spotID)) return;
-
-      const caps = getCaptures(pieces, selectedSpot, spotID, myColor);
-      const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
-      
-      // Fitsipika: tsy maintsy mihinana raha misy azo hanina
-      if (playerHasAnyCapture(pieces, myColor) && !isCap) return;
-
-      const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
-      const r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
-      const dir = `${r2 - r1},${c2 - c1}`;
-      
-      // Fitsipika: tsy azo averina ny lalana vao nidirana
-      if (!canChangePiece && currentGame.lastDir === dir) return;
-
-      // START ACTION
+    // Move logic
+    if (selectedSpot && !currentGame.pieces[spotID]) {
       isActionPending = true;
-      moveSeq++;
-      const origin = selectedSpot;
-      
-      // OPTIMISTIC UPDATE (Hetsika eo no ho eo)
-      let nextPieces = { ...pieces };
-      delete nextPieces[origin];
-      nextPieces[spotID] = myColor;
-      
-      // Jereo raha mbola afaka mihinana
-      let nextMovingPiece = spotID;
-      let nextAwaiting = false;
-      let nextTurn = currentGame.turn;
-      
-      if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
-        nextAwaiting = true;
-      } else if (isCap) {
-        (caps.approach.length > 0 ? caps.approach : caps.withdrawal).forEach(s => delete nextPieces[s]);
-        if (!checkAvailableCaptures(nextPieces, spotID, [...(currentGame.visited || []), origin], dir, myColor)) {
-          nextMovingPiece = null;
-          nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso');
-        }
-      } else {
-        nextMovingPiece = null;
-        nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso');
-      }
-
-      // Fanovana sary vonjimaika
-      const backupGame = JSON.stringify(currentGame);
-      currentGame.pieces = nextPieces;
-      currentGame.turn = nextTurn;
-      currentGame.movingPiece = nextMovingPiece;
-      currentGame.awaitingCapture = nextAwaiting;
-      updateUI();
-
-      const apiRes = await callGameApi('make-move', { uid: myUid, gameId, origin, target: spotID });
-      
-      if (apiRes.success) {
-        currentGame = { ...currentGame, ...apiRes.game };
-      } else {
-        currentGame = JSON.parse(backupGame);
+      const res = await callApi(GAME_API_URL, 'make-move', { uid: myUid, gameId, origin: selectedSpot, target: spotID });
+      if (res.success) {
+        currentGame = res.game;
+        if (!currentGame.movingPiece) selectedSpot = null;
       }
       isActionPending = false;
       updateUI();
@@ -517,52 +325,52 @@
   async function resolveCapture(capturedSpot) {
     if (isActionPending) return;
     isActionPending = true;
-    moveSeq++;
-    
-    const apiRes = await callGameApi('resolve-capture', { uid: myUid, gameId, capturedSpot });
-    if (apiRes.success) {
-      currentGame = { ...currentGame, ...apiRes.game };
-      // Raha tapitra ny turn-ny dia esory ny selection
-      if (currentGame.turn !== myColor) {
-        selectedSpot = null;
-      }
-    }
+    const res = await callApi(GAME_API_URL, 'resolve-capture', { uid: myUid, gameId, capturedSpot });
+    if (res.success) currentGame = res.game;
     isActionPending = false;
     updateUI();
   }
 
   async function handleStopTurn() {
-    if (!currentGame || currentGame.turn !== myColor || !currentGame.movingPiece || isActionPending) return;
+    if (isActionPending || !currentGame.movingPiece) return;
     isActionPending = true;
-    moveSeq++;
-    
-    const apiRes = await callGameApi('stop-turn', { uid: myUid, gameId });
-    if (apiRes.success) {
-      currentGame = { ...currentGame, ...apiRes.game };
+    const res = await callApi(GAME_API_URL, 'stop-turn', { uid: myUid, gameId });
+    if (res.success) {
+      currentGame = res.game;
       selectedSpot = null;
     }
     isActionPending = false;
     updateUI();
   }
 
-  async function init() {
-    if (!gameId || !myColor) return;
-    const stored = localStorage.getItem('user');
-    if (!stored) { window.location.href = 'login&register.html'; return; }
-    const localUser = JSON.parse(stored);
-    myUid = localUser.uid;
-    myUsername = localUser.username || myUid;
+  function renderPlayersBar() {
+    const bar = document.getElementById('players-bar');
+    const oppColor = myColor === 'maintso' ? 'mena' : 'maintso';
+    bar.innerHTML = `
+      <div class="player-info"><div class="player-dot dot-${oppColor}"></div><span>Adversaire</span></div>
+      <div class="player-info"><span>Ianao</span><div class="player-dot dot-${myColor}"></div></div>
+    `;
+    bar.style.display = 'flex';
+  }
 
-    const data = await callSessionApi('get-fanorona-game', { uid: myUid, gameId });
+  async function init() {
+    const stored = localStorage.getItem('user');
+    if (!stored) return;
+    myUid = JSON.parse(stored).uid;
+    
+    const data = await callApi(SESSION_API_URL, 'get-fanorona-game', { uid: myUid, gameId });
     if (data.success) {
-      opponentUsername = data.opponentUsername;
       currentGame = data;
       document.getElementById('game-board').classList.toggle('flipped', myColor === 'mena');
       drawSpots();
       updateUI();
       document.getElementById('game-board').style.display = 'block';
       document.getElementById('loading-overlay').classList.add('hidden');
-      setInterval(fetchGame, POLL_INTERVAL);
+      setInterval(async () => {
+        if (isActionPending) return;
+        const sync = await callApi(GAME_API_URL, 'get-game', { uid: myUid, gameId });
+        if (sync.success) { currentGame = sync.game; updateUI(); }
+      }, POLL_INTERVAL);
     }
   }
 
