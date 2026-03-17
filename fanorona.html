@@ -8,7 +8,6 @@
     * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
     body { font-family: sans-serif; margin: 0; padding: 0; text-align: center; background: #0092FF; overflow: hidden; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
     
-    /* Player Bar Styling */
     #players-bar { display: none; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.3); padding: 10px 20px; border-radius: 30px; margin-bottom: 15px; width: 90%; max-width: 450px; color: white; border: 2px solid rgba(255,255,255,0.2); }
     .player-info { display: flex; align-items: center; gap: 8px; }
     .player-name { font-weight: bold; font-size: 14px; }
@@ -20,15 +19,12 @@
 
     .flipped { transform: rotate(180deg); }
     .grid-line { stroke: #333; stroke-width: 2; }
-    
     .piece-group { transition: transform 0.2s ease-in-out; }
     .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
     .movable-piece { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
     .blocked-piece { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
-    
     .capture-target { stroke: darkorange; stroke-width: 5px; cursor: pointer; pointer-events: all !important; stroke-dasharray: 5; animation: dash 1s linear infinite; }
     @keyframes dash { to { stroke-dashoffset: 10; } }
-    
     .spot { cursor: pointer; pointer-events: all; }
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot { fill: #FFF700; opacity: 0.8; pointer-events: none; }
@@ -43,7 +39,7 @@
   <div id="players-bar"></div>
 
   <div id="info-box">
-    <h2 id="turn-display">Mampiditra...</h2>
+    <h2 id="turn-display">Miomana...</h2>
   </div>
 
   <svg id="game-board" viewBox="-50 -50 500 300">
@@ -71,7 +67,6 @@
     const urlParams = new URLSearchParams(window.location.search);
     const gameID = urlParams.get('gameId') || urlParams.get('gameID');
     const myColor = urlParams.get('color');
-    const inviteId = urlParams.get('inviteId');
 
     const rows = ['A','B','C','D','E'], cols = ['1','2','3','4','5','6','7','8','9'];
     let selectedSpot = null, canChangePiece = true, lastBlockedSpot = null;
@@ -97,15 +92,12 @@
       'E7': ['D6','D7','D8','E6','E8'], 'E8': ['D8','E7','E9'], 'E9': ['D8','D9','E8'],
     };
 
-    function escapeHtml(s) {
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
+    function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
     async function callApi(url, action, payload = {}) {
       const stored = localStorage.getItem('user');
       if (!stored) { window.location.href = 'login&register.html'; return; }
       const localUser = JSON.parse(stored);
-
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,7 +112,6 @@
       const bar = document.getElementById('players-bar');
       const myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       const oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-
       bar.innerHTML = `
         <div class="player-info">
           <div class="player-dot ${oppDotClass}"></div>
@@ -137,31 +128,33 @@
     }
 
     async function initGame() {
-      if (!gameID || !myColor) { alert("Diso ny URL"); return; }
+      if (!gameID || !myColor) { alert("Tsy hita ny mombamomba ny lalao (URL)"); return; }
       const board = document.getElementById('game-board');
       if (myColor === "mena") board.classList.add('flipped');
       drawBoardSpots();
 
+      // Alefa avy hatrany ny polling fa tsy miandry session
+      setInterval(refreshGameStatus, 2000);
+      refreshGameStatus();
+
+      // Alaina miadana ny anaran'ny mpilalao
       try {
         const stored = JSON.parse(localStorage.getItem('user'));
         const sessionData = await callApi(SESSION_API_URL, 'get-fanorona-game');
-        if (sessionData.success) {
+        if (sessionData && sessionData.success) {
           renderPlayersBar(myColor, stored.username || "Ianao", sessionData.opponentUsername || "???");
         }
-      } catch (e) { console.error("Session API Error:", e); }
-
-      setInterval(refreshGameStatus, 2000);
-      refreshGameStatus();
+      } catch (e) { console.warn("Tsy nahazo info mpilalao:", e); }
     }
 
     async function refreshGameStatus() {
       try {
         const data = await callApi(GAME_API_URL, 'get-status');
-        if (data.success && data.game) {
+        if (data && data.success && data.game) {
           currentGameData = data.game;
           updateUI(currentGameData);
         }
-      } catch (e) { console.error("Refresh Error:", e); }
+      } catch (e) { console.error("Polling error:", e); }
     }
 
     function updateUI(data) {
@@ -175,11 +168,11 @@
         else { canChangePiece = true; stopBtn.classList.remove('active'); }
         if (selectedSpot && pendingCaptures.approach.length === 0) renderGuides(selectedSpot, data);
       } else {
-        display.innerText = "Miandry ny hafa..."; display.style.color = "white";
+        display.innerText = "Anjaran'ny hafa..."; display.style.color = "white";
         selectedSpot = null; lastBlockedSpot = null; stopBtn.classList.remove('active');
         document.getElementById('guides-group').innerHTML = "";
       }
-      renderPieces(data.pieces, data);
+      renderPieces(data.pieces || {}, data);
     }
 
     function drawBoardSpots() {
@@ -201,6 +194,7 @@
       const grp = document.getElementById('pieces-group');
       const isMyTurn = gameData.turn === myColor;
       const globalCapture = playerHasAnyCapture(pieces, myColor);
+      
       let newPiecesOnBoard = {};
       let vanished = Object.keys(piecesOnBoard).filter(k => !pieces[k]);
       let appeared = Object.keys(pieces).filter(k => !piecesOnBoard[k]);
@@ -209,14 +203,14 @@
         let color = piecesOnBoard[vKey].color;
         let target = appeared.find(aKey => pieces[aKey] === color);
         if (target) { newPiecesOnBoard[target] = piecesOnBoard[vKey]; appeared = appeared.filter(a => a !== target); }
-        else { piecesOnBoard[vKey].el.remove(); }
+        else { if(piecesOnBoard[vKey].el) piecesOnBoard[vKey].el.remove(); }
       });
 
       appeared.forEach(aKey => {
         const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
         g.setAttribute("class", "piece-group");
         const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        c.setAttribute("r", 12);
+        c.setAttribute("r", 15); // Nalehibiazina kely mba ho hita tsara
         g.appendChild(c);
         grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
@@ -226,6 +220,7 @@
       piecesOnBoard = newPiecesOnBoard;
 
       for (let spot in pieces) {
+        if (!piecesOnBoard[spot]) continue;
         const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
         const g = piecesOnBoard[spot].el;
         const circle = g.querySelector('circle');
