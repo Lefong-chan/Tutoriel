@@ -275,36 +275,42 @@
   }
 
   async function handleSpotClick(spotID) {
-    if (!currentGame || currentGame.turn !== myColor || isActionPending || currentGame.awaitingCapture) return;
+    if (!currentGame || currentGame.turn !== myColor || currentGame.awaitingCapture) return;
     
-    // Move logic
+    // Combo Move logic (Non-blocking optimistic move)
     if (selectedSpot && !currentGame.pieces[spotID]) {
-      // Optimistic UI: Tonga dia findrao eo amin'ny memory ilay piece fa aza miandry API
-      const prevPieces = {...currentGame.pieces};
-      const mover = currentGame.pieces[selectedSpot];
-      delete currentGame.pieces[selectedSpot];
-      currentGame.pieces[spotID] = mover;
-      updateUI(); // Update feno avy hatrany (0ms)
-
-      isActionPending = true;
-      const res = await callApi(GAME_API_URL, 'make-move', { uid: myUid, gameId, origin: selectedSpot, target: spotID });
+      const origin = selectedSpot;
+      const target = spotID;
       
-      if (res.success) {
-        currentGame = res.game;
-        if (!currentGame.movingPiece) selectedSpot = null;
-      } else {
-        // Raha nisy error dia avereno ny teo aloha
-        currentGame.pieces = prevPieces;
-      }
-      isActionPending = false;
-      updateUI();
+      // Update board locally BEFORE API call
+      const prevPieces = {...currentGame.pieces};
+      const mover = currentGame.pieces[origin];
+      delete currentGame.pieces[origin];
+      currentGame.pieces[target] = mover;
+      
+      // Tahaka ny efa movingPiece izy ato amin'ny interface
+      selectedSpot = target;
+      
+      // Tonga dia naseho ny Guides vaovao ho an'ny Combo
+      updateUI(); 
+
+      // Alefa any amin'ny API ny hetsika (tsy isActionPending fa mbola afaka manindry ny manaraka)
+      callApi(GAME_API_URL, 'make-move', { uid: myUid, gameId, origin, target }).then(res => {
+        if (res.success) {
+          currentGame = res.game;
+          updateUI();
+        } else {
+          // Raha nisy error (ohatra: illegal move) dia avereno ny board
+          currentGame.pieces = prevPieces;
+          selectedSpot = origin;
+          updateUI();
+        }
+      });
     }
   }
 
   async function resolveCapture(capturedSpot) {
-    if (isActionPending) return;
     isActionPending = true;
-    // Tonga dia esory eo amin'ny board aloha (Optimistic)
     delete currentGame.pieces[capturedSpot];
     updateUI();
 
@@ -349,14 +355,12 @@
       updateUI();
       document.getElementById('game-board').style.display = 'block';
       
-      // Ny poll ihany no miandry 2000ms
       setInterval(async () => {
-        // Raha mbola manao zavatra aho dia aza manao poll aloha sao miteraka glitch
+        // Miandry poll fotsiny raha tsy anjara, na raha tsy eo am-panaovana combo
         if (isActionPending || (currentGame.turn === myColor && !currentGame.movingPiece)) return;
         
         const sync = await callApi(GAME_API_URL, 'get-game', { uid: myUid, gameId });
         if (sync.success) { 
-           // Raha lalaon'ny hafa vao ovaina ny board
            if (sync.game.turn !== currentGame.turn || JSON.stringify(sync.game.pieces) !== JSON.stringify(currentGame.pieces)) {
              currentGame = sync.game; 
              updateUI(); 
