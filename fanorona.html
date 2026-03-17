@@ -183,49 +183,35 @@
   };
 
   let currentGame = null;
-  let localVersion = 0; 
   let selectedSpot = null;
   let lastBlockedSpot = null;
   let canChangePiece = true;
   let myUid = null;
   let myUsername = null;
   let opponentUsername = null;
+  
+  // Flag vaovao hitantanana ny synchronisation
   let localMoveInProgress = false;
 
   function showError(msg) {
     const el = document.getElementById('error-msg');
-    if (el) { el.textContent = msg; el.style.display = 'block'; setTimeout(() => el.style.display='none', 3000); }
-  }
-
-  async function callGameApi(action, payload) {
-    try {
-      const res = await fetch(GAME_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action, 
-          uid: myUid,
-          gameId,
-          clientVersion: localVersion,
-          ...payload 
-        })
-      });
-      
-      const data = await res.json();
-      if (res.status === 409) {
-        await fetchGame();
-        return { success: false, conflict: true };
-      }
-      if (data.success && data.game && data.game.version !== undefined) {
-        localVersion = data.game.version;
-      }
-      return data;
-    } catch (e) { return { success: false }; }
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
   }
 
   async function callSessionApi(action, payload) {
     try {
       const res = await fetch(SESSION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...payload })
+      });
+      return await res.json();
+    } catch (e) { return { success: false }; }
+  }
+
+  async function callGameApi(action, payload) {
+    try {
+      const res = await fetch(GAME_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ...payload })
@@ -249,7 +235,10 @@
       }
       return captured;
     };
-    return { approach: scan(r2, c2, dr, dc), withdrawal: scan(r1, c1, -dr, -dc) };
+    return {
+      approach: scan(r2, c2, dr, dc),
+      withdrawal: scan(r1, c1, -dr, -dc)
+    };
   }
 
   function playerHasAnyCapture(pieces, color) {
@@ -283,8 +272,7 @@
       if (pieces[target] || (visited && visited.includes(target))) return false;
       const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
       const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-      const dir = `${r2 - r1},${c2 - c1}`;
-      if (lastDir === dir) return false;
+      if (lastDir === `${r2 - r1},${c2 - c1}`) return false;
       const caps = getCaptures(pieces, spot, target, color);
       return caps.approach.length > 0 || caps.withdrawal.length > 0;
     });
@@ -296,8 +284,10 @@
     rows.forEach((r, ri) => {
       cols.forEach((c, ci) => {
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', ci * 50); circle.setAttribute('cy', ri * 50);
-        circle.setAttribute('r', 22); circle.setAttribute('fill', 'transparent');
+        circle.setAttribute('cx', ci * 50);
+        circle.setAttribute('cy', ri * 50);
+        circle.setAttribute('r', 22);
+        circle.setAttribute('fill', 'transparent');
         circle.setAttribute('class', 'spot');
         circle.onclick = () => handleSpotClick(r + c);
         grp.appendChild(circle);
@@ -318,18 +308,18 @@
       g.setAttribute('class', 'piece-group');
       g.setAttribute('transform', `translate(${ci * 50}, ${ri * 50})`);
       const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('r', 12); circle.setAttribute('fill', `url(#${color}-pat)`);
+      circle.setAttribute('r', 12);
+      circle.setAttribute('fill', `url(#${color}-pat)`);
       circle.style.pointerEvents = 'none';
-      
-      if (isMyTurn && color === myColor && !game.winner) {
+      if (isMyTurn && color === myColor) {
         if (selectedSpot === spot) circle.classList.add('selected-piece');
         else if (lastBlockedSpot === spot) circle.classList.add('blocked-piece');
         else if (!game.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) circle.classList.add('movable-piece');
       }
-
-      if (game.awaitingCapture && color !== myColor && !game.winner) {
+      if (game.awaitingCapture && color !== myColor) {
         if ((game.pendingApproach || []).includes(spot) || (game.pendingWithdrawal || []).includes(spot)) {
-          circle.classList.add('capture-target'); circle.style.pointerEvents = 'all';
+          circle.classList.add('capture-target');
+          circle.style.pointerEvents = 'all';
           circle.onclick = (e) => { e.stopPropagation(); resolveCapture(spot); };
           const l1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
           l1.setAttribute('x1',-5); l1.setAttribute('y1',-5); l1.setAttribute('x2',5); l1.setAttribute('y2',5);
@@ -348,23 +338,23 @@
   function renderGuides(spot, game) {
     const grp = document.getElementById('guides-group');
     grp.innerHTML = '';
-    if (!spot || game.winner) return;
+    if (!spot) return;
     const pieces = game.pieces || {};
     const globalCapture = playerHasAnyCapture(pieces, myColor);
     (allowedMoves[spot] || []).forEach(target => {
       if (pieces[target] || (game.visited || []).includes(target)) return;
       const caps = getCaptures(pieces, spot, target, myColor);
       if (globalCapture && !(caps.approach.length > 0 || caps.withdrawal.length > 0)) return;
-      
-      const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
-      const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-      const dir = `${r2 - r1},${c2 - c1}`;
-      
-      if (!canChangePiece && game.lastDir === dir) return;
-      
+      if (!canChangePiece) {
+        const r1 = rows.indexOf(spot[0]), c1 = cols.indexOf(spot[1]);
+        const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
+        if (game.lastDir === `${r2 - r1},${c2 - c1}`) return;
+      }
       const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      dot.setAttribute('cx', cols.indexOf(target[1]) * 50); dot.setAttribute('cy', rows.indexOf(target[0]) * 50);
-      dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
+      dot.setAttribute('cx', cols.indexOf(target[1]) * 50);
+      dot.setAttribute('cy', rows.indexOf(target[0]) * 50);
+      dot.setAttribute('r', 6);
+      dot.setAttribute('class', 'guide-dot');
       grp.appendChild(dot);
     });
   }
@@ -384,13 +374,9 @@
     if (!currentGame) return;
     const turnDisplay = document.getElementById('turn-display');
     const stopBtn = document.getElementById('stop-move-btn');
-    
-    if (currentGame.winner) {
-      turnDisplay.innerText = currentGame.winner === myColor ? "NANDRESY IANAO! 🎉" : "RESY IANAO... 💀";
-      turnDisplay.style.color = currentGame.winner === myColor ? "#ADFF2F" : "#ef4444";
-      stopBtn.classList.remove('active');
-    } else if (currentGame.turn === myColor) {
-      turnDisplay.innerText = 'ANJARANAO'; turnDisplay.style.color = '#ADFF2F';
+    if (currentGame.turn === myColor) {
+      turnDisplay.innerText = 'ANJARANAO';
+      turnDisplay.style.color = '#ADFF2F';
       if (currentGame.movingPiece) { 
         selectedSpot = currentGame.movingPiece; 
         canChangePiece = false; 
@@ -402,46 +388,57 @@
       if (selectedSpot && !currentGame.awaitingCapture) renderGuides(selectedSpot, currentGame);
       else document.getElementById('guides-group').innerHTML = '';
     } else {
-      turnDisplay.innerText = 'Miandry ny hafa...'; turnDisplay.style.color = 'white';
-      selectedSpot = null; lastBlockedSpot = null; stopBtn.classList.remove('active');
+      turnDisplay.innerText = 'Miandry ny hafa...';
+      turnDisplay.style.color = 'white';
+      selectedSpot = null; 
+      lastBlockedSpot = null;
+      stopBtn.classList.remove('active');
       document.getElementById('guides-group').innerHTML = '';
     }
-    renderPieces(currentGame); renderPlayersBar();
+    renderPieces(currentGame);
+    renderPlayersBar();
   }
 
   async function fetchGame() {
-    if (!myUid || localMoveInProgress) return;
-    try {
-      const res = await fetch(GAME_API_URL, { 
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'get-game', uid: myUid, gameId }) 
-      });
-      const data = await res.json();
-      if (data.success && data.game) {
-        if (data.game.version > localVersion) {
-          currentGame = data.game;
-          localVersion = data.game.version;
-          updateUI();
-        }
+    // Polling avela foana na dia eo am-panaovana mouvement aza
+    if (!myUid) return;
+    
+    const res = await fetch(GAME_API_URL, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get-game', uid: myUid, gameId }) 
+    });
+    const data = await res.json();
+    
+    if (data.success && data.game) {
+      // Raha ny adversaire no manatontosa mouvement, dia havaozina ny sary
+      // Raha izaho kosa no eo am-panaovana mouvement, dia avela aloha ny Optimistic UI
+      if (!localMoveInProgress || currentGame.turn !== myColor) {
+        currentGame = data.game;
+        updateUI();
       }
-    } catch(e) {}
+    }
   }
 
   async function handleSpotClick(spotID) {
-    if (!currentGame || currentGame.turn !== myColor || currentGame.awaitingCapture || currentGame.winner) return;
+    if (!currentGame || currentGame.turn !== myColor || currentGame.awaitingCapture) return;
     const pieces = currentGame.pieces || {};
 
     if (canChangePiece && pieces[spotID] === myColor) {
       if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) { 
-        selectedSpot = spotID; lastBlockedSpot = null; 
+        selectedSpot = spotID; 
+        lastBlockedSpot = null; 
       } else { 
-        selectedSpot = null; lastBlockedSpot = spotID; 
+        selectedSpot = null; 
+        lastBlockedSpot = spotID; 
       }
-      updateUI(); return;
+      updateUI();
+      return;
     }
 
     if (selectedSpot && (allowedMoves[selectedSpot] || []).includes(spotID) && !pieces[spotID]) {
       if ((currentGame.visited || []).includes(spotID)) return;
+      
       const caps = getCaptures(pieces, selectedSpot, spotID, myColor);
       const isCap = caps.approach.length > 0 || caps.withdrawal.length > 0;
       if (playerHasAnyCapture(pieces, myColor) && !isCap) return;
@@ -453,34 +450,51 @@
 
       const origin = selectedSpot;
       const oldGame = JSON.parse(JSON.stringify(currentGame));
-      localMoveInProgress = true;
 
-      // --- Optimistic Update ---
+      // OPTIMISTIC UI: Ovao avy hatrany ny sary eo an-toerana
+      localMoveInProgress = true;
       let newVisited = [...(currentGame.visited || []), origin];
       let newPieces = { ...currentGame.pieces };
-      delete newPieces[origin]; newPieces[spotID] = myColor;
+      delete newPieces[origin];
+      newPieces[spotID] = myColor;
 
-      let nextMovingPiece = spotID, nextDir = dir, nextAwaiting = false, nextTurn = currentGame.turn;
+      let nextMovingPiece = spotID;
+      let nextDir = dir;
+      let nextAwaiting = false;
+      let nextTurn = currentGame.turn;
       let pApproach = [], pWithdrawal = [];
 
       if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
-        nextAwaiting = true; pApproach = caps.approach; pWithdrawal = caps.withdrawal;
+        nextAwaiting = true;
+        pApproach = caps.approach;
+        pWithdrawal = caps.withdrawal;
       } else if (isCap) {
         const toRem = caps.approach.length > 0 ? caps.approach : caps.withdrawal;
         toRem.forEach(s => delete newPieces[s]);
         if (!checkAvailableCaptures(newPieces, spotID, newVisited, dir, myColor)) {
           nextMovingPiece = null; nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso');
         }
-      } else { nextMovingPiece = null; nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso'); }
+      } else {
+        nextMovingPiece = null; nextTurn = (myColor === 'maintso' ? 'mena' : 'maintso');
+      }
 
-      currentGame.pieces = newPieces; currentGame.turn = nextTurn;
-      currentGame.movingPiece = nextMovingPiece; currentGame.visited = nextMovingPiece ? newVisited : [];
-      currentGame.lastDir = nextMovingPiece ? nextDir : ""; currentGame.awaitingCapture = nextAwaiting;
-      currentGame.pendingApproach = pApproach; currentGame.pendingWithdrawal = pWithdrawal;
+      currentGame.pieces = newPieces;
+      currentGame.turn = nextTurn;
+      currentGame.movingPiece = nextMovingPiece;
+      currentGame.visited = nextMovingPiece ? newVisited : [];
+      currentGame.lastDir = nextMovingPiece ? nextDir : "";
+      currentGame.awaitingCapture = nextAwaiting;
+      currentGame.pendingApproach = pApproach;
+      currentGame.pendingWithdrawal = pWithdrawal;
+      
       updateUI();
       
-      const res = await callGameApi('make-move', { origin, target: spotID });
-      if (!res.success) { currentGame = oldGame; updateUI(); showError("Hetsika tsy nahomby"); }
+      // Alefa any amin'ny Backend ny hetsika
+      const res = await callGameApi('make-move', { uid: myUid, gameId, origin, target: spotID });
+      if (!res.success) { 
+        currentGame = oldGame; 
+        updateUI(); 
+      }
       localMoveInProgress = false;
     }
   }
@@ -489,20 +503,22 @@
     const oldGame = JSON.parse(JSON.stringify(currentGame));
     localMoveInProgress = true;
     
-    const isApproach = (currentGame.pendingApproach || []).includes(capturedSpot);
-    const toRemove = isApproach ? currentGame.pendingApproach : currentGame.pendingWithdrawal;
-    
+    const toRemove = (currentGame.pendingApproach || []).includes(capturedSpot) ? currentGame.pendingApproach : currentGame.pendingWithdrawal;
     toRemove.forEach(s => delete currentGame.pieces[s]);
-    const further = checkAvailableCaptures(currentGame.pieces, currentGame.movingPiece, currentGame.visited, currentGame.lastDir, myColor);
     
+    const further = checkAvailableCaptures(currentGame.pieces, currentGame.movingPiece, currentGame.visited, currentGame.lastDir, myColor);
     if (!further) {
       currentGame.turn = (myColor === 'maintso' ? 'mena' : 'maintso');
-      currentGame.movingPiece = null; currentGame.visited = []; currentGame.lastDir = "";
+      currentGame.movingPiece = null;
+      currentGame.visited = [];
+      currentGame.lastDir = "";
     }
     currentGame.awaitingCapture = false;
+    currentGame.pendingApproach = [];
+    currentGame.pendingWithdrawal = [];
+    
     updateUI();
-
-    const res = await callGameApi('resolve-capture', { capturedSpot });
+    const res = await callGameApi('resolve-capture', { uid: myUid, gameId, capturedSpot });
     if (!res.success) { currentGame = oldGame; updateUI(); }
     localMoveInProgress = false;
   }
@@ -513,10 +529,12 @@
     localMoveInProgress = true;
     
     currentGame.turn = (myColor === 'maintso' ? 'mena' : 'maintso');
-    currentGame.movingPiece = null; currentGame.visited = []; currentGame.lastDir = "";
+    currentGame.movingPiece = null;
+    currentGame.visited = [];
+    currentGame.lastDir = "";
     updateUI();
 
-    const res = await callGameApi('stop-turn', {});
+    const res = await callGameApi('stop-turn', { uid: myUid, gameId });
     if (!res.success) { currentGame = oldGame; updateUI(); }
     localMoveInProgress = false;
   }
@@ -526,17 +544,20 @@
     const stored = localStorage.getItem('user');
     if (!stored) { window.location.href = 'login&register.html'; return; }
     const localUser = JSON.parse(stored);
-    myUid = localUser.uid; myUsername = localUser.username || myUid;
+    myUid = localUser.uid;
+    myUsername = localUser.username || myUid;
     
     const data = await callSessionApi('get-fanorona-game', { uid: myUid, gameId });
     if (data.success) {
       opponentUsername = data.opponentUsername;
-      currentGame = data; 
-      localVersion = data.version || 0;
+      currentGame = { pieces: data.pieces, turn: data.turn, senderUid: data.senderUid, receiverUid: data.receiverUid };
       document.getElementById('game-board').classList.toggle('flipped', myColor === 'mena');
-      drawSpots(); updateUI();
+      drawSpots();
+      updateUI();
       document.getElementById('game-board').style.display = 'block';
       document.getElementById('loading-overlay').classList.add('hidden');
+      
+      // Mandefa polling isaky ny 2 segaondra
       setInterval(fetchGame, POLL_INTERVAL);
     }
   }
@@ -544,7 +565,6 @@
   document.getElementById('stop-move-btn').onclick = handleStopTurn;
   init();
 })();
-
 
   </script>
 </body>
