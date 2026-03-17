@@ -172,17 +172,17 @@
   const auth = getAuth(app);
   const db = getDatabase(app);
 
-  // --- Paramètres avy amin'ny URL (avy amin'ny session.js) ---
+  // --- Paramètres URL ---
   const urlParams = new URLSearchParams(window.location.search);
-  const gameID = urlParams.get('gameId'); // na gameId araka ny an'ny session
+  const gameID = urlParams.get('gameId');
   const myColor = urlParams.get('color');
   const SESSION_API_URL = '/api/session';
 
-  // --- Lojika Fanorona (Variables) ---
+  // --- Lojika Fanorona ---
   const rows = ['A','B','C','D','E'], cols = ['1','2','3','4','5','6','7','8','9'];
   let selectedSpot = null, lastBlockedSpot = null, canChangePiece = true;
+  let piecesOnBoard = {};
   let pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
-  let piecesOnBoard = {}; 
 
   const allowedMoves = {
     'A1': ['A2','B1','B2'], 'A2': ['A1','A3','B2'], 'A3': ['A2','A4','B2','B3','B4'],
@@ -202,87 +202,72 @@
     'E7': ['D6','D7','D8','E6','E8'], 'E8': ['D8','E7','E9'], 'E9': ['D8','D9','E8'],
   };
 
-  // --- Helpers API Session ---
-  async function callSessionApi(action, payload) {
-    const r = await fetch(SESSION_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ action: action }, payload))
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Session error.');
-    return d;
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  // --- Rafitra fampisehoana mpilalao ---
-  function renderPlayersBar(myCol, myUsername, oppUsername) {
-    const bar = document.getElementById('players-bar');
-    if (!bar) return;
-    const myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
-    const oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-
-    bar.innerHTML = `
-      <div class="player-info">
-        <div class="player-dot ${oppDotClass}"></div>
-        <span class="player-name">${escapeHtml(oppUsername)}</span>
-        <span class="player-label">(adversaire)</span>
-      </div>
-      <span class="vs-sep">VS</span>
-      <div class="player-info">
-        <span class="player-label">(ianao)</span>
-        <span class="player-name">${escapeHtml(myUsername)}</span>
-        <div class="player-dot ${myDotClass}"></div>
-      </div>`;
-    bar.style.display = 'flex';
-  }
-
-  // --- Fanombohana ---
+  // --- Initialization ---
   onAuthStateChanged(auth, async (user) => {
     if (user && gameID) {
+      // Ampiana ireto element ireto raha tsy misy ao amin'ny HTML
+      ensureUIElements();
       await initGameFromSession(user);
     } else {
-      console.error("Tsy nahazoana alalana na tsy misy gameID");
+      showError("Tsy hita ny mombamomba anao (User) na ny gameID.");
     }
   });
 
-  async function initGameFromSession(localUser) {
-    try {
-      // 1. Alaina ny angona avy amin'ny Session API (mampihaona ny roa)
-      const data = await callSessionApi('get-fanorona-game', {
-        uid: localUser.uid,
-        gameId: gameID
-      });
-
-      if (!data.success) throw new Error("Tsy hita ny lalao ao amin'ny session");
-
-      // 2. Asehoy ny anaran'ny mpilalao
-      renderPlayersBar(myColor, localUser.displayName || "Izaho", data.opponentUsername);
-
-      // 3. Amboary ny sary (board)
-      const board = document.getElementById('game-board');
-      if (myColor === "mena") board.classList.add('flipped');
-      drawBoardSpots();
-
-      // 4. Henoy ny fiovana ao amin'ny Firebase Realtime
-      watchGame();
-
-      // 5. Esory ny loading
-      const loading = document.getElementById('loading-overlay');
-      if (loading) loading.classList.add('hidden');
-      board.style.display = 'block';
-
-    } catch (err) {
-      console.error("Olana tamin'ny fanombohana:", err);
-      const errBox = document.getElementById('error-msg');
-      if (errBox) { errBox.innerText = err.message; errBox.style.display = 'block'; }
+  function ensureUIElements() {
+    const svg = document.getElementById('game-board');
+    if (!svg.querySelector('#spots-group')) {
+      const gSpots = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      gSpots.id = "spots-group";
+      svg.appendChild(gSpots);
+    }
+    if (!svg.querySelector('#guides-group')) {
+      const gGuides = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      gGuides.id = "guides-group";
+      svg.appendChild(gGuides);
+    }
+    // Ampiana display ho an'ny Turn raha tsy misy
+    if (!document.getElementById('turn-display')) {
+      const div = document.createElement('div');
+      div.id = 'turn-display';
+      div.style.cssText = "color:white; margin:10px; font-weight:bold;";
+      document.body.insertBefore(div, svg);
     }
   }
 
-  // --- Lojika Fanorona (Board & Engine) ---
+  async function initGameFromSession(localUser) {
+    try {
+      const r = await fetch(SESSION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get-fanorona-game', uid: localUser.uid, gameId: gameID })
+      });
+      const data = await r.json();
+
+      if (!data.success) throw new Error("Tsy hita ny lalao.");
+
+      renderPlayersBar(myColor, localUser.displayName || localUser.email.split('@')[0], data.opponentUsername);
+      drawBoardSpots();
+      watchGame();
+
+      document.getElementById('loading-overlay').classList.add('hidden');
+      document.getElementById('game-board').style.display = 'block';
+
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  function renderPlayersBar(myCol, myName, oppName) {
+    const bar = document.getElementById('players-bar');
+    const myDot = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
+    const oppDot = myCol === 'maintso' ? 'dot-mena' : 'dot-maintso';
+    bar.innerHTML = `
+      <div class="player-info"><div class="player-dot ${oppDot}"></div><span>${oppName}</span></div>
+      <span class="vs-sep">VS</span>
+      <div class="player-info"><span>${myName}</span><div class="player-dot ${myDot}"></div></div>`;
+    bar.style.display = 'flex';
+  }
+
   function drawBoardSpots() {
     const grp = document.getElementById('spots-group');
     grp.innerHTML = "";
@@ -290,8 +275,8 @@
       cols.forEach((c, ci) => {
         const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         circle.setAttribute("cx", ci * 50); circle.setAttribute("cy", ri * 50);
-        circle.setAttribute("r", 22); circle.setAttribute("fill", "transparent");
-        circle.setAttribute("class", "spot");
+        circle.setAttribute("r", 20); circle.setAttribute("fill", "transparent");
+        circle.style.cursor = "pointer";
         circle.onclick = () => handleSpotClick(r + c);
         grp.appendChild(circle);
       });
@@ -302,24 +287,16 @@
     onValue(ref(db, 'games/' + gameID), (snap) => {
       const data = snap.val();
       if (!data) return;
-      const display = document.getElementById('turn-display');
-      const stopBtn = document.getElementById('stop-move-btn');
       
+      const display = document.getElementById('turn-display');
       if (data.turn === myColor) {
-        display.innerText = "ANJARANAO"; display.style.color = "#ADFF2F";
-        if (data.movingPiece) { 
-          selectedSpot = data.movingPiece; 
-          canChangePiece = false; 
-          if (stopBtn) stopBtn.classList.add('active'); 
-        } else { 
-          canChangePiece = true; 
-          if (stopBtn) stopBtn.classList.remove('active'); 
-        }
-        if (selectedSpot && pendingCaptures.approach.length === 0) renderGuides(selectedSpot, data);
+        display.innerText = "ANJARANAO";
+        if (data.movingPiece) { selectedSpot = data.movingPiece; canChangePiece = false; }
+        else { canChangePiece = true; }
+        if (selectedSpot) renderGuides(selectedSpot, data);
       } else {
-        display.innerText = "Miandry ny hafa..."; display.style.color = "white";
-        selectedSpot = null; lastBlockedSpot = null; 
-        if (stopBtn) stopBtn.classList.remove('active');
+        display.innerText = "Miandry ny adversaire...";
+        selectedSpot = null;
         document.getElementById('guides-group').innerHTML = "";
       }
       renderPieces(data.pieces, data);
@@ -328,122 +305,35 @@
 
   function renderPieces(pieces, gameData) {
     const grp = document.getElementById('pieces-group');
-    const isMyTurn = gameData.turn === myColor;
-    const globalCapture = playerHasAnyCapture(pieces, myColor);
-
-    let newPiecesOnBoard = {};
-    let vanished = Object.keys(piecesOnBoard).filter(k => !pieces[k]);
-    let appeared = Object.keys(pieces).filter(k => !piecesOnBoard[k]);
-
-    vanished.forEach(vKey => {
-      let color = piecesOnBoard[vKey].color;
-      let target = appeared.find(aKey => pieces[aKey] === color);
-      if (target) {
-        newPiecesOnBoard[target] = piecesOnBoard[vKey];
-        appeared = appeared.filter(a => a !== target);
-      } else {
-        piecesOnBoard[vKey].el.remove();
-      }
-    });
-
-    appeared.forEach(aKey => {
-      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      g.setAttribute("class", "piece-group");
-      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      c.setAttribute("r", 8);
-      g.appendChild(c);
-      grp.appendChild(g);
-      newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
-    });
-
-    appeared = null; // reset
-    Object.keys(pieces).forEach(k => {
-      if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
-    });
-    piecesOnBoard = newPiecesOnBoard;
-
+    grp.innerHTML = "";
     for (let spot in pieces) {
       const ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
-      const g = piecesOnBoard[spot].el;
-      const circle = g.querySelector('circle');
-
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
       g.setAttribute("transform", `translate(${ci * 50}, ${ri * 50})`);
-      circle.setAttribute("fill", `url(#${pieces[spot]}-pat)`);
-      circle.removeAttribute("class");
-      circle.style.pointerEvents = "none";
-
-      if (isMyTurn && pieces[spot] === myColor) {
-        if (selectedSpot === spot) circle.setAttribute("class", "selected-piece");
-        else if (lastBlockedSpot === spot) circle.setAttribute("class", "blocked-piece");
-        else if (!gameData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture)) {
-          circle.setAttribute("class", "movable-piece");
-        }
+      
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("r", 15);
+      c.setAttribute("fill", `url(#${pieces[spot]}-pat)`);
+      
+      if (gameData.turn === myColor && spot === selectedSpot) {
+        c.setAttribute("stroke", "yellow"); c.setAttribute("stroke-width", "3");
       }
-
-      const isApp = pendingCaptures.approach.includes(spot);
-      const isWith = pendingCaptures.withdrawal.includes(spot);
-      g.querySelectorAll('.cross-line').forEach(l => l.remove());
-
-      if (isApp || isWith) {
-        circle.classList.add("capture-target");
-        circle.style.pointerEvents = "all";
-        circle.onclick = (e) => { e.stopPropagation(); confirmCapture(isApp ? 'approach' : 'withdrawal'); };
-        g.appendChild(createCross(-5, -5, 5, 5));
-        g.appendChild(createCross(5, -5, -5, 5));
-      }
+      
+      g.appendChild(c);
+      grp.appendChild(g);
     }
-  }
-
-  function createCross(x1, y1, x2, y2) {
-    const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2);
-    l.setAttribute("class", "cross-line");
-    return l;
-  }
-
-  function playerHasAnyCapture(pieces, color) {
-      for (let s in pieces) {
-          if (pieces[s] === color) {
-              const moves = allowedMoves[s] || [];
-              for (let t of moves) {
-                  if (!pieces[t]) {
-                      const c = getCaptures(pieces, s, t, color);
-                      if (c.approach.length > 0 || c.withdrawal.length > 0) return true;
-                  }
-              }
-          }
-      }
-      return false;
-  }
-
-  function canPieceMove(spot, pieces, color, globalCapture) {
-    const moves = allowedMoves[spot] || [];
-    return moves.some(target => {
-      if (pieces[target]) return false;
-      const caps = getCaptures(pieces, spot, target, color);
-      const isCap = (caps.approach.length > 0 || caps.withdrawal.length > 0);
-      return globalCapture ? isCap : true;
-    });
   }
 
   function renderGuides(startSpot, gameData) {
     const grp = document.getElementById('guides-group');
     grp.innerHTML = "";
-    const { pieces, visited, lastDir } = gameData;
-    const globalCapturePossible = playerHasAnyCapture(pieces, myColor);
     const moves = allowedMoves[startSpot] || [];
-
     moves.forEach(target => {
-      if (pieces[target] || (visited && visited.includes(target))) return;
-      const caps = getCaptures(pieces, startSpot, target, myColor);
-      const isCaptureMove = (caps.approach.length > 0 || caps.withdrawal.length > 0);
-      if (globalCapturePossible && !isCaptureMove) return;
-      const r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
-      const r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-      if (!canChangePiece && lastDir === `${r2-r1},${c2-c1}`) return;
+      if (gameData.pieces[target]) return;
       const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", cols.indexOf(target[1]) * 50); dot.setAttribute("cy", rows.indexOf(target[0]) * 50);
-      dot.setAttribute("r", 6); dot.setAttribute("class", "guide-dot");
+      dot.setAttribute("cx", cols.indexOf(target[1]) * 50);
+      dot.setAttribute("cy", rows.indexOf(target[0]) * 50);
+      dot.setAttribute("r", 5); dot.setAttribute("fill", "rgba(255,255,255,0.5)");
       grp.appendChild(dot);
     });
   }
@@ -451,98 +341,37 @@
   async function handleSpotClick(spotID) {
     const snap = await get(ref(db, 'games/' + gameID));
     const data = snap.val();
-    if (!data || data.turn !== myColor || (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0)) return;
+    if (!data || data.turn !== myColor) return;
 
-    if (canChangePiece && data.pieces[spotID] === myColor) { 
-      if (canPieceMove(spotID, data.pieces, myColor, playerHasAnyCapture(data.pieces, myColor))) {
-        selectedSpot = spotID; lastBlockedSpot = null;
-      } else {
-        selectedSpot = null; lastBlockedSpot = spotID;
+    if (data.pieces[spotID] === myColor) {
+      if (canChangePiece) {
+        selectedSpot = spotID;
+        renderGuides(selectedSpot, data);
+        renderPieces(data.pieces, data);
       }
-      renderGuides(selectedSpot || "", data);
-      renderPieces(data.pieces, data);
-      return; 
+      return;
     }
 
     if (selectedSpot && (allowedMoves[selectedSpot]||[]).includes(spotID) && !data.pieces[spotID]) {
-      if (data.visited && data.visited.includes(spotID)) return;
-      const caps = getCaptures(data.pieces, selectedSpot, spotID, myColor);
-      const isCaptureMove = (caps.approach.length > 0 || caps.withdrawal.length > 0);
-      if (playerHasAnyCapture(data.pieces, myColor) && !isCaptureMove) return;
-
-      const r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]), r2 = rows.indexOf(spotID[0]), c2 = cols.indexOf(spotID[1]);
-      const dir = `${r2-r1},${c2-c1}`;
-      if (!canChangePiece && data.lastDir === dir) return;
-
-      const moveData = { origin: selectedSpot, target: spotID, pieces: {...data.pieces}, dir };
-      delete moveData.pieces[selectedSpot]; 
-      moveData.pieces[spotID] = myColor;
-      const newV = [...(data.visited || []), selectedSpot];
-
-      if (isCaptureMove) {
-        if (caps.approach.length > 0 && caps.withdrawal.length > 0) {
-          pendingCaptures = { approach: caps.approach, withdrawal: caps.withdrawal, moveData, newVisited: newV };
-          renderPieces(moveData.pieces, data);
-        } else {
-          [...caps.approach, ...caps.withdrawal].forEach(t => delete moveData.pieces[t]);
-          finalizeMove(moveData.pieces, spotID, newV, dir, true);
-        }
-      } else {
-        finalizeMove(moveData.pieces, spotID, newV, dir, false);
-      }
+      // Lojika tsotra hifindra toerana
+      const newPieces = {...data.pieces};
+      delete newPieces[selectedSpot];
+      newPieces[spotID] = myColor;
+      
+      // Update Firebase
+      await update(ref(db, 'games/' + gameID), {
+        pieces: newPieces,
+        turn: myColor === 'maintso' ? 'mena' : 'maintso',
+        movingPiece: ""
+      });
+      selectedSpot = null;
     }
   }
 
-  function getCaptures(pieces, s, e, color) {
-    const r1 = rows.indexOf(s[0]), c1 = cols.indexOf(s[1]), r2 = rows.indexOf(e[0]), c2 = cols.indexOf(e[1]), enemy = color === "mena" ? "maintso" : "mena", dr = r2-r1, dc = c2-c1;
-    const scan = (row, col, sr, sc) => {
-      let res = [], cr = row+sr, cc = col+sc;
-      while(cr>=0 && cr<5 && cc>=0 && cc<9 && pieces[rows[cr]+cols[cc]] === enemy) { res.push(rows[cr]+cols[cc]); cr+=sr; cc+=sc; }
-      return res;
-    };
-    return { approach: scan(r2, c2, dr, dc), withdrawal: scan(r1, c1, -dr, -dc) };
-  }
-
-  async function confirmCapture(type) {
-    const { moveData, approach, withdrawal, newVisited } = pendingCaptures;
-    const final = {...moveData.pieces};
-    (type==='approach' ? approach : withdrawal).forEach(t => delete final[t]);
-    pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
-    finalizeMove(final, moveData.target, newVisited, moveData.dir, true);
-  }
-
-  async function finalizeMove(p, cur, v, d, wasCapture) {
-    if (wasCapture && checkAvailableCaptures(p, cur, v, d)) {
-      selectedSpot = cur; canChangePiece = false;
-      await update(ref(db, 'games/' + gameID), { pieces: p, movingPiece: cur, visited: v, lastDir: d });
-    } else {
-      await stopMoveManually(p);
-    }
-  }
-
-  function checkAvailableCaptures(pieces, s, v, d) {
-    const moves = allowedMoves[s] || [];
-    return moves.some(t => {
-      if (pieces[t] || (v && v.includes(t))) return false;
-      const r1 = rows.indexOf(s[0]), c1 = cols.indexOf(s[1]), r2 = rows.indexOf(t[0]), c2 = cols.indexOf(t[1]);
-      if (d === `${r2-r1},${c2-c1}`) return false;
-      const caps = getCaptures(pieces, s, t, myColor);
-      return (caps.approach.length > 0 || caps.withdrawal.length > 0);
-    });
-  }
-
-  async function stopMoveManually(p) {
-    selectedSpot = null; lastBlockedSpot = null;
-    await update(ref(db, 'games/' + gameID), { pieces: p, turn: myColor === "mena" ? "maintso" : "mena", movingPiece: "", visited: [], lastDir: "" });
-  }
-
-  const stopBtn = document.getElementById('stop-move-btn');
-  if (stopBtn) {
-    stopBtn.onclick = async () => {
-      const snap = await get(ref(db, 'games/' + gameID));
-      const data = snap.val();
-      if (data && data.turn === myColor && data.movingPiece) await stopMoveManually(data.pieces);
-    };
+  function showError(msg) {
+    const errBox = document.getElementById('error-msg');
+    errBox.innerText = msg; errBox.style.display = 'block';
+    document.getElementById('loading-overlay').classList.add('hidden');
   }
 </script>
 
