@@ -21,7 +21,6 @@
     .flipped { transform: rotate(180deg); }
     .grid-line { stroke: #333; stroke-width: 2; fill: none; }
     
-    /* Styles ho an'ny pièce */
     .selected-piece { stroke: #FFF700; stroke-width: 6px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
     .movable-piece { stroke: #00FF00; stroke-width: 5px; paint-order: stroke; cursor: pointer; }
     .blocked-piece { stroke: none; } 
@@ -205,7 +204,7 @@
       g.setAttribute('transform', `translate(${c * 50}, ${r * 50})`);
       
       const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('r', 13);
+      circle.setAttribute('r', 12);
       circle.setAttribute('fill', `url(#${color}-pat)`);
       
       if (isMyTurn && color === myColor) {
@@ -277,12 +276,25 @@
 
   async function handleSpotClick(spotID) {
     if (!currentGame || currentGame.turn !== myColor || isActionPending || currentGame.awaitingCapture) return;
+    
+    // Move logic
     if (selectedSpot && !currentGame.pieces[spotID]) {
+      // Optimistic UI: Tonga dia findrao eo amin'ny memory ilay piece fa aza miandry API
+      const prevPieces = {...currentGame.pieces};
+      const mover = currentGame.pieces[selectedSpot];
+      delete currentGame.pieces[selectedSpot];
+      currentGame.pieces[spotID] = mover;
+      updateUI(); // Update feno avy hatrany (0ms)
+
       isActionPending = true;
       const res = await callApi(GAME_API_URL, 'make-move', { uid: myUid, gameId, origin: selectedSpot, target: spotID });
+      
       if (res.success) {
         currentGame = res.game;
         if (!currentGame.movingPiece) selectedSpot = null;
+      } else {
+        // Raha nisy error dia avereno ny teo aloha
+        currentGame.pieces = prevPieces;
       }
       isActionPending = false;
       updateUI();
@@ -292,6 +304,10 @@
   async function resolveCapture(capturedSpot) {
     if (isActionPending) return;
     isActionPending = true;
+    // Tonga dia esory eo amin'ny board aloha (Optimistic)
+    delete currentGame.pieces[capturedSpot];
+    updateUI();
+
     const res = await callApi(GAME_API_URL, 'resolve-capture', { uid: myUid, gameId, capturedSpot });
     if (res.success) currentGame = res.game;
     isActionPending = false;
@@ -332,10 +348,20 @@
       drawSpots();
       updateUI();
       document.getElementById('game-board').style.display = 'block';
+      
+      // Ny poll ihany no miandry 2000ms
       setInterval(async () => {
-        if (isActionPending) return;
+        // Raha mbola manao zavatra aho dia aza manao poll aloha sao miteraka glitch
+        if (isActionPending || (currentGame.turn === myColor && !currentGame.movingPiece)) return;
+        
         const sync = await callApi(GAME_API_URL, 'get-game', { uid: myUid, gameId });
-        if (sync.success) { currentGame = sync.game; updateUI(); }
+        if (sync.success) { 
+           // Raha lalaon'ny hafa vao ovaina ny board
+           if (sync.game.turn !== currentGame.turn || JSON.stringify(sync.game.pieces) !== JSON.stringify(currentGame.pieces)) {
+             currentGame = sync.game; 
+             updateUI(); 
+           }
+        }
       }, POLL_INTERVAL);
     }
   }
