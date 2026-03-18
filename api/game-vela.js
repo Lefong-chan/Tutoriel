@@ -123,13 +123,19 @@ async function handleMakeMove(body, res) {
   const newVisited = [...visited, origin];
   const wasCapture = effectiveCaptured.length > 0;
 
-  // ── AUTO-OK: Tsy jerena ny continuation, mifindra tour foana ──────────────
-  // (Ny checkAvailableCaptures dia voasoratra eto fa tsy ampiasaina ankehitriny)
-  // Rehefa hampiana ny feature multi-capture → ovana ity andalana ity:
-  //   const AUTO_OK_ALWAYS = false;
-  //   const canContinue = !AUTO_OK_ALWAYS && wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
-  const AUTO_OK_ALWAYS = true; // ← ovana ho false raha hampiana multi-capture
-  const canContinue = !AUTO_OK_ALWAYS && wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
+  // ── AUTO-OK / MULTI-CAPTURE : miankina amin'ny fisa pieces an'ilay tsy firstMover ──
+  // Raha pieces an'ilay tsy firstMover dia 5 na latsaka → multi-capture active (player roa)
+  // Raha mihoatra ny 5 → AUTO-OK foana (canContinue=false)
+  //
+  // Ny AUTO_OK_ALWAYS=true taloha dia voasoratra fa DISABLED amin'izao.
+  // Rehefa ampiana fepetra hafa → ovana ity condition ity ihany.
+  const nonFirstMoverColor = firstMover === "maintso" ? "mena" : "maintso";
+  const nonFirstMoverCount = Object.values(pieces).filter(v => v === nonFirstMoverColor).length;
+  const multiCaptureActive = (nonFirstMoverCount <= 5);
+
+  const canContinue = multiCaptureActive
+    && wasCapture
+    && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
   const prevHistory     = Array.isArray(game.moveHistory) ? game.moveHistory : [];
   const newHistoryEntry = { origin, target, capturedSpots: effectiveCaptured };
