@@ -131,18 +131,20 @@ async function handleMakeMove(body, res) {
   //                      raha nonFirstMoverHasContinued = true → afaka canContinue foana
   //
   // Ny lojika taloha (firstMover AUTO-OK foana) dia voasoratra fa OVAINA eto.
-  const nonFirstMoverColor = firstMover === "maintso" ? "mena" : "maintso";
-  const nonFirstMoverCount = Object.values(pieces).filter(v => v === nonFirstMoverColor).length;
-
-  const amIFirstMoverM = (firstMover === myColor);
+  const amIFirstMoverM  = (firstMover === myColor);
   const nfmHasContinued = game.nonFirstMoverHasContinued || false;
+
+  // pieces an'ny adversaire : firstMover raha tsy firstMover ianao, sy mifamadika
+  const advColor = amIFirstMoverM ? (firstMover === "maintso" ? "mena" : "maintso") : firstMover;
+  const advCount = Object.values(pieces).filter(v => v === advColor).length;
 
   let multiCaptureActive;
   if (!amIFirstMoverM) {
-    // tsy firstMover : canContinue raha pieces AN'NY firstMover <= 5
-    multiCaptureActive = (nonFirstMoverCount <= 5);
+    // tsy firstMover : canContinue raha pieces firstMover (adversaire) <= 5
+    multiCaptureActive = (advCount <= 5);
   } else {
-    // firstMover : canContinue ONLY raha efa nanao continue ilay tsy firstMover
+    // firstMover : canContinue raha efa nanao continue ilay tsy firstMover
+    // (flag avy amin'ny Firebase → hitan'ny player roa)
     multiCaptureActive = nfmHasContinued;
   }
 
