@@ -1,944 +1,1676 @@
-<!DOCTYPE html>
-<html lang="mg">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fanorona</title>
-  <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body {
-      font-family: sans-serif;
-      margin: 0; padding: 0;
-      background: #0092FF;
-      overflow: hidden;
-      height: 100vh;
-      display: flex; flex-direction: column;
-      justify-content: center; align-items: center;
+// =============================================================
+// dashboard.js
+// =============================================================
+(function () {
+  var SESSION_API_URL = '/api/session';
+  var AUTH_API_URL = '/api/auth';
+
+  var currentUser = null;
+  var activeFriendUid = null;
+  var activeFriendName = null;
+  var activeCtxTrigger = null;
+  var pendingRemoveUid = null;
+  var pendingRemoveName = null;
+  var upmCurrentUid = null;
+  var upmCurrentRelation = null;
+
+  var loadingOverlay = document.getElementById('loadingOverlay');
+  var settingModal = document.getElementById('userSettingModal');
+  var profileBox = document.getElementById('profileBox');
+  var settingsBtn = document.getElementById('settingsBtn');
+  var friendCtxMenu = document.getElementById('friendCtxMenu');
+  var userProfileModal = document.getElementById('userProfileModal');
+  var removeFriendOverlay = document.getElementById('removeFriendOverlay');
+
+  var toastEl = document.getElementById('toastNotification');
+  var toastIconEl = document.getElementById('toastIcon');
+  var toastTitleEl = document.getElementById('toastTitle');
+  var toastMsgEl = document.getElementById('toastMessage');
+  var toastCloseBtn = document.getElementById('toastClose');
+  var toastTimeout = null;
+
+  function showToast(msg, type, title) {
+    var icons = { error: '✕', success: '✓', info: 'ℹ' };
+    var titles = { error: 'Error', success: 'Success', info: 'Info' };
+    toastIconEl.textContent = icons[type] || icons.info;
+    toastTitleEl.textContent = title || titles[type] || titles.info;
+    toastMsgEl.textContent = msg;
+    toastEl.className = 'toast-notification ' + type + ' show';
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(function () { toastEl.classList.remove('show'); }, 5000);
+  }
+  toastCloseBtn.addEventListener('click', function () { toastEl.classList.remove('show'); if (toastTimeout) clearTimeout(toastTimeout); });
+
+  function setPageLoading(on) { loadingOverlay.classList.toggle('active', on); }
+  function openModal(m) { if (m) m.classList.add('active'); }
+  function closeModal(m) {
+    if (!m) return;
+    m.classList.remove('active');
+    // Arrêter le room sync polling si on ferme le gameSetupModal
+    if (m.id === 'gameSetupModal' && roomSyncTimer) {
+      clearInterval(roomSyncTimer); roomSyncTimer = null;
     }
+  }
 
-    /* ── Bande joueurs ── */
-    #players-bar {
-      display: flex; justify-content: space-between; align-items: center;
-      width: 95vw; max-width: 800px;
-      margin-bottom: 8px; padding: 8px 14px;
-      background: rgba(0,0,0,0.25); border-radius: 12px;
-      color: white; font-size: 1em; font-weight: 700; min-height: 44px;
-    }
-    .player-info { display: flex; align-items: center; gap: 8px; }
-    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
-    .dot-maintso { background: #22c55e; }
-    .dot-mena    { background: #ef4444; }
-    .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
-    .player-name  { font-size: 0.95em; }
-    .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
+  function updateUsernameDisplay() {
+    var el = document.getElementById('UsernameDisplay');
+    if (el) el.textContent = (currentUser && currentUser.username) ? currentUser.username : '____';
+  }
 
-    /* ── Plateau ── */
-    #game-board { width: 95vw; max-width: 800px; max-height: 68vh; display: block; }
-    .grid-line { stroke: #333; stroke-width: 2; }
+  async function callSessionApi(action, payload) {
+    var r = await fetch(SESSION_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, payload)) });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Session error.');
+    return d;
+  }
+  async function callAuthApi(action, payload) {
+    var r = await fetch(AUTH_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, payload)) });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Auth error.');
+    return d;
+  }
 
-    /* ── Pièces & interactions ── */
-    .flipped { transform: rotate(180deg); }
-    .piece-group { transition: transform 0.22s ease-in-out; }
-    .piece-group.no-transition { transition: none; }
-    .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
-    .movable-piece  { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
-    .blocked-piece  { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
-    .capture-target {
-      stroke: darkorange; stroke-width: 5px; cursor: pointer;
-      pointer-events: all !important; stroke-dasharray: 5;
-      animation: dash 1s linear infinite;
-    }
-    @keyframes dash { to { stroke-dashoffset: 10; } }
-    .spot { cursor: pointer; pointer-events: all; }
-    .lock-board .spot { pointer-events: none !important; }
-    .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
-    .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
-
-    /* ── Bouton Stop ── */
-    #stop-move-btn {
-      width: 60px; height: 60px; border-radius: 50%;
-      background: #f44336; color: white; border: 4px solid white;
-      font-size: 30px; font-weight: bold; cursor: pointer;
-      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none;
-    }
-    #stop-move-btn.active {
-      opacity: 1; transform: scale(1.1);
-      box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all;
-    }
-
-    /* ── Loading ── */
-    #loading-overlay {
-      position: fixed; inset: 0; background: #0092FF;
-      display: flex; justify-content: center; align-items: center;
-      z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
-      flex-direction: column; gap: 16px;
-    }
-    #loading-overlay.hidden { display: none; }
-    .spinner {
-      width: 36px; height: 36px;
-      border: 4px solid rgba(255,255,255,0.3); border-top-color: white;
-      border-radius: 50%; animation: spin 0.7s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Erreur ── */
-    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
-  </style>
-</head>
-<body>
-
-  <div id="loading-overlay"><div class="spinner"></div><span>Fananganana ny lalao…</span></div>
-
-  <div id="players-bar" style="display:none;"></div>
-
-  <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
-    <defs>
-      <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-        <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
-      </pattern>
-      <pattern id="maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-        <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
-      </pattern>
-    </defs>
-    <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
-      M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
-      M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
-      M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
-      M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
-      M300 0 L400 100 M400 0 L200 200
-      M0 100 L100 200 M400 100 L300 200"/>
-    <g id="guides-group"></g>
-    <g id="pieces-group"></g>
-    <g id="spots-group"></g>
-  </svg>
-
-  <button id="stop-move-btn" style="display:none;">OK</button>
-  <div id="error-msg"></div>
-
-  <script>
-  (function () {
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 1 — Config & helpers
-    // ═══════════════════════════════════════════════════════════════
-
-    var SESSION_API_URL = '/api/session';
-    var GAME_API_URL    = '/api/game';
-    var POLL_INTERVAL   = 1500;
-    // Délai après dernier mouvement avant de vérifier la cohérence backend
-    var RECONCILE_DELAY = 5000;
-
-    function showError(msg) {
-      document.getElementById('error-msg').textContent = msg;
-      document.getElementById('error-msg').style.display = 'block';
-      document.getElementById('loading-overlay').classList.add('hidden');
-    }
-    function escapeHtml(s) {
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
-
-    // ── Disable board tanteraka rehefa vita ny lalao ───────────────
-    var gameOverTriggered = false;
-    function disableBoardCompletely() {
-      var board = document.getElementById('game-board');
-      if (board) board.classList.add('lock-board');
-      var stopBtn = document.getElementById('stop-move-btn');
-      if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = 'none'; }
-      document.getElementById('guides-group').innerHTML = '';
-      document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el) {
-        el.removeAttribute('class');
-      });
-      document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
-    }
-
-    // ── Alert fandresy/resy ───────────────────────────────────────
-    // winnerColor = color ilay nandresy
-    // delayMs     = fotoana andrasana (default 2000)
-    function showGameOverAlert(winnerColor, delayMs) {
-      if (gameOverTriggered) return;
-      gameOverTriggered = true;
-
-      // Disable board avy hatrany — tsy afaka mihisaka intsony
-      disableBoardCompletely();
-
-      var delay = (typeof delayMs === 'number') ? delayMs : 2000;
-
-      setTimeout(function() {
-        var overlay = document.createElement('div');
-        overlay.style.cssText = [
-          'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
-          'display:flex','justify-content:center','align-items:center',
-          'z-index:9999','flex-direction:column','gap:0'
-        ].join(';');
-
-        var box = document.createElement('div');
-        box.style.cssText = [
-          'background:#1a3a5c','border-radius:18px','padding:36px 40px',
-          'text-align:center','color:white','font-family:sans-serif',
-          'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
-        ].join(';');
-
-        var iWon  = (winnerColor === myColor);
-        var myMsg = iWon ? '🏆 Nandresy ianao!' : '😔 Resy ianao!';
-
-        var title = document.createElement('div');
-        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
-        title.textContent = myMsg;
-
-        var btn = document.createElement('button');
-        btn.textContent = 'OK';
-        btn.style.cssText = [
-          'background:#0092FF','color:white','border:none',
-          'border-radius:10px','padding:12px 48px',
-          'font-size:1.1em','font-weight:700','cursor:pointer',
-          'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
-        ].join(';');
-        btn.onclick = function() {
-          window.location.href = 'dashboard.html';
-        };
-
-        box.appendChild(title);
-        box.appendChild(btn);
-        overlay.appendChild(box);
-        document.body.appendChild(overlay);
-      }, delay);
-    }
-
-    async function callApi(url, action, payload) {
-      var r = await fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ action: action }, payload))
-      });
-      var d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'API error');
-      return d;
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 2 — Constantes du jeu
-    // ═══════════════════════════════════════════════════════════════
-
-    var rows = ['A','B','C','D','E'];
-    var cols = ['1','2','3','4','5','6','7','8','9'];
-
-    var allowedMoves = {
-      'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],
-      'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
-      'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
-      'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],
-      'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],
-      'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
-      'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
-      'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],
-      'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
-      'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],
-      'C6':['B6','C5','C7','D6'],
-      'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],
-      'C9':['B8','B9','C8','D8','D9'],
-      'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
-      'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],
-      'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
-      'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
-      'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],
-      'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
-      'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
-    };
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 3 — État
-    // ═══════════════════════════════════════════════════════════════
-
-    var myColor    = null;
-    var myOppColor = null;
-    var gameId     = null;
-    var myUid      = null;
-
-    // localState : état du board affiché (optimistic)
-    var localState = null;
-
-    var selectedSpot    = null;
-    var lastBlockedSpot = null;
-    var canChangePiece  = true;
-    var pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-
-    var piecesOnBoard = {};
-
-    // File des mouvements envoyés au backend (en attente de confirmation)
-    // Chaque entrée : { origin, target, capturedSpots, dir, promise }
-    var moveQueue       = [];
-    // Nombre de mouvements dans le turn en cours (pour savoir si on est en plein mouvement)
-    var movingInProgress = false;
-
-    // Fanalahidian'ny hetsika farany niseho (mba tsy hiseho indroa)
-    var lastSeenHistKey   = null;
-
-    // Timer de réconciliation post-mouvement
-    var reconcileTimer = null;
-
-    var myDotEl  = null;
-    var oppDotEl = null;
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 4 — Init
-    // ═══════════════════════════════════════════════════════════════
-
-    var params   = new URLSearchParams(window.location.search);
-    var gameId_p = params.get('gameId');
-    var color_p  = params.get('color');
-    var inviteId = params.get('inviteId');
-
-    async function init() {
-      if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
-      if (color_p !== 'maintso' && color_p !== 'mena') { showError('Diso ny color.'); return; }
-
+  async function loadSession() {
+    setPageLoading(true);
+    try {
       var stored = localStorage.getItem('user');
-      if (!stored) { window.location.href = 'login&register.html'; return; }
-      var localUser = null;
-      try { localUser = JSON.parse(stored); } catch(e) {}
-      if (!localUser || !localUser.uid) { window.location.href = 'login&register.html'; return; }
-
-      try {
-        var data = await callApi(SESSION_API_URL, 'get-fanorona-game', { uid: localUser.uid, gameId: gameId_p });
-        if (!data.success) { showError('Tsy hita ny lalao.'); return; }
-
-        myUid      = localUser.uid;
-        gameId     = gameId_p;
-        myColor    = color_p;
-        myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
-
-        renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
-
-        if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
-
-        document.getElementById('game-board').style.display    = 'block';
-        document.getElementById('stop-move-btn').style.display = 'block';
-        document.getElementById('loading-overlay').classList.add('hidden');
-
-        drawBoardSpots();
-
-        document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
-
-        // Premier chargement bloquant
-        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
-        if (d.success) {
-          localState = copyState(d.game);
-          applyLocalState();
-        }
-
-        // Polling adversaire
-        setInterval(pollAdversaire, POLL_INTERVAL);
-
-      } catch(err) { showError('Nisy olana: ' + err.message); }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 5 — Players bar
-    // ═══════════════════════════════════════════════════════════════
-
-    function renderPlayersBar(myCol, myUsername, oppUsername) {
-      var bar = document.getElementById('players-bar');
-      var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
-      var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-      bar.innerHTML =
-        '<div class="player-info">' +
-          '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
-          '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
-        '</div>' +
-        '<span class="vs-sep">VS</span>' +
-        '<div class="player-info">' +
-          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
-          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
-        '</div>';
-      bar.style.display = 'flex';
-      myDotEl  = document.getElementById('my-dot');
-      oppDotEl = document.getElementById('opp-dot');
-    }
-
-    function updateTurnIndicator(turn) {
-      if (!myDotEl || !oppDotEl) return;
-      if (turn === myColor) {
-        myDotEl.classList.add('active-turn'); oppDotEl.classList.remove('active-turn');
-      } else {
-        oppDotEl.classList.add('active-turn'); myDotEl.classList.remove('active-turn');
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 6 — Polling adversaire UNIQUEMENT
-    //  (ne modifie le state local que si c'est le tour de l'adversaire
-    //   OU si aucun mouvement n'est en cours côté joueur)
-    // ═══════════════════════════════════════════════════════════════
-
-    async function pollAdversaire() {
-      try {
-        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
-        if (!d.success) return;
-        var serverTurn = d.game.turn;
-
-        // Ne rien écraser pendant un mouvement local
-        if (movingInProgress) return;
-
-        // Raha mbola tsy tour anao → adversaire manao hetsika
-        // Havaozina ny pieces mba hita ny pio nalehany (tsy replay, tsy trail)
-        if (serverTurn !== myColor) {
-          if (localState) {
-            localState.pieces = Object.assign({}, d.game.pieces);
-            localState.turn   = d.game.turn;
-            renderPieces(localState.pieces, localState);
+      if (!stored) throw new Error('No session.');
+      var local = JSON.parse(stored);
+      if (!local || !local.uid) throw new Error('Invalid session.');
+      var data = await callSessionApi('get-session', { uid: local.uid });
+      if (data.success && data.user) {
+        currentUser = data.user;
+        localStorage.setItem('user', JSON.stringify(currentUser));
+        updateUsernameDisplay();
+        callSessionApi('ping', { uid: currentUser.uid }).catch(function(){});
+        setTimeout(loadRequestsBadge, 500);
+        if (!currentUser.username) setTimeout(function () { openModal(document.getElementById('setUsernameModal')); }, 500);
+        setInterval(function () { if (currentUser) callSessionApi('ping', { uid: currentUser.uid }).catch(function(){}); }, 15000);
+        setInterval(function () {
+          if (currentUser && !playersModal.classList.contains('active')) loadRequestsBadge();
+          if (currentUser && playersModal.classList.contains('active')) {
+            var ap = document.querySelector('.content-panel.active-panel');
+            if (ap && ap.id === 'friends-panel') loadFriendsPanel();
           }
-          return;
-        }
+        }, 30000);
+        // Démarrer le polling des invitations de jeu (toutes les 3s)
+        startGameInvitePolling();
+      } else throw new Error('Session failed.');
+    } catch (err) { localStorage.removeItem('user'); window.location.href = 'login&register.html'; }
+    finally { setPageLoading(false); }
+  }
 
-        // Tour anao — raha efa manao hetsika ianao (misy selectedSpot na movingPiece),
-        // tsy ovaina ny state mba tsy hanafoana ny selection nataonao
-        if (selectedSpot || (localState && localState.movingPiece)) return;
+  function validateUsername(u) {
+    if (u.length < 3 || u.length > 20) return { valid: false, message: 'Username must be 3–20 characters.' };
+    if (!/^[a-zA-Z0-9_]+$/.test(u)) return { valid: false, message: 'Only letters, numbers, and underscores are allowed.' };
+    return { valid: true };
+  }
+  function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-        // Tonga eto fotsiny raha tour anao SY tsy mbola nanao selection ianao
-        var histColor = d.game.lastTurnColor || '';
-        var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
-        var histKey   = histColor + '|' + history.length + '|' +
-                        (history.length > 0 ? history[history.length - 1].target : '');
+  // ── Username setup ──────────────────────────────────────────
+  var setUsernameModal = document.getElementById('setUsernameModal');
+  var setUsernameInput = document.getElementById('setUsernameInput');
+  var confirmSetUsernameBtn = document.getElementById('confirmSetUsernameBtn');
+  var setUsernameError = document.getElementById('setUsernameError');
+  var setUsernameLoadingSpinner = document.getElementById('setUsernameLoadingSpinner');
 
-        if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
-          lastSeenHistKey = histKey;
-        }
+  setUsernameInput.addEventListener('input', function () {
+    var val = setUsernameInput.value.trim();
+    setUsernameError.style.display = 'none';
+    var v = validateUsername(val);
+    confirmSetUsernameBtn.disabled = !v.valid;
+    if (!v.valid && val.length > 0) { setUsernameError.textContent = v.message; setUsernameError.style.display = 'block'; }
+    if (v.valid) {
+      clearTimeout(window._uCheck);
+      window._uCheck = setTimeout(async function () {
+        try { var d = await callSessionApi('check-username', { username: val }); if (!d.available) { setUsernameError.textContent = 'This username is already taken.'; setUsernameError.style.display = 'block'; confirmSetUsernameBtn.disabled = true; } } catch (e) {}
+      }, 500);
+    }
+  });
+  confirmSetUsernameBtn.addEventListener('click', async function () {
+    var u = setUsernameInput.value.trim();
+    if (!currentUser || !validateUsername(u).valid) return;
+    setUsernameLoadingSpinner.style.display = 'block'; confirmSetUsernameBtn.disabled = true;
+    try {
+      var check = await callSessionApi('check-username', { username: u });
+      if (!check.available) { setUsernameError.textContent = 'This username is already taken.'; setUsernameError.style.display = 'block'; return; }
+      var data = await callSessionApi('set-username', { uid: currentUser.uid, username: u });
+      if (data.success && data.user) { currentUser = data.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); closeModal(setUsernameModal); showToast('Username set successfully!', 'success'); }
+    } catch (err) { if (!err.message.includes('taken')) { setUsernameError.textContent = err.message; setUsernameError.style.display = 'block'; } }
+    finally { setUsernameLoadingSpinner.style.display = 'none'; confirmSetUsernameBtn.disabled = false; }
+  });
 
-        // Havaozina ny localState fotsiny raha tena nisy fanovana
-        var serverPiecesStr = JSON.stringify(d.game.pieces);
-        var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
-        if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
+  profileBox.addEventListener('click', function () { if (currentUser) openMyProfileModal(); });
+  settingsBtn.addEventListener('click', function () { if (currentUser) openModal(settingModal); });
 
-        localState      = copyState(d.game);
-        canChangePiece  = true;
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-        document.getElementById('guides-group').innerHTML = '';
-        document.getElementById('stop-move-btn').classList.remove('active');
-        applyLocalState();
+  document.querySelectorAll('.modal-close-btn').forEach(function (btn) {
+    btn.addEventListener('click', function (e) { var m = e.target.closest('.modal-overlay'); if (m) closeModal(m); });
+  });
+  document.querySelectorAll('.modal-overlay').forEach(function (o) {
+    o.addEventListener('click', function (e) {
+      if (e.target !== o) return;
+      if (o.id === 'gameSetupModal' || o.id === 'inviteFriendsModal') return;
+      // Room+matchup: bloquer fermeture gameSelectModal par clic extérieur
+      if (o.id === 'gameSelectModal' && gameOrigin === 'room' && matchupData) return;
+      if (o === userProfileModal) syncUpmStateToSearch();
+      closeModal(o);
+    });
+  });
+  document.getElementById('upmCloseBtn').addEventListener('click', function () { syncUpmStateToSearch(); closeModal(userProfileModal); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if (userProfileModal.classList.contains('active')) syncUpmStateToSearch();
+      document.querySelectorAll('.modal-overlay.active').forEach(function (m) {
+        if (m.id === 'gameSetupModal' || m.id === 'inviteFriendsModal') return;
+        // Bloquer fermeture gameSelectModal si room avec matchup
+        if (m.id === 'gameSelectModal' && gameOrigin === 'room' && matchupData) return;
+        closeModal(m);
+      });
+      closeCtxMenu(); closeRemoveOverlay();
+    }
+  });
 
-        // ── Fanamarinana lany piece (poll) ────────────────────────
-        // Rehefa tonga ny turn anao, jereo raha lany piece ny adversaire
-        var myPieceCountPoll  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-        var oppPieceCountPoll = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        if (myPieceCountPoll === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        } else if (oppPieceCountPoll === 0) {
-          showGameOverAlert(myColor, 2000);
-        }
+  function openMyProfileModal() {
+    var upmUsername = document.getElementById('upmUsername');
+    var upmUid = document.getElementById('upmUid');
+    var upmRelation = document.getElementById('upmRelationBadge');
+    var upmActions = document.getElementById('upmActions');
+    upmUsername.textContent = currentUser.username || '____';
+    upmUid.textContent = 'UID: ' + (currentUser.uid || '—');
+    upmRelation.className = 'upm-relation-badge none';
+    upmRelation.innerHTML = '<i class="fas fa-user"></i> My Profile';
+    upmActions.innerHTML = '';
+    var hBtn = document.createElement('button'); hBtn.className = 'upm-btn upm-btn-history'; hBtn.innerHTML = '<i class="fas fa-history"></i> Game History'; hBtn.addEventListener('click', function () { showToast('Game history coming soon.', 'info'); });
+    var fBtn = document.createElement('button'); fBtn.className = 'upm-btn upm-btn-friends-list'; fBtn.innerHTML = '<i class="fas fa-users"></i> My Friends List';
+    fBtn.addEventListener('click', function () {
+      closeModal(userProfileModal);
+      // Ouvrir playersModal sur l'onglet friends
+      _friendsFirstLoad = true;
+      document.querySelectorAll('.sidebar-item').forEach(function(s){ s.classList.remove('active'); });
+      var fsi = document.querySelector('.sidebar-item[data-panel="friends-panel"]');
+      if (fsi) fsi.classList.add('active');
+      document.querySelectorAll('.content-panel').forEach(function(p){ p.classList.remove('active-panel'); });
+      document.getElementById('friends-panel').classList.add('active-panel');
+      openModal(playersModal);
+      loadFriendsPanel(); loadRequestsBadge(); loadSentBadge();
+    });
+    var eBtn = document.createElement('button'); eBtn.className = 'upm-btn'; eBtn.style.cssText = 'background:#f0f9ff;color:#0369a1;border:1.5px solid #bae6fd;'; eBtn.innerHTML = '<i class="fas fa-envelope"></i> View My Email'; eBtn.addEventListener('click', function () { openEmailModal(); });
+    upmActions.appendChild(hBtn); upmActions.appendChild(fBtn); upmActions.appendChild(eBtn);
+    openModal(userProfileModal);
+  }
 
-      } catch(e) { console.warn('poll error', e); }
+  function setUpmLoading(btn, on) { btn.classList.toggle('loading', on); btn.disabled = on; }
+  function syncUpmStateToSearch() { if (!upmCurrentUid || !upmCurrentRelation) return; syncSearchListRelation(upmCurrentUid, upmCurrentRelation); upmCurrentUid = null; upmCurrentRelation = null; }
+
+  function openUserProfileModal(uid, username, relation) {
+    upmCurrentUid = uid; upmCurrentRelation = relation;
+    var upmUsername = document.getElementById('upmUsername');
+    var upmUid = document.getElementById('upmUid');
+    var upmRelation = document.getElementById('upmRelationBadge');
+    var upmActions = document.getElementById('upmActions');
+    upmUsername.textContent = username; upmUid.textContent = 'UID: ' + uid;
+    var bc = 'none', bh = '';
+    if (relation === 'friend') { bc = 'friend'; bh = '<i class="fas fa-user-check"></i> Friends'; }
+    else if (relation === 'pending_sent') { bc = 'pending'; bh = '<i class="fas fa-clock"></i> Request Sent'; }
+    else if (relation === 'pending_received') { bc = 'pending'; bh = '<i class="fas fa-bell"></i> Request Received'; }
+    else { bc = 'none'; bh = '<i class="fas fa-user"></i> Not Friends'; }
+    upmRelation.className = 'upm-relation-badge ' + bc; upmRelation.innerHTML = bh;
+    upmActions.innerHTML = '';
+    var h = document.createElement('button'); h.className = 'upm-btn upm-btn-history'; h.innerHTML = '<i class="fas fa-history"></i> Game History'; h.addEventListener('click', function () { showToast('Game history coming soon.', 'info'); }); upmActions.appendChild(h);
+    var f = document.createElement('button'); f.className = 'upm-btn upm-btn-friends-list'; f.innerHTML = '<i class="fas fa-users"></i> Friends List'; f.addEventListener('click', function () { showToast('Friends list feature coming soon.', 'info'); }); upmActions.appendChild(f);
+    if (relation === 'friend') {
+      var rm = document.createElement('button'); rm.className = 'upm-btn upm-btn-remove'; rm.innerHTML = '<i class="fas fa-user-times"></i> Remove Friend';
+      rm.addEventListener('click', function () { upmCurrentRelation = 'friend'; closeModal(userProfileModal); openRemoveOverlay(uid, username); }); upmActions.insertBefore(rm, upmActions.children[1]);
+    } else if (relation === 'pending_sent') {
+      var cn = document.createElement('button'); cn.className = 'upm-btn upm-btn-cancel'; cn.innerHTML = '<i class="fas fa-times-circle"></i> Cancel Request';
+      cn.addEventListener('click', async function () {
+        setUpmLoading(cn, true);
+        try { await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid }); upmRelation.className = 'upm-relation-badge none'; upmRelation.innerHTML = '<i class="fas fa-user"></i> Not Friends'; upmCurrentRelation = 'none'; cn.remove(); var ab = document.createElement('button'); ab.className = 'upm-btn upm-btn-add'; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend'; ab.addEventListener('click', makeUpmAddHandler(ab, uid, username, upmRelation, upmActions)); upmActions.insertBefore(ab, upmActions.children[1]); syncSearchListRelation(uid, 'none'); showToast('Friend request cancelled.', 'info'); loadSentPanel(); }
+        catch (err) { showToast(err.message, 'error'); setUpmLoading(cn, false); }
+      }); upmActions.insertBefore(cn, upmActions.children[1]);
+    } else if (relation === 'pending_received') {
+      var ac = document.createElement('button'); ac.className = 'upm-btn upm-btn-add'; ac.innerHTML = '<i class="fas fa-check-circle"></i> Accept Request';
+      ac.addEventListener('click', async function () {
+        setUpmLoading(ac, true);
+        try { await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: uid }); upmRelation.className = 'upm-relation-badge friend'; upmRelation.innerHTML = '<i class="fas fa-user-check"></i> Friends'; upmCurrentRelation = 'friend'; ac.remove(); showToast('Friend request accepted!', 'success'); loadFriendsPanel(); loadRequestsPanel(); }
+        catch (err) { showToast(err.message, 'error'); setUpmLoading(ac, false); }
+      }); upmActions.insertBefore(ac, upmActions.children[1]);
+    } else {
+      var ad = document.createElement('button'); ad.className = 'upm-btn upm-btn-add'; ad.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend';
+      ad.addEventListener('click', makeUpmAddHandler(ad, uid, username, upmRelation, upmActions)); upmActions.insertBefore(ad, upmActions.children[1]);
+    }
+    openModal(userProfileModal);
+  }
+
+  function makeUpmAddHandler(btn, uid, username, upmRelation, upmActions) {
+    return async function () {
+      setUpmLoading(btn, true);
+      try {
+        await callSessionApi('send-friend-request', { uid: currentUser.uid, toUid: uid });
+        upmRelation.className = 'upm-relation-badge pending'; upmRelation.innerHTML = '<i class="fas fa-clock"></i> Request Sent'; upmCurrentRelation = 'pending_sent'; btn.remove();
+        var cn = document.createElement('button'); cn.className = 'upm-btn upm-btn-cancel'; cn.innerHTML = '<i class="fas fa-times-circle"></i> Cancel Request';
+        cn.addEventListener('click', async function () {
+          setUpmLoading(cn, true);
+          try { await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid }); upmRelation.className = 'upm-relation-badge none'; upmRelation.innerHTML = '<i class="fas fa-user"></i> Not Friends'; upmCurrentRelation = 'none'; cn.remove(); var ab = document.createElement('button'); ab.className = 'upm-btn upm-btn-add'; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend'; ab.addEventListener('click', makeUpmAddHandler(ab, uid, username, upmRelation, upmActions)); upmActions.insertBefore(ab, upmActions.children[1]); syncSearchListRelation(uid, 'none'); showToast('Friend request cancelled.', 'info'); loadSentPanel(); }
+          catch (err) { showToast(err.message, 'error'); setUpmLoading(cn, false); }
+        }); upmActions.insertBefore(cn, upmActions.children[1]); syncSearchListRelation(uid, 'pending_sent'); showToast('Friend request sent!', 'success');
+      } catch (err) { showToast(err.message, 'error'); setUpmLoading(btn, false); }
+    };
+  }
+
+  function syncSearchListRelation(uid, newRelation) {
+    var items = searchResultsContainer ? searchResultsContainer.querySelectorAll('.player-item') : [];
+    items.forEach(function(item) {
+      var ad = item.querySelector('.player-item-right'); if (!ad) return;
+      var match = false; ad.querySelectorAll('[data-uid]').forEach(function(b) { if (b.dataset.uid === uid) match = true; });
+      if (!match) return;
+      var username = item.querySelector('.username') ? item.querySelector('.username').textContent : uid;
+      ad.innerHTML = '';
+      var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>';
+      vb.addEventListener('click', function() { openUserProfileModal(uid, username, newRelation); });
+      if (newRelation === 'pending_sent') {
+        var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel';
+        cb.addEventListener('click', makeCancelHandler(cb, uid, ad, username)); ad.appendChild(vb); ad.appendChild(cb);
+      } else if (newRelation === 'none') {
+        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
+        ab.addEventListener('click', makeAddHandler(ab, uid, ad)); ad.appendChild(vb); ad.appendChild(ab);
+      } else if (newRelation === 'friend') { ad.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>'; }
+    });
+  }
+
+  function openRemoveOverlay(uid, name) { pendingRemoveUid = uid; pendingRemoveName = name; document.getElementById('rmFriendName').textContent = name; removeFriendOverlay.classList.add('active'); }
+  function closeRemoveOverlay() { removeFriendOverlay.classList.remove('active'); pendingRemoveUid = null; pendingRemoveName = null; }
+  document.getElementById('rmCancelBtn').addEventListener('click', closeRemoveOverlay);
+  removeFriendOverlay.addEventListener('click', function (e) { if (e.target === removeFriendOverlay) closeRemoveOverlay(); });
+  document.getElementById('rmConfirmBtn').addEventListener('click', async function () {
+    if (!pendingRemoveUid) return;
+    var btn = document.getElementById('rmConfirmBtn'); btn.disabled = true;
+    try { await callSessionApi('remove-friend', { uid: currentUser.uid, friendUid: pendingRemoveUid }); closeRemoveOverlay(); closeCtxMenu(); showToast('Friend removed successfully.', 'info'); loadFriendsPanel(); }
+    catch (err) { showToast(err.message, 'error'); } finally { btn.disabled = false; }
+  });
+
+  // ── Rename ──────────────────────────────────────────────────
+  var renameBtn = document.getElementById('renameBtn');
+  var renameModal = document.getElementById('renameModal');
+  var newNameInput = document.getElementById('newNameInput');
+  var passwordConfirmInput = document.getElementById('passwordConfirmInput');
+  var confirmRenameBtn = document.getElementById('confirmRenameBtn');
+  var usernameError = document.getElementById('UsernameError');
+  var passwordErrorMessage = document.getElementById('passwordErrorMessage');
+  var renameSuccessMessage = document.getElementById('renameSuccessMessage');
+  var renameLoadingSpinner = document.getElementById('renameLoadingSpinner');
+
+  renameBtn.addEventListener('click', function () { newNameInput.value = ''; passwordConfirmInput.value = ''; usernameError.style.display = 'none'; passwordErrorMessage.style.display = 'none'; renameSuccessMessage.style.display = 'none'; confirmRenameBtn.disabled = true; openModal(renameModal); });
+  newNameInput.addEventListener('input', function () { var v = validateUsername(newNameInput.value.trim()); usernameError.style.display = 'none'; confirmRenameBtn.disabled = !(v.valid && passwordConfirmInput.value); });
+  passwordConfirmInput.addEventListener('input', function () { confirmRenameBtn.disabled = !(validateUsername(newNameInput.value.trim()).valid && passwordConfirmInput.value); });
+  confirmRenameBtn.addEventListener('click', async function () {
+    var nu = newNameInput.value.trim(); var pw = passwordConfirmInput.value;
+    if (!pw) { passwordErrorMessage.textContent = 'Please enter your password.'; passwordErrorMessage.style.display = 'block'; return; }
+    renameLoadingSpinner.style.display = 'block'; confirmRenameBtn.disabled = true; usernameError.style.display = 'none'; passwordErrorMessage.style.display = 'none';
+    try {
+      var v = await callAuthApi('verify-password', { uid: currentUser.uid, password: pw });
+      if (!v.valid) { passwordErrorMessage.textContent = 'Incorrect password.'; passwordErrorMessage.style.display = 'block'; return; }
+      var c = await callSessionApi('check-username', { username: nu }); if (!c.available) { usernameError.style.display = 'block'; return; }
+      var d = await callSessionApi('set-username', { uid: currentUser.uid, username: nu });
+      if (d.success) { currentUser = d.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); renameSuccessMessage.style.display = 'block'; setTimeout(function () { closeModal(renameModal); }, 1500); }
+    } catch (err) { if (err.message.toLowerCase().includes('taken')) usernameError.style.display = 'block'; else { passwordErrorMessage.textContent = err.message; passwordErrorMessage.style.display = 'block'; } }
+    finally { renameLoadingSpinner.style.display = 'none'; confirmRenameBtn.disabled = false; }
+  });
+
+  document.getElementById('signOutBtn').addEventListener('click', function () { openModal(document.getElementById('logoutConfirmModal')); });
+  document.getElementById('confirmLogoutBtn').addEventListener('click', function () { localStorage.removeItem('user'); window.location.href = 'login&register.html'; });
+  document.getElementById('cancelLogoutBtn').addEventListener('click', function () { closeModal(document.getElementById('logoutConfirmModal')); });
+
+  // ── Players Modal ─────────────────────────────────────────
+  var playersModal = document.getElementById('playersModal');
+  document.getElementById('amisBtn').addEventListener('click', function () {
+    _friendsFirstLoad = true; // reset pour animation au ré-ouverture
+    openModal(playersModal); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); updateFooterRequestsBadge(0);
+  });
+  document.querySelectorAll('.sidebar-item').forEach(function (item) {
+    item.addEventListener('click', function () {
+      document.querySelectorAll('.sidebar-item').forEach(function (s) { s.classList.remove('active'); }); item.classList.add('active');
+      var pid = item.dataset.panel;
+      document.querySelectorAll('.content-panel').forEach(function (p) { p.classList.remove('active-panel'); }); document.getElementById(pid).classList.add('active-panel');
+      if (pid === 'friends-panel') { _friendsFirstLoad = true; loadFriendsPanel(); }
+      if (pid === 'requests-panel') loadRequestsPanel();
+      if (pid === 'sent-panel') loadSentPanel();
+      if (pid === 'search-panel') document.getElementById('searchResultsContainer').innerHTML = '';
+    });
+  });
+
+  function renderEmptyState(container, icon, msg) { container.innerHTML = '<div class="empty-state"><i class="fas fa-' + icon + '"></i><p>' + msg + '</p></div>'; }
+
+  function openCtxMenu(triggerBtn, uid, name) {
+    activeFriendUid = uid; activeFriendName = name; activeCtxTrigger = triggerBtn;
+    var rect = triggerBtn.getBoundingClientRect(); var mw = 185;
+    var left = rect.right - mw; if (left < 6) left = 6;
+    var top = rect.bottom + 5; if (top + 180 > window.innerHeight) top = rect.top - 180;
+    friendCtxMenu.style.left = left + 'px'; friendCtxMenu.style.top = top + 'px'; friendCtxMenu.style.minWidth = mw + 'px'; friendCtxMenu.classList.add('open');
+    // Cacher "Invite to Play" si l'ami est offline
+    var isOnline = triggerBtn.dataset.online === '1';
+    var playBtn = document.getElementById('ctxPlayBtn');
+    if (playBtn) playBtn.style.display = isOnline ? '' : 'none';
+  }
+  function closeCtxMenu() { friendCtxMenu.classList.remove('open'); activeCtxTrigger = null; }
+  document.addEventListener('click', function (e) {
+    if (!friendCtxMenu.classList.contains('open')) return;
+    if (friendCtxMenu.contains(e.target)) return;
+    if (activeCtxTrigger && activeCtxTrigger.contains(e.target)) return;
+    // Garder le menu ouvert si une invitation est en cours
+    if (ctxInviteTimer) return;
+    closeCtxMenu();
+  });
+
+  document.getElementById('ctxProfileBtn').addEventListener('click', function () { closeCtxMenu(); openUserProfileModal(activeFriendUid, activeFriendName, 'friend'); });
+  document.getElementById('ctxChatBtn').addEventListener('click', function () { closeCtxMenu(); showToast('Chat feature coming soon.', 'info'); });
+  var ctxInviteTimer = null;
+  var ctxInviteStatusTimer = null;
+  var ctxInviteId = null;
+  var ctxInviteUid = null;
+  var _ctxInviteFromFriends = false; // mémorise si invitation depuis friends
+
+  document.getElementById('ctxPlayBtn').addEventListener('click', function () {
+    if (ctxInviteTimer) return; // already counting
+    var uid = activeFriendUid;
+    var name = activeFriendName;
+    // Pas de closeCtxMenu — le menu reste ouvert pendant le countdown
+    startCtxInvite(uid, name);
+  });
+
+  function resetCtxPlayBtn() {
+    var playBtn = document.getElementById('ctxPlayBtn');
+    var countdown = document.getElementById('ctxPlayCountdown');
+    if (playBtn) { playBtn.disabled = false; playBtn.style.opacity = ''; }
+    if (countdown) { countdown.style.display = 'none'; countdown.textContent = ''; }
+  }
+
+  async function startCtxInvite(uid, name) {
+    var playBtn = document.getElementById('ctxPlayBtn');
+    var countdown = document.getElementById('ctxPlayCountdown');
+    ctxInviteUid = uid;
+    ctxInviteId = null;
+    _ctxInviteFromFriends = document.getElementById('playersModal').classList.contains('active');
+
+    // Envoyer invitation
+    try {
+      var res = await callSessionApi('send-game-invite', {
+        uid: currentUser.uid, toUid: uid,
+        game: selectedGame || 'fanorona', color: selectedColor || 'green', minutes: selectedMinutes || 5
+      });
+      ctxInviteId = res.inviteId;
+    } catch(err) {
+      showToast(err.message || 'Failed to send invitation.', 'error');
+      return;
     }
 
-    function copyState(game) {
-      return {
-        pieces:      Object.assign({}, game.pieces),
-        turn:        game.turn,
-        movingPiece: game.movingPiece || '',
-        visited:     (game.visited || []).slice(),
-        lastDir:     game.lastDir || '',
-      };
-    }
+    // Disable le bouton + opacity 0.8 + countdown visible
+    if (playBtn) { playBtn.disabled = true; playBtn.style.opacity = '0.8'; }
+    if (countdown) { countdown.style.display = 'inline'; countdown.textContent = '10'; }
 
-    function applyLocalState() {
-      updateTurnIndicator(localState.turn);
-      var stopBtn = document.getElementById('stop-move-btn');
-      if (localState.turn === myColor && localState.movingPiece) {
-        stopBtn.classList.add('active');
-      } else if (!movingInProgress) {
-        stopBtn.classList.remove('active');
+    var count = 10;
+    ctxInviteTimer = setInterval(function() {
+      count--;
+      if (countdown) countdown.textContent = count > 0 ? count : '0';
+      if (count <= 0) {
+        clearInterval(ctxInviteTimer); ctxInviteTimer = null;
+        resetCtxPlayBtn();
+        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: ctxInviteId }).catch(function(){});
+        if (ctxInviteStatusTimer) { clearInterval(ctxInviteStatusTimer); ctxInviteStatusTimer = null; }
+        ctxInviteId = null; ctxInviteUid = null;
       }
-      renderPieces(localState.pieces, localState);
-      // Toujours afficher les guides si une pièce est sélectionnée
-      if (selectedSpot && localState.turn === myColor) {
-        renderGuides(selectedSpot, localState);
-      }
+    }, 1000);
+
+    // Polling accepté
+    ctxInviteStatusTimer = setInterval(async function() {
+      if (!ctxInviteId) return;
+      try {
+        var sRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: ctxInviteId });
+        if (sRes.status === 'accepted') {
+          clearInterval(ctxInviteTimer); ctxInviteTimer = null;
+          clearInterval(ctxInviteStatusTimer); ctxInviteStatusTimer = null;
+          resetCtxPlayBtn();
+          // Fermer ctx menu + playersModal avant d'ouvrir la room
+          closeCtxMenu();
+          closeModal(document.getElementById('playersModal'));
+          selectedGame = sRes.game; selectedMinutes = sRes.minutes; selectedColor = sRes.color;
+          gameOrigin = 'room';
+          openGameSetup(sRes.game, {
+            senderUsername: sRes.senderUsername,
+            receiverUsername: sRes.receiverUsername,
+            isSender: true,
+            inviteId: ctxInviteId
+          });
+          ctxInviteId = null; ctxInviteUid = null;
+        } else if (sRes.status === 'declined' || sRes.status === 'expired' || sRes.status === 'cancelled' || sRes.status === 'not_found') {
+          clearInterval(ctxInviteTimer); ctxInviteTimer = null;
+          clearInterval(ctxInviteStatusTimer); ctxInviteStatusTimer = null;
+          resetCtxPlayBtn();
+          if (sRes.status === 'declined') showToast(name + ' declined your invitation.', 'info');
+          ctxInviteId = null; ctxInviteUid = null;
+        }
+      } catch(e) {}
+    }, 2000);
+  }
+  document.getElementById('ctxRemoveBtn').addEventListener('click', function () { closeCtxMenu(); openRemoveOverlay(activeFriendUid, activeFriendName); });
+
+  function formatLastSeen(ls) {
+    if (!ls) return ''; var diff = Math.floor((Date.now() - ls) / 1000);
+    if (diff < 60) return ''; var min = Math.floor(diff / 60); if (min < 60) return min + 'min ago';
+    var hr = Math.floor(min / 60); if (hr < 24) return hr + 'h ago';
+    var d = Math.floor(hr / 24); if (d < 365) return d + 'd ago'; return Math.floor(d / 365) + 'y ago';
+  }
+
+  var _friendsFirstLoad = true;
+
+  async function loadFriendsPanel() {
+    var container = document.getElementById('friendsListContainer');
+    var isFirstLoad = _friendsFirstLoad || container.innerHTML === '';
+    // Premier chargement seulement → spinner + scroll top
+    if (isFirstLoad) {
+      _friendsFirstLoad = false;
+      container.innerHTML = '<div class="spinner-inline"></div>';
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 7 — Spots cliquables
-    // ═══════════════════════════════════════════════════════════════
-
-    function drawBoardSpots() {
-      var spotsGrp = document.getElementById('spots-group');
-      spotsGrp.innerHTML = '';
-      rows.forEach(function(r, ri) {
-        cols.forEach(function(c, ci) {
-          var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          circle.setAttribute('cx', ci * 50);
-          circle.setAttribute('cy', ri * 50);
-          circle.setAttribute('r', 18);
-          circle.setAttribute('fill', 'transparent');
-          circle.setAttribute('class', 'spot');
-          (function(spotID) { circle.onclick = function(e) { e.stopPropagation(); handleSpotClick(spotID); }; })(r + c);
-          spotsGrp.appendChild(circle);
+    try {
+      var data = await callSessionApi('get-friends', { uid: currentUser.uid });
+      var cb = document.getElementById('friendsCountBadge'); var fc = data.friendCount || 0;
+      cb.textContent = fc + '/100'; cb.style.display = fc > 0 ? 'inline-block' : 'none';
+      if (!data.friends || data.friends.length === 0) {
+        container.innerHTML = '';
+        renderEmptyState(container, 'user-friends', 'You have no friends yet. Use "Add Friend" to get started.');
+        return;
+      }
+      if (isFirstLoad) {
+        // Construire la liste complète (premier chargement)
+        container.innerHTML = '';
+        data.friends.forEach(function (fr) {
+          var div = document.createElement('div'); div.className = 'player-item'; div.dataset.uid = fr.uid;
+          var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
+          div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst ? '<span class="last-seen" data-ls>' + escapeHtml(lst) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '" data-online="' + (fr.online ? '1' : '0') + '"><i class="fas fa-ellipsis-v"></i></button></div>';
+          div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
+          container.appendChild(div);
         });
-      });
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 8 — Gestion des clics (Optimistic UI)
-    // ═══════════════════════════════════════════════════════════════
-
-    function handleSpotClick(spotID) {
-      if (!localState || localState.turn !== myColor) return;
-      if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
-
-      var pieces = localState.pieces;
-
-      // ── Sélection d'une pièce ──────────────────────────────────
-      if (canChangePiece && pieces[spotID] === myColor) {
-        if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
-          selectedSpot    = spotID;
-          lastBlockedSpot = null;
-        } else {
-          selectedSpot    = null;
-          lastBlockedSpot = spotID;
-        }
-        // Guide affiché immédiatement
-        renderGuides(selectedSpot || '', localState);
-        renderPieces(pieces, localState);
-        return;
-      }
-
-      // ── Déplacement ────────────────────────────────────────────
-      if (!selectedSpot) return;
-      if ((allowedMoves[selectedSpot] || []).indexOf(spotID) === -1) return;
-      if (pieces[spotID]) return;
-      if (localState.visited && localState.visited.indexOf(spotID) !== -1) return;
-
-      var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
-      var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-      if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
-
-      var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
-      var r2 = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
-      var dir = (r2-r1) + ',' + (c2-c1);
-      if (!canChangePiece && localState.lastDir === dir) return;
-
-      var origin     = selectedSpot;
-      var newPieces  = Object.assign({}, pieces);
-      delete newPieces[origin];
-      newPieces[spotID] = myColor;
-      var newVisited = (localState.visited || []).concat([origin]);
-
-      if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
-        // Choix approach / withdrawal
-        pendingCaptures = {
-          approach:   caps.approach,
-          withdrawal: caps.withdrawal,
-          moveData:   { origin: origin, target: spotID, dir: dir }
-        };
-        localState.pieces  = newPieces;
-        localState.visited = newVisited;
-        selectedSpot = spotID;
-        renderPieces(newPieces, localState);
-        // Guides vides pendant le choix
-        document.getElementById('guides-group').innerHTML = '';
-        return;
-      }
-
-      var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
-      doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
-    }
-
-    function confirmCapture(type) {
-      var md = pendingCaptures.moveData;
-      var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
-      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      var newPieces  = Object.assign({}, localState.pieces);
-      var newVisited = (localState.visited || []).slice();
-      doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
-    }
-
-    // ─── Cœur : appliquer un mouvement localement + envoyer au backend ─────
-    function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
-      // Supprimer captures
-      capturedSpots.forEach(function(s) { delete newPieces[s]; });
-
-      var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
-
-      // ── Mise à jour locale immédiate ───────────────────────────
-      movingInProgress = true;
-      localState.pieces = newPieces;
-
-      if (canContinue) {
-        localState.movingPiece = target;
-        localState.visited     = newVisited;
-        localState.lastDir     = dir;
-        selectedSpot   = target;
-        canChangePiece = false;
-        document.getElementById('stop-move-btn').classList.add('active');
       } else {
-        localState.turn        = myOppColor;
-        localState.movingPiece = '';
-        localState.visited     = [];
-        localState.lastDir     = '';
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        canChangePiece  = true;
-        document.getElementById('stop-move-btn').classList.remove('active');
-      }
-
-      // Guide affiché immédiatement après le mouvement
-      if (canContinue && selectedSpot) {
-        renderGuides(selectedSpot, localState);
-      } else {
-        document.getElementById('guides-group').innerHTML = '';
-      }
-
-      updateTurnIndicator(localState.turn);
-      renderPieces(localState.pieces, localState);
-
-      // ── Envoi au backend (fire-and-forget, sans rollback) ──────
-      sendMoveToBackend(origin, target, capturedSpots, dir);
-
-      // ── Réconciliation différée ────────────────────────────────
-      // On attend RECONCILE_DELAY après le DERNIER mouvement du turn
-      // pour vérifier que tout est cohérent côté backend
-      if (!canContinue) {
-        scheduleReconcile();
-      }
-
-      // ── Fanamarinana lany piece ───────────────────────────────────
-      // Rehefa vita ny dingana iray (tsy misy mitohy), jereo raha lany piece
-      if (!canContinue) {
-        var myPieceCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-        var oppPieceCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        if (oppPieceCount === 0) {
-          // Lany ny piece adversaire → myColor nandresy
-          showGameOverAlert(myColor, 2000);
-        } else if (myPieceCount === 0) {
-          // Lany ny piece ahy → myOppColor nandresy
-          showGameOverAlert(myOppColor, 2000);
-        }
-      }
-    }
-
-    function handleStopBtn() {
-      if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
-      var piecesSnapshot = Object.assign({}, localState.pieces);
-
-      movingInProgress = true;
-      localState.turn        = myOppColor;
-      localState.movingPiece = '';
-      localState.visited     = [];
-      localState.lastDir     = '';
-      selectedSpot    = null;
-      lastBlockedSpot = null;
-      canChangePiece  = true;
-      document.getElementById('stop-move-btn').classList.remove('active');
-      document.getElementById('guides-group').innerHTML = '';
-      updateTurnIndicator(localState.turn);
-      renderPieces(localState.pieces, localState);
-
-      // Envoyer stop au backend
-      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
-        .catch(function(e) { console.warn('stop-move error', e); });
-
-      scheduleReconcile();
-
-      // ── Fanamarinana lany piece rehefa mijanona ───────────────────
-      var myPieceCountS  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-      var oppPieceCountS = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      if (oppPieceCountS === 0) {
-        showGameOverAlert(myColor, 2000);
-      } else if (myPieceCountS === 0) {
-        showGameOverAlert(myOppColor, 2000);
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 9 — Envoi backend & réconciliation
-    //
-    //  Principe :
-    //  - Chaque mouvement est envoyé immédiatement (fire-and-forget)
-    //  - Aucun rollback UI pendant les mouvements
-    //  - Après le dernier mouvement du turn (fin ou stop), on attend
-    //    RECONCILE_DELAY ms, puis on vérifie le backend.
-    //  - Si l'adversaire a déjà reçu l'état (polling côté serveur),
-    //    on l'affiche immédiatement sans attendre.
-    //  - En cas de désync réseau : on prend le lastDir/movingPiece
-    //    du backend comme "position de récupération" (jamais de retour arrière).
-    // ═══════════════════════════════════════════════════════════════
-
-    function sendMoveToBackend(origin, target, capturedSpots, dir) {
-      callApi(GAME_API_URL, 'make-move', {
-        uid: myUid, gameId: gameId,
-        origin: origin, target: target,
-        capturedSpots: capturedSpots, dir: dir
-      }).catch(function(e) {
-        console.warn('make-move backend error (non-blocking):', e);
-        // Pas de rollback UI : on laisse la réconciliation gérer ça
-      });
-    }
-
-    function scheduleReconcile() {
-      if (reconcileTimer) clearTimeout(reconcileTimer);
-      reconcileTimer = setTimeout(function() {
-        reconcileTimer = null;
-        doReconcile();
-      }, RECONCILE_DELAY);
-    }
-
-    async function doReconcile() {
-      try {
-        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
-        if (!d.success) return;
-
-        movingInProgress = false;
-
-        var serverTurn = d.game.turn;
-
-        if (serverTurn !== myColor) {
-          // Le backend a bien changé de tour → état correct
-          // Si l'UI affiche déjà le bon état (tour adversaire), ne rien faire
-          if (localState.turn !== myColor) return; // déjà ok
-          // Sinon, synchroniser
-          localState = copyState(d.game);
-          selectedSpot    = null;
-          lastBlockedSpot = null;
-          canChangePiece  = true;
-          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('guides-group').innerHTML = '';
-          document.getElementById('stop-move-btn').classList.remove('active');
-          applyLocalState();
-
-        } else {
-          // Le backend dit encore mon tour → soit le move est toujours en cours
-          // (multi-capture), soit il y a eu un souci réseau partiel.
-          // On prend la position backend comme référence SANS remettre en arrière :
-          // on adopte le movingPiece du serveur comme point de départ.
-          var serverMoving = d.game.movingPiece || '';
-          if (serverMoving) {
-            // Le serveur a un movingPiece : si l'UI est déjà sur un meilleur état,
-            // on garde l'UI. Sinon on adopte le serveur.
-            selectedSpot   = localState.movingPiece || serverMoving;
-            canChangePiece = false;
-            localState.movingPiece = selectedSpot;
-            document.getElementById('stop-move-btn').classList.add('active');
+        // Refresh: mettre à jour uniquement status dots + lastSeen, sans toucher au DOM principal
+        var existingUids = new Set(Array.from(container.querySelectorAll('.player-item[data-uid]')).map(function(d){ return d.dataset.uid; }));
+        var newUids = new Set(data.friends.map(function(f){ return f.uid; }));
+        // Supprimer les items qui ne sont plus amis
+        existingUids.forEach(function(uid) {
+          if (!newUids.has(uid)) {
+            var el = container.querySelector('.player-item[data-uid="' + uid + '"]');
+            if (el) el.remove();
           }
-          // Rerender avec le state actuel (pas de rollback)
-          if (selectedSpot) renderGuides(selectedSpot, localState);
-          renderPieces(localState.pieces, localState);
-          updateTurnIndicator(localState.turn);
-        }
-      } catch(e) {
-        movingInProgress = false;
-        console.warn('reconcile error', e);
+        });
+        // Mettre à jour ou ajouter
+        data.friends.forEach(function (fr) {
+          var existing = container.querySelector('.player-item[data-uid="' + fr.uid + '"]');
+          if (existing) {
+            // Update status dot
+            var sd = existing.querySelector('[data-sd]');
+            if (sd) { sd.className = 'status-dot ' + (fr.online ? 'online' : 'offline'); sd.setAttribute('data-sd',''); }
+            // Mettre à jour data-online sur le ctx btn
+            var ctxB = existing.querySelector('.friend-ctx-btn');
+            if (ctxB) ctxB.dataset.online = fr.online ? '1' : '0';
+            // Update lastSeen
+            var ls = existing.querySelector('[data-ls]');
+            var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
+            if (ls) ls.textContent = lst;
+          } else {
+            // Nouvel ami → ajouter
+            var div = document.createElement('div'); div.className = 'player-item'; div.dataset.uid = fr.uid;
+            var lst2 = fr.online ? '' : formatLastSeen(fr.lastSeen);
+            div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst2 ? '<span class="last-seen" data-ls>' + escapeHtml(lst2) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '" data-online="' + (fr.online ? '1' : '0') + '"><i class="fas fa-ellipsis-v"></i></button></div>';
+            div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
+            container.appendChild(div);
+          }
+        });
       }
+    } catch (err) {
+      if (isFirstLoad) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load friends. Please try again.'); }
+    }
+  }
+
+  async function loadRequestsBadge() {
+    try { var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid }); var count = (data.requests || []).length; var badge = document.getElementById('requestsBadge'); badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; updateFooterRequestsBadge(count); } catch (e) {}
+  }
+  function updateFooterRequestsBadge(count) { var fb = document.getElementById('footerRequestsBadge'); if (!fb) return; if (count > 0) { fb.textContent = count > 9 ? '9+' : count; fb.style.display = 'flex'; } else { fb.style.display = 'none'; } }
+  async function loadSentBadge() {
+    try { var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid }); var badge = document.getElementById('sentCountBadge'); var count = data.sentCount || (data.sent || []).length; badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; } catch (e) {}
+  }
+
+  async function loadRequestsPanel() {
+    var container = document.getElementById('requestsListContainer'); container.innerHTML = '<div class="spinner-inline"></div>';
+    try {
+      var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid }); container.innerHTML = '';
+      var badge = document.getElementById('requestsBadge');
+      if (!data.requests || data.requests.length === 0) { badge.style.display = 'none'; renderEmptyState(container, 'handshake', 'No pending friend requests.'); return; }
+      badge.textContent = data.requests.length; badge.style.display = 'inline-block';
+      data.requests.forEach(function (req) {
+        var div = document.createElement('div'); div.className = 'player-item';
+        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(req.username) + '</span></div><div class="player-item-right"><button class="btn-sm btn-icon btn-accept-icon" title="Accept" data-uid="' + req.uid + '"><i class="fas fa-check"></i></button><button class="btn-sm btn-icon btn-reject-icon" title="Decline" data-uid="' + req.uid + '"><i class="fas fa-times"></i></button></div>';
+        var aBtn = div.querySelector('.btn-accept-icon'); var rBtn = div.querySelector('.btn-reject-icon');
+        aBtn.addEventListener('click', async function () { aBtn.classList.add('loading'); aBtn.disabled = true; rBtn.disabled = true; try { await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: aBtn.dataset.uid }); showToast('Friend request accepted!', 'success'); loadRequestsPanel(); loadFriendsPanel(); } catch (err) { showToast(err.message, 'error'); aBtn.classList.remove('loading'); aBtn.disabled = false; rBtn.disabled = false; } });
+        rBtn.addEventListener('click', async function () { rBtn.classList.add('loading'); rBtn.disabled = true; aBtn.disabled = true; try { await callSessionApi('reject-friend-request', { uid: currentUser.uid, fromUid: rBtn.dataset.uid }); showToast('Friend request declined.', 'info'); loadRequestsPanel(); } catch (err) { showToast(err.message, 'error'); rBtn.classList.remove('loading'); rBtn.disabled = false; aBtn.disabled = false; } });
+        container.appendChild(div);
+      });
+    } catch (err) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load requests. Please try again.'); }
+  }
+
+  async function loadSentPanel() {
+    var container = document.getElementById('sentListContainer'); container.innerHTML = '<div class="spinner-inline"></div>';
+    try {
+      var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid }); container.innerHTML = '';
+      var badge = document.getElementById('sentCountBadge'); var sc = data.sentCount || (data.sent || []).length;
+      badge.textContent = sc; badge.style.display = sc > 0 ? 'inline-block' : 'none';
+      if (!data.sent || data.sent.length === 0) { renderEmptyState(container, 'paper-plane', 'You have not sent any friend requests yet.'); return; }
+      data.sent.forEach(function (req) {
+        var div = document.createElement('div'); div.className = 'player-item';
+        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(req.username) + '</span></div><div class="player-item-right"><button class="btn-sm btn-cancel" data-uid="' + req.uid + '"><i class="fas fa-times"></i> Cancel</button></div>';
+        div.querySelector('.btn-cancel').addEventListener('click', async function (e) { var btn = e.currentTarget; btn.classList.add('loading'); btn.disabled = true; try { await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: btn.dataset.uid }); showToast('Friend request cancelled.', 'info'); loadSentPanel(); } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; } });
+        container.appendChild(div);
+      });
+    } catch (err) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load sent requests. Please try again.'); }
+  }
+
+  var searchUserInput = document.getElementById('searchUserInput');
+  var searchUserBtn = document.getElementById('searchUserBtn');
+  var searchResultsContainer = document.getElementById('searchResultsContainer');
+  var searchLoadingSpinner = document.getElementById('searchLoadingSpinner');
+
+  searchUserBtn.addEventListener('click', async function () {
+    var query = searchUserInput.value.trim();
+    if (query.length < 3) { searchResultsContainer.innerHTML = '<p style="color:#ef4444;font-size:0.88em;padding:4px 0;">Please enter at least 3 characters.</p>'; return; }
+    searchLoadingSpinner.style.display = 'block'; searchResultsContainer.innerHTML = '';
+    try {
+      var data = await callSessionApi('search-users', { uid: currentUser.uid, query });
+      searchLoadingSpinner.style.display = 'none';
+      if (!data.users || data.users.length === 0) { searchResultsContainer.innerHTML = '<p style="color:#64748b;font-size:0.88em;padding:4px 0;">No players found for "' + escapeHtml(query) + '".</p>'; return; }
+      data.users.forEach(function (user) {
+        var div = document.createElement('div'); div.className = 'player-item';
+        var ad = document.createElement('div'); ad.className = 'player-item-right';
+        if (user.relation === 'friend') { ad.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>'; }
+        else if (user.relation === 'pending_sent') { var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = user.uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel'; cb.addEventListener('click', makeCancelHandler(cb, user.uid, ad)); ad.appendChild(cb); }
+        else if (user.relation === 'pending_received') { var aB = document.createElement('button'); aB.className = 'btn-sm btn-icon btn-accept-icon'; aB.title = 'Accept'; aB.dataset.uid = user.uid; aB.innerHTML = '<i class="fas fa-check"></i>'; var rB = document.createElement('button'); rB.className = 'btn-sm btn-icon btn-reject-icon'; rB.title = 'Decline'; rB.dataset.uid = user.uid; rB.innerHTML = '<i class="fas fa-times"></i>'; aB.addEventListener('click', makeAcceptHandler(aB, rB, user.uid, ad)); rB.addEventListener('click', makeRejectHandler(aB, rB, user.uid, ad)); ad.appendChild(aB); ad.appendChild(rB); }
+        else { var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = user.uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add'; ab.addEventListener('click', makeAddHandler(ab, user.uid, ad)); ad.appendChild(ab); }
+        var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>';
+        vb.addEventListener('click', (function(u, n, r) { return function() { openUserProfileModal(u, n, r); }; })(user.uid, user.username, user.relation));
+        ad.insertBefore(vb, ad.firstChild);
+        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(user.username) + '</span></div>';
+        div.appendChild(ad); searchResultsContainer.appendChild(div);
+      });
+    } catch (err) { searchLoadingSpinner.style.display = 'none'; searchResultsContainer.innerHTML = '<p style="color:#ef4444;font-size:0.88em;">' + escapeHtml(err.message) + '</p>'; }
+  });
+  searchUserInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') searchUserBtn.click(); });
+
+  function makeAddHandler(btn, uid, ad) {
+    var su = ''; try { var pi = btn.closest('.player-item'); if (pi) su = pi.querySelector('.username').textContent; } catch(e){}
+    return async function () {
+      btn.classList.add('loading'); btn.disabled = true;
+      try {
+        await callSessionApi('send-friend-request', { uid: currentUser.uid, toUid: uid }); ad.innerHTML = '';
+        var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>'; vb.addEventListener('click', function() { openUserProfileModal(uid, su, 'pending_sent'); });
+        var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel'; cb.addEventListener('click', makeCancelHandler(cb, uid, ad, su));
+        ad.appendChild(vb); ad.appendChild(cb); showToast('Friend request sent!', 'success');
+      } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; }
+    };
+  }
+  function makeCancelHandler(btn, uid, ad, su) {
+    return async function () {
+      btn.classList.add('loading'); btn.disabled = true;
+      var username = su || ''; if (!username) { try { var pi = btn.closest('.player-item'); if (pi) username = pi.querySelector('.username').textContent; } catch(e){} }
+      try {
+        await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid }); ad.innerHTML = '';
+        var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>'; vb.addEventListener('click', function() { openUserProfileModal(uid, username, 'none'); });
+        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add'; ab.addEventListener('click', makeAddHandler(ab, uid, ad));
+        ad.appendChild(vb); ad.appendChild(ab); showToast('Friend request cancelled.', 'info'); loadSentPanel();
+      } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; }
+    };
+  }
+  function makeAcceptHandler(aBtn, rBtn, uid, ad) {
+    return async function () { aBtn.classList.add('loading'); aBtn.disabled = true; rBtn.disabled = true; try { await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: uid }); ad.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>'; showToast('Friend request accepted!', 'success'); loadFriendsPanel(); loadRequestsPanel(); } catch (err) { showToast(err.message, 'error'); aBtn.classList.remove('loading'); aBtn.disabled = false; rBtn.disabled = false; } };
+  }
+  function makeRejectHandler(aBtn, rBtn, uid, ad) {
+    var su = ''; try { var pi = rBtn.closest('.player-item'); if (pi) su = pi.querySelector('.username').textContent; } catch(e){}
+    return async function () {
+      rBtn.classList.add('loading'); rBtn.disabled = true; aBtn.disabled = true;
+      try {
+        await callSessionApi('reject-friend-request', { uid: currentUser.uid, fromUid: uid }); ad.innerHTML = '';
+        var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>'; vb.addEventListener('click', function() { openUserProfileModal(uid, su, 'none'); });
+        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add'; ab.addEventListener('click', makeAddHandler(ab, uid, ad));
+        ad.appendChild(vb); ad.appendChild(ab); showToast('Friend request declined.', 'info'); loadRequestsPanel();
+      } catch (err) { showToast(err.message, 'error'); rBtn.classList.remove('loading'); rBtn.disabled = false; aBtn.disabled = false; }
+    };
+  }
+
+  // ================================================================
+  // GAME SELECT & GAME SETUP
+  // ================================================================
+  var gameSelectModal = document.getElementById('gameSelectModal');
+  var gameSetupModal = document.getElementById('gameSetupModal');
+  var inviteFriendsModal = document.getElementById('inviteFriendsModal');
+  var selectedGame = null;
+  var selectedColor = 'green';
+  var selectedMinutes = 5;
+  var gameOrigin = 'create';
+  var gsDropdownOpen = false;
+  // matchup data (rempli quand invitation acceptée)
+  var matchupData = null; // { senderUsername, receiverUsername, isSender }
+
+  var gameImages = { both: 'img/fanorona&vela.png', fanorona: 'img/fanorona.png', vela: 'img/vela.png' };
+  var gameLabels = { both: 'Fanorona & Vela', fanorona: 'Fanorona', vela: 'Vela' };
+
+  function openGameSelectModal(origin) {
+    gameOrigin = origin || 'create';
+    var isRoom = gameOrigin === 'room';
+    document.getElementById('gameSelectTitle').innerHTML = '<i class="fas fa-' + (isRoom ? 'users' : 'gamepad') + '" style="color:#7c3aed;"></i>' + (isRoom ? 'Room' : 'Create a Game');
+    document.getElementById('gameSelectSub').textContent = isRoom ? 'Choose the game type for your room' : 'Choose the game type you want to play';
+    openModal(gameSelectModal);
+  }
+  document.getElementById('searchAdversariesBtn').addEventListener('click', function () { openGameSelectModal('create'); });
+  document.getElementById('roomBtn').addEventListener('click', function () { openGameSelectModal('room'); });
+  document.getElementById('gameSelectCloseBtn').addEventListener('click', function () {
+    if (gameOrigin === 'room' && matchupData) {
+      // En room avec joueur connecté → confirmation avant quitter
+      openRoomQuitConfirm();
+    } else {
+      closeModal(gameSelectModal);
+    }
+  });
+  gameSelectModal.addEventListener('click', function (e) {
+    if (e.target !== gameSelectModal) return;
+    // En room avec matchup → ignorer le clic extérieur
+    if (gameOrigin === 'room' && matchupData) return;
+    closeModal(gameSelectModal);
+  });
+
+  document.querySelectorAll('.game-type-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      selectedGame = btn.dataset.game;
+      closeModal(gameSelectModal);
+      if (gameOrigin === 'room' && matchupData) {
+        // Sync game immédiatement vers Firestore pour que le receiver voit le changement
+        if (matchupData.inviteId) {
+          callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
+        }
+        openGameSetup(selectedGame, matchupData);
+      } else {
+        openGameSetup(selectedGame, null);
+      }
+    });
+  });
+
+  /**
+   * openGameSetup
+   * @param {string} game
+   * @param {object|null} matchup — { senderUsername, receiverUsername } si invitation acceptée
+   */
+  // isSender = true → mpamorona room (sender), false → invité (receiver)
+  var roomIsSender = true;
+  // polling timer pour sync des settings depuis le sender vers le receiver
+  var roomSyncTimer = null;
+  // ready state du receiver (lu par sender via polling)
+  // receiverReady supprimé — utiliser receiverIsReady (ligne ~879) comme source unique
+
+  function openGameSetup(game, matchup) {
+    matchupData = matchup || null;
+    var label = gameLabels[game] || game;
+    var headerImg = document.getElementById('gsHeaderImg');
+    headerImg.innerHTML = '';
+    var img = document.createElement('img'); img.src = gameImages[game] || ''; img.alt = label;
+    img.onerror = function () { headerImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
+    headerImg.appendChild(img);
+    document.getElementById('gsHeaderTitle').textContent = label;
+    document.getElementById('gsHeaderSub').textContent = matchup ? 'Room · ' + selectedMinutes + ' min' : 'Configure your game settings';
+
+    // Matchup strip — toujours visible en mode room
+    var gsMatchup = document.getElementById('gsMatchup');
+    var gsMatchupWith = document.getElementById('gsMatchupWith');
+    var gsMatchupPending = document.getElementById('gsMatchupPending');
+    var gsMatchupSender = document.getElementById('gsMatchupSender');
+    var gsMatchupReceiver = document.getElementById('gsMatchupReceiver');
+    if (gameOrigin === 'room') {
+      gsMatchup.classList.add('visible');
+      if (matchup) {
+        // Olona roa — maseho Sender × Receiver
+        if (gsMatchupWith) gsMatchupWith.style.display = 'flex';
+        if (gsMatchupPending) gsMatchupPending.style.display = 'none';
+        if (gsMatchupSender) gsMatchupSender.textContent = matchup.senderUsername;
+        if (gsMatchupReceiver) gsMatchupReceiver.textContent = matchup.receiverUsername;
+      } else {
+        // Tsy misy adversaire — message centré fotsiny
+        if (gsMatchupWith) gsMatchupWith.style.display = 'none';
+        if (gsMatchupPending) gsMatchupPending.style.display = 'block';
+      }
+    } else {
+      gsMatchup.classList.remove('visible');
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 10 — Rendu des pièces
-    // ═══════════════════════════════════════════════════════════════
+    // Reset color/minutes SEULEMENT si pas en mode room
+    // - si matchup présent (sender vient d'avoir un accepté) : garder selectedColor/selectedMinutes déjà set
+    // - si gameOrigin=room sans matchup (sender retour après quitter receiver) : garder aussi
+    // - sinon (create ou mode normal) : reset à green/5min
+    var isRoomMode = (gameOrigin === 'room');
+    if (!isRoomMode) {
+      selectedColor = 'green'; selectedMinutes = 5;
+    }
+    document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === selectedColor); });
+    document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
+    document.querySelectorAll('.gs-time-option').forEach(function (o) {
+      var sel = parseInt(o.dataset.minutes) === selectedMinutes; o.classList.toggle('selected', sel);
+      var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none';
+    });
+    closeGsDropdown();
 
-    function renderPieces(pieces, stateData) {
-      var grp           = document.getElementById('pieces-group');
-      var isMyTurn      = stateData.turn === myColor;
-      var globalCapture = playerHasAnyCapture(pieces, myColor);
+    var launchBtn = document.getElementById('gsLaunchBtn');
+    var gsBody = document.querySelector('.game-setup-body');
+    var gsSectionLabelPiece = document.getElementById('gsSectionLabelPiece');
 
-      var newPiecesOnBoard = {};
-      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
-      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+    // Stop any previous room sync polling + room friend invite timers
+    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+    if (!matchup) {
+      // Reset room friend invite timers quand on revient sans matchup
+      Object.keys(roomFriendInviteTimers).forEach(function(u) { clearInterval(roomFriendInviteTimers[u]); });
+      Object.keys(roomFriendStatusTimers).forEach(function(i) { clearInterval(roomFriendStatusTimers[i]); });
+      Object.keys(roomFriendInviteIds).forEach(function(u) {
+        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: roomFriendInviteIds[u] }).catch(function(){});
+      });
+      roomFriendInviteTimers = {}; roomFriendStatusTimers = {}; roomFriendInviteIds = {};
+    }
+    // Reset launch btn style
+    launchBtn.style.background = '';
 
-      vanished.forEach(function(vKey) {
-        var color  = piecesOnBoard[vKey].color;
-        var target = null;
-        for (var i = 0; i < appeared.length; i++) {
-          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
+    if (gameOrigin === 'room' && !matchup) {
+      // ── Sender avant matchup ──
+      roomIsSender = true;
+      gsBody.classList.remove('gs-receiver-mode');
+      if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Choose Your Piece';
+      launchBtn.innerHTML = '<i class="fas fa-user-plus"></i> Invite Friends';
+      launchBtn.disabled = false;
+    } else if (gameOrigin === 'room' && matchup) {
+      roomIsSender = matchup.isSender !== false;
+      receiverIsReady = true;
+
+      if (roomIsSender) {
+        // Sender avec matchup
+        gsBody.classList.remove('gs-receiver-mode');
+        if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Choose Your Piece';
+        launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
+        launchBtn.style.background = '';
+        launchBtn.disabled = false;
+        var notReadyEl = document.getElementById('gsOpponentNotReady');
+        if (notReadyEl) notReadyEl.style.display = 'none';
+        startRoomSyncPolling(matchup.inviteId, true);
+      } else {
+        // Receiver
+        gsBody.classList.add('gs-receiver-mode');
+        if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Your Piece';
+        // Couleur receiver = inverse sender
+        var myColor = selectedColor === 'green' ? 'red' : 'green';
+        applyReceiverColor(myColor);
+        // Bouton Ready par défaut
+        updateReceiverReadyBtn(true);
+        receiverIsReady = true;
+        launchBtn.disabled = false;
+        startRoomSyncPolling(matchup.inviteId, false);
+      }
+    } else {
+      // Mode normal
+      roomIsSender = true;
+      gsBody.classList.remove('gs-receiver-mode');
+      if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Choose Your Piece';
+      launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
+      launchBtn.disabled = false;
+    }
+
+    // Cacher le bouton back pour le receiver
+    var backBtn = document.getElementById('gameSetupBackBtn');
+    if (backBtn) backBtn.classList.toggle('hidden', gameOrigin === 'room' && !!matchup && !roomIsSender);
+    // Afficher Quit seulement quand room+matchup
+    var quitBtn = document.getElementById('gsQuitBtn');
+    if (quitBtn) quitBtn.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
+    // Layout flex quand room (na misy matchup na tsia)
+    var bodyRow = document.getElementById('gsBodyRow');
+    var gsRoomFriends = document.getElementById('gsRoomFriends');
+    var gsChatWrap = document.getElementById('gsChatWrap');
+    var isRoom = (gameOrigin === 'room');
+
+    if (bodyRow) bodyRow.classList.toggle('room-active', isRoom);
+
+    if (isRoom && !matchup) {
+      // Avant matchup: montrer amis enligne + invite strip
+      if (gsRoomFriends) { gsRoomFriends.style.display = 'flex'; loadRoomFriends(); }
+      if (gsChatWrap) gsChatWrap.style.display = 'none';
+      // Arrêter le chat si on revient sans matchup
+      if (window._stopRoomChat) window._stopRoomChat();
+    } else if (isRoom && matchup) {
+      // Après matchup: montrer chat + cacher invite
+      if (gsRoomFriends) gsRoomFriends.style.display = 'none';
+      if (gsChatWrap) gsChatWrap.style.display = 'flex';
+      // Démarrer le chat RTDB
+      if (window._initRoomChat && matchup.inviteId) window._initRoomChat(matchup.inviteId);
+    } else {
+      // Mode normal: tout cacher
+      if (gsRoomFriends) gsRoomFriends.style.display = 'none';
+      if (gsChatWrap) gsChatWrap.style.display = 'none';
+      if (window._stopRoomChat) window._stopRoomChat();
+    }
+
+    openModal(gameSetupModal);
+  }
+
+  function applyReceiverColor(color) {
+    document.querySelectorAll('.color-pick-btn').forEach(function (b) {
+      b.classList.toggle('selected', b.dataset.color === color);
+    });
+  }
+
+  function updateReceiverReadyBtn(isReady) {
+    var launchBtn = document.getElementById('gsLaunchBtn');
+    if (isReady) {
+      launchBtn.innerHTML = '<i class="fas fa-check-circle"></i> Ready';
+      launchBtn.style.background = 'linear-gradient(to right, #059669, #10b981)';
+    } else {
+      launchBtn.innerHTML = '<i class="fas fa-times-circle"></i> Not Ready';
+      launchBtn.style.background = 'linear-gradient(to right, #dc2626, #ef4444)';
+    }
+    launchBtn.disabled = false;
+  }
+
+  var receiverIsReady = true; // état local du receiver
+
+  var _handledRoomEvents = new Set();
+
+  // Timers pour les invitations dans le panneau room friends
+  var roomFriendInviteTimers = {};   // uid → intervalId
+  var roomFriendInviteIds = {};      // uid → inviteId
+
+  async function loadRoomFriends() {
+    var list = document.getElementById('gsRoomFriendsList');
+    if (!list) return;
+    list.innerHTML = '<div class="gs-room-empty">Loading…</div>';
+    try {
+      var data = await callSessionApi('get-friends', { uid: currentUser.uid });
+      var online = (data.friends || []).filter(function(f) { return f.online; });
+      list.innerHTML = '';
+      if (!data.friends || data.friends.length === 0) {
+        list.innerHTML = '<div class="gs-room-empty">You have no friends yet.</div>';
+        return;
+      }
+      if (online.length === 0) {
+        list.innerHTML = '<div class="gs-room-empty">No friends online right now.</div>';
+        return;
+      }
+      online.forEach(function(friend) {
+        var item = document.createElement('div'); item.className = 'gs-room-friend-item';
+        var nameEl = document.createElement('div'); nameEl.className = 'gs-room-friend-name'; nameEl.textContent = friend.username;
+        var invBtn = document.createElement('button'); invBtn.className = 'gs-room-invite-btn'; invBtn.title = 'Invite ' + friend.username;
+        invBtn.innerHTML = '<i class="fas fa-gamepad"></i>';
+        // Si déjà en countdown
+        if (roomFriendInviteTimers[friend.uid]) {
+          invBtn.disabled = true; invBtn.classList.add('counting');
         }
-        if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
-          appeared = appeared.filter(function(a) { return a !== target; });
+        invBtn.addEventListener('click', (function(btn, f) {
+          return function() {
+            if (roomFriendInviteTimers[f.uid] || btn.disabled) return;
+            startRoomFriendInvite(btn, f);
+          };
+        })(invBtn, friend));
+        item.appendChild(nameEl); item.appendChild(invBtn); list.appendChild(item);
+      });
+    } catch(e) {
+      list.innerHTML = '<div class="gs-room-empty">Failed to load.</div>';
+    }
+  }
+
+  async function startRoomFriendInvite(btn, friend) {
+    btn.disabled = true; btn.classList.add('counting');
+    var inviteId = null;
+    try {
+      var res = await callSessionApi('send-game-invite', {
+        uid: currentUser.uid, toUid: friend.uid,
+        game: selectedGame, color: selectedColor, minutes: selectedMinutes
+      });
+      inviteId = res.inviteId;
+      roomFriendInviteIds[friend.uid] = inviteId;
+    } catch(err) {
+      btn.disabled = false; btn.classList.remove('counting'); btn.innerHTML = '<i class="fas fa-gamepad"></i>';
+      showToast(err.message || 'Failed to send invitation.', 'error');
+      return;
+    }
+    // Countdown sur le bouton (chiffre)
+    var count = 10;
+    btn.innerHTML = ''; btn.textContent = count;
+    var btnIvl = setInterval(function() {
+      count--;
+      if (count <= 0) {
+        clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
+        btn.classList.remove('counting'); btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-gamepad"></i>';
+        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: inviteId }).catch(function(){});
+        if (roomFriendStatusTimers[inviteId]) { clearInterval(roomFriendStatusTimers[inviteId]); delete roomFriendStatusTimers[inviteId]; }
+        delete roomFriendInviteIds[friend.uid];
+      } else {
+        btn.textContent = count;
+      }
+    }, 1000);
+    roomFriendInviteTimers[friend.uid] = btnIvl;
+    // Polling accepté
+    var statusIvl = setInterval(async function() {
+      try {
+        var sRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
+        if (sRes.status === 'accepted') {
+          clearInterval(statusIvl); delete roomFriendStatusTimers[inviteId];
+          clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
+          delete roomFriendInviteIds[friend.uid];
+          selectedGame = sRes.game; selectedMinutes = sRes.minutes; selectedColor = sRes.color;
+          openGameSetup(selectedGame, {
+            senderUsername: sRes.senderUsername, receiverUsername: sRes.receiverUsername,
+            isSender: true, inviteId: inviteId
+          });
+        } else if (sRes.status === 'declined' || sRes.status === 'expired' || sRes.status === 'cancelled' || sRes.status === 'not_found') {
+          clearInterval(statusIvl); delete roomFriendStatusTimers[inviteId];
+          clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
+          delete roomFriendInviteIds[friend.uid];
+          btn.disabled = false; btn.classList.remove('counting'); btn.innerHTML = '<i class="fas fa-gamepad"></i>';
+          if (sRes.status === 'declined') showToast(friend.username + ' declined your invitation.', 'info');
+        }
+      } catch(e) {}
+    }, 2000);
+    roomFriendStatusTimers[inviteId] = statusIvl;
+  }
+  var roomFriendStatusTimers = {};
+
+  function startRoomSyncPolling(inviteId, isSender) {
+    if (!inviteId) return;
+    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+    var pollInterval = isSender ? 5000 : 3000;
+    roomSyncTimer = setInterval(async function() {
+      if (!gameSetupModal.classList.contains('active')) {
+        clearInterval(roomSyncTimer); roomSyncTimer = null; return;
+      }
+      try {
+        var res = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
+        if (res.status === 'accepted') {
+          if (isSender) {
+            // Sender: vérifier ready state du receiver
+            var rReady = (res.receiverReady !== false);
+            receiverIsReady = rReady;
+            var launchBtn = document.getElementById('gsLaunchBtn');
+            var notReadyEl = document.getElementById('gsOpponentNotReady');
+            if (launchBtn) {
+              launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
+              launchBtn.disabled = !receiverIsReady;
+              launchBtn.style.background = receiverIsReady ? '' : 'linear-gradient(to right, #94a3b8, #64748b)';
+            }
+            if (notReadyEl) notReadyEl.style.display = receiverIsReady ? 'none' : 'inline';
+          } else {
+            // Receiver: sync color, minutes ET game depuis le sender
+            var changed = false;
+            if (res.color && res.color !== selectedColor) {
+              selectedColor = res.color;
+              applyReceiverColor(selectedColor === 'green' ? 'red' : 'green');
+              changed = true;
+            }
+            if (res.minutes && res.minutes !== selectedMinutes) {
+              selectedMinutes = res.minutes;
+              document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
+              document.querySelectorAll('.gs-time-option').forEach(function(o) {
+                var sel = parseInt(o.dataset.minutes) === selectedMinutes;
+                o.classList.toggle('selected', sel);
+                var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none';
+              });
+            }
+            // FIX 3: sync game mode
+            if (res.game && res.game !== selectedGame) {
+              selectedGame = res.game;
+              // Mettre à jour le header
+              var label = gameLabels[selectedGame] || selectedGame;
+              var gsHeaderTitle = document.getElementById('gsHeaderTitle');
+              var gsHeaderImg = document.getElementById('gsHeaderImg');
+              if (gsHeaderTitle) gsHeaderTitle.textContent = label;
+              if (gsHeaderImg) {
+                gsHeaderImg.innerHTML = '';
+                var img = document.createElement('img');
+                img.src = gameImages[selectedGame] || '';
+                img.alt = label;
+                img.onerror = function() { gsHeaderImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
+                gsHeaderImg.appendChild(img);
+              }
+            }
+          }
+        } else if (res.status === 'started') {
+
+          clearInterval(roomSyncTimer); roomSyncTimer = null;
+          if (window._stopRoomChat) window._stopRoomChat();
+          var myCol = isSender ? 'maintso' : 'mena';
+          // Fanorona → fanorona.html ; Fanorona & Vela / Vela → vela.html
+          var destPage2 = (selectedGame === 'fanorona') ? 'fanorona.html' : 'vela.html';
+          var url2 = destPage2
+            + '?gameId='   + encodeURIComponent(res.gameId || inviteId)
+            + '&color='    + encodeURIComponent(myCol)
+            + '&inviteId=' + encodeURIComponent(inviteId);
+          if (selectedGame === 'both') url2 += '&source=both';
+          window.location.href = url2;
+        } else if (res.status === 'declined' && isSender) {
+          // Receiver a quitté → sender reste dans la room
+          var evtKey = inviteId + ':declined';
+          if (_handledRoomEvents.has(evtKey)) return;
+          _handledRoomEvents.add(evtKey);
+          clearInterval(roomSyncTimer); roomSyncTimer = null;
+          if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
+          var receiverName = (matchupData && matchupData.receiverUsername) ? matchupData.receiverUsername : 'Opponent';
+          matchupData = null;
+          openGameSetup(selectedGame, null); // → matchupReceiver sera mis à "Invite a player"
+          showToast(receiverName + ' has left the room.', 'info', '⚠ Player left');
+        } else if (res.status === 'cancelled' || res.status === 'not_found') {
+          clearInterval(roomSyncTimer); roomSyncTimer = null;
+          if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
+          if (!isSender) {
+            // Receiver: sender a annulé → fermer room
+            closeModal(gameSetupModal);
+            closeModal(gameSelectModal);
+            var senderName2 = (matchupData && matchupData.senderUsername) ? matchupData.senderUsername : 'The host';
+            showToast(senderName2 + ' has left the room.', 'info', '⚠ Room closed');
+            // Si le receiver était dans friends avant → rouvrir friends
+            if (_receiverCameFromFriends) {
+              _receiverCameFromFriends = false;
+              var pm = document.getElementById('playersModal');
+              if (pm) { _friendsFirstLoad = true; openModal(pm); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); }
+            }
+          }
+          matchupData = null;
+        }
+      } catch(e) {}
+    }, pollInterval);
+  }
+
+  // ── Room Quit Confirm ──────────────────────────────────────
+  var roomQuitOverlay = document.getElementById('roomQuitOverlay');
+
+  function openRoomQuitConfirm() {
+    var opponentName = '—';
+    if (matchupData) {
+      opponentName = roomIsSender ? matchupData.receiverUsername : matchupData.senderUsername;
+    }
+    document.getElementById('rqTitle').textContent = 'Leave the room?';
+    document.getElementById('rqMessage').textContent =
+      'Are you sure you want to leave the room with ' + opponentName + '? Your opponent will also be removed.';
+    roomQuitOverlay.classList.add('active');
+  }
+
+  function closeRoomQuitConfirm() {
+    roomQuitOverlay.classList.remove('active');
+  }
+
+  async function quitRoom() {
+    closeRoomQuitConfirm();
+    // Annuler l'invitation → l'autre joueur sera notifié via polling (cancelled)
+    if (matchupData && matchupData.inviteId) {
+      try {
+        // Sender annule, receiver decline — les deux marquent cancelled
+        if (roomIsSender) {
+          await callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: matchupData.inviteId });
         } else {
-          piecesOnBoard[vKey].el.remove();
+          await callSessionApi('decline-game-invite', { uid: currentUser.uid, inviteId: matchupData.inviteId });
         }
-      });
+      } catch(e) {}
+    }
+    // Stopper sync polling + offline timer + chat
+    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+    if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
+    if (window._stopRoomChat) window._stopRoomChat();
+    // Fermer tout
+    closeGsDropdown();
+    closeModal(gameSetupModal);
+    closeModal(gameSelectModal);
+    var _wasFromFriends = _ctxInviteFromFriends;
+    matchupData = null;
+    _ctxInviteFromFriends = false;
+    // Si le sender avait invité depuis friends → rouvrir friends
+    if (_wasFromFriends && roomIsSender) {
+      var pm3 = document.getElementById('playersModal');
+      if (pm3) { _friendsFirstLoad = true; openModal(pm3); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); }
+    }
+  }
 
-      appeared.forEach(function(aKey) {
-        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
-        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('r', 8);
-        g.appendChild(c);
-        grp.appendChild(g);
-        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
-      });
+  document.getElementById('rqCancelBtn').addEventListener('click', closeRoomQuitConfirm);
+  document.getElementById('rqConfirmBtn').addEventListener('click', quitRoom);
+  roomQuitOverlay.addEventListener('click', function(e) { if (e.target === roomQuitOverlay) closeRoomQuitConfirm(); });
 
-      Object.keys(pieces).forEach(function(k) {
-        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
-      });
-      piecesOnBoard = newPiecesOnBoard;
+  // Bouton Quit dans le game-setup-header
+  document.getElementById('gsQuitBtn').addEventListener('click', function() {
+    openRoomQuitConfirm();
+  });
 
-      var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
+  document.getElementById('gameSetupBackBtn').addEventListener('click', function () {
+    if (!roomIsSender) return; // receiver n'a pas de bouton retour
+    closeGsDropdown();
+    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+    closeModal(gameSetupModal);
+    gameOrigin = 'room';
+    // matchupData conservé si receiver déjà présent, pour que game-type-btn le réutilise
+    // matchupData = null seulement si pas encore de matchup
+    if (!matchupData) openGameSelectModal('room');
+    else openGameSelectModal('room');
+  });
+  gameSetupModal.addEventListener('click', function (e) { if (e.target === gameSetupModal) closeGsDropdown(); });
 
-      Object.keys(pieces).forEach(function(spot) {
-        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
-        if (ri < 0 || ci < 0) return;
-        var entry = piecesOnBoard[spot];
-        if (!entry) return;
-        var g = entry.el, circle = g.querySelector('circle');
+  document.querySelectorAll('.color-pick-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      // Receiver ne peut pas modifier
+      if (!roomIsSender && matchupData) return;
+      selectedColor = btn.dataset.color;
+      document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === selectedColor); });
+      if (matchupData) document.getElementById('gsHeaderSub').textContent = 'Room · ' + selectedMinutes + ' min';
+      // Sender: sync color vers Firestore pour que le receiver voit le changement
+      if (roomIsSender && matchupData && matchupData.inviteId) {
+        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
+      }
+    });
+  });
 
-        var svgX = ci * 50;
-        var svgY = ri * 50;
-        g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
-        circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
-        circle.removeAttribute('class');
-        circle.style.pointerEvents = 'all';
-        // Rehefa manindry pio, alefa any amin'ny spot marina (mba tsy hivaingana ny click)
-        circle.onclick = (function(s) {
-          return function(e) { e.stopPropagation(); handleSpotClick(s); };
-        })(spot);
+  var gsTimeTrigger = document.getElementById('gsTimeTrigger');
+  var gsTimeDropdown = document.getElementById('gsTimeDropdown');
+  var gsTimeDropdownOverlay = document.getElementById('gsTimeDropdownOverlay');
 
-        if (isMyTurn && pieces[spot] === myColor) {
-          if (selectedSpot === spot)
-            circle.setAttribute('class', 'selected-piece');
-          else if (lastBlockedSpot === spot)
-            circle.setAttribute('class', 'blocked-piece');
-          else if (!stateData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture))
-            circle.setAttribute('class', 'movable-piece');
+  function openGsDropdown() { gsDropdownOpen = true; gsTimeDropdownOverlay.classList.add('open'); gsTimeDropdown.classList.add('open'); gsTimeTrigger.classList.add('open'); }
+  function closeGsDropdown() { gsDropdownOpen = false; gsTimeDropdown.classList.remove('open'); gsTimeDropdownOverlay.classList.remove('open'); if (gsTimeTrigger) gsTimeTrigger.classList.remove('open'); }
+
+  gsTimeTrigger.addEventListener('click', function (e) { e.stopPropagation(); if (gsDropdownOpen) closeGsDropdown(); else openGsDropdown(); });
+  gsTimeDropdownOverlay.addEventListener('click', function (e) { if (e.target === gsTimeDropdownOverlay) closeGsDropdown(); });
+  document.querySelectorAll('.gs-time-option').forEach(function (opt) {
+    opt.addEventListener('click', function (e) {
+      e.stopPropagation(); selectedMinutes = parseInt(opt.dataset.minutes); document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
+      document.querySelectorAll('.gs-time-option').forEach(function (o) { var sel = parseInt(o.dataset.minutes) === selectedMinutes; o.classList.toggle('selected', sel); var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none'; });
+      closeGsDropdown();
+      // Sender: sync minutes vers Firestore
+      if (roomIsSender && matchupData && matchupData.inviteId) {
+        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
+      }
+    });
+  });
+  document.addEventListener('click', function (e) { if (gsDropdownOpen && gsTimeDropdownOverlay && !gsTimeDropdownOverlay.contains(e.target)) closeGsDropdown(); });
+
+  document.getElementById('gsLaunchBtn').addEventListener('click', function () {
+    if (gameOrigin === 'room' && !matchupData) {
+      // Sender sans matchup → ouvrir invite modal
+      closeGsDropdown(); closeModal(gameSetupModal); openInviteFriendsModal();
+    } else if (gameOrigin === 'room' && matchupData && !roomIsSender) {
+      // Receiver → toggle ready/not ready
+      receiverIsReady = !receiverIsReady;
+      updateReceiverReadyBtn(receiverIsReady);
+      // Sync ready state vers Firestore
+      if (matchupData && matchupData.inviteId) {
+        callSessionApi('update-room-ready', { uid: currentUser.uid, inviteId: matchupData.inviteId, ready: receiverIsReady }).catch(function(){});
+      }
+    } else {
+      // Sender avec matchup → Start Game
+      if (!matchupData || !matchupData.inviteId) return;
+      var launchBtn = document.getElementById('gsLaunchBtn');
+      if (launchBtn) launchBtn.disabled = true;
+      callSessionApi('start-fanorona-game', {
+        uid:      currentUser.uid,
+        inviteId: matchupData.inviteId
+      }).then(function(res) {
+        if (res.success) {
+          if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
+          if (window._stopRoomChat) window._stopRoomChat();
+          // Fanorona & Vela → vela.html ; Fanorona → fanorona.html ; Vela → vela.html
+          var destPage = (selectedGame === 'fanorona') ? 'fanorona.html' : 'vela.html';
+          var url = destPage
+            + '?gameId='   + encodeURIComponent(res.gameId)
+            + '&color=maintso'
+            + '&inviteId=' + encodeURIComponent(matchupData.inviteId);
+          if (selectedGame === 'both') url += '&source=both';
+          window.location.href = url;
+        } else {
+          showToast('Failed to start game.', 'error');
+          if (launchBtn) launchBtn.disabled = false;
         }
-
-        var isApp  = pendingCaptures.approach.indexOf(spot)   !== -1;
-        var isWith = pendingCaptures.withdrawal.indexOf(spot) !== -1;
-        g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
-
-        if (isApp || isWith) {
-          circle.classList.add('capture-target');
-          circle.style.pointerEvents = 'all';
-          var ct = isApp ? 'approach' : 'withdrawal';
-          // Override onclick — eto confirmCapture no ilaina fa tsy handleSpotClick
-          circle.onclick = (function(type) {
-            return function(e) { e.stopPropagation(); confirmCapture(type); };
-          })(ct);
-          g.appendChild(createCross(-5,-5,5,5));
-          g.appendChild(createCross(5,-5,-5,5));
-        }
-      });
-
-      var board = document.getElementById('game-board');
-      if (!isMyTurn || hasPending) board.classList.add('lock-board');
-      else board.classList.remove('lock-board');
-    }
-
-    function createCross(x1,y1,x2,y2) {
-      var l = document.createElementNS('http://www.w3.org/2000/svg','line');
-      l.setAttribute('x1',x1); l.setAttribute('y1',y1);
-      l.setAttribute('x2',x2); l.setAttribute('y2',y2);
-      l.setAttribute('class','cross-line');
-      return l;
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 11 — Guides (points jaunes) — toujours affichés
-    // ═══════════════════════════════════════════════════════════════
-
-    function renderGuides(startSpot, stateData) {
-      var grp = document.getElementById('guides-group');
-      if (!grp) return;
-      grp.innerHTML = '';
-      if (!startSpot) return;
-
-      var pieces  = stateData.pieces;
-      var visited = stateData.visited  || [];
-      var lastDir = stateData.lastDir  || '';
-      var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
-      var moves = allowedMoves[startSpot] || [];
-
-      moves.forEach(function(target) {
-        if (pieces[target] || visited.indexOf(target) !== -1) return;
-        var caps = getCaptures(pieces, startSpot, target, myColor);
-        var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-        if (globalCapturePossible && !isCaptureMove) return;
-
-        var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
-        var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
-        var dir = (r2-r1) + ',' + (c2-c1);
-        if (!canChangePiece && lastDir === dir) return;
-
-        var svgX = c2 * 50;
-        var svgY = r2 * 50;
-
-        var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', svgX); dot.setAttribute('cy', svgY);
-        dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
-        grp.appendChild(dot);
+      }).catch(function(err) {
+        showToast(err.message || 'Failed to start game.', 'error');
+        if (launchBtn) launchBtn.disabled = false;
       });
     }
+  });
 
+  // ================================================================
+  // INVITE FRIENDS MODAL
+  // ================================================================
+  var inviteTimers = {};       // uid → intervalId (countdown button)
+  var inviteStatusTimers = {}; // inviteId → intervalId (poll status)
+  var activeInviteIds = {};    // uid → inviteId
 
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 12 — Règles du jeu
-    // ═══════════════════════════════════════════════════════════════
+  function openInviteFriendsModal() {
+    var label = gameLabels[selectedGame] || selectedGame || 'Game';
+    var headerImg = document.getElementById('inviteHeaderImg'); headerImg.innerHTML = '';
+    var img = document.createElement('img'); img.src = gameImages[selectedGame] || ''; img.alt = label;
+    img.onerror = function () { headerImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
+    headerImg.appendChild(img);
+    document.getElementById('inviteHeaderTitle').textContent = 'Invite Friends';
+    document.getElementById('inviteHeaderSub').textContent = label + ' · ' + selectedMinutes + ' min';
+    // Reset timers
+    Object.keys(inviteTimers).forEach(function(uid) { clearInterval(inviteTimers[uid]); });
+    Object.keys(inviteStatusTimers).forEach(function(id) { clearInterval(inviteStatusTimers[id]); });
+    inviteTimers = {}; inviteStatusTimers = {}; activeInviteIds = {};
+    _handledRoomEvents.clear();
+    openModal(inviteFriendsModal);
+    loadOnlineFriendsForInvite();
+  }
 
-    function getCaptures(pieces, s, e, color) {
-      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
-      var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
-      function scan(row,col,sr,sc) {
-        var res=[],cr=row+sr,cc=col+sc;
-        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}
-        return res;
+  async function loadOnlineFriendsForInvite() {
+    var container = document.getElementById('inviteFriendsList');
+    container.innerHTML = '<div class="invite-spinner"></div>';
+    try {
+      var data = await callSessionApi('get-friends', { uid: currentUser.uid });
+      container.innerHTML = '';
+      var onlineFriends = (data.friends || []).filter(function(f) { return f.online; });
+      if (onlineFriends.length === 0) {
+        container.innerHTML = '<div class="invite-empty-state"><i class="fas fa-wifi"></i><p>No friends are online right now.<br>Invite them when they connect!</p></div>';
+        return;
       }
-      return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+      onlineFriends.forEach(function(friend) {
+        var div = document.createElement('div'); div.className = 'invite-friend-item';
+        var leftDiv = document.createElement('div'); leftDiv.className = 'invite-friend-left';
+        leftDiv.innerHTML = '<i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(friend.username) + '</span><span class="status-dot online"></span>';
+        var inviteBtn = document.createElement('button'); inviteBtn.className = 'btn-invite'; inviteBtn.dataset.uid = friend.uid;
+        inviteBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
+        inviteBtn.addEventListener('click', (function(btn, f) {
+          return function() {
+            if (inviteTimers[f.uid]) return; // already counting
+            startSendInvite(btn, f);
+          };
+        })(inviteBtn, friend));
+        div.appendChild(leftDiv); div.appendChild(inviteBtn); container.appendChild(div);
+      });
+    } catch(err) {
+      container.innerHTML = '<div class="invite-empty-state"><i class="fas fa-exclamation-circle"></i><p>Failed to load friends. Please try again.</p></div>';
+    }
+  }
+
+  async function startSendInvite(btn, friend) {
+    btn.disabled = true; btn.classList.add('counting');
+    // 1. Envoyer l'invitation via API
+    var inviteId = null;
+    try {
+      var res = await callSessionApi('send-game-invite', {
+        uid: currentUser.uid, toUid: friend.uid,
+        game: selectedGame, color: selectedColor, minutes: selectedMinutes
+      });
+      inviteId = res.inviteId;
+      activeInviteIds[friend.uid] = inviteId;
+    } catch(err) {
+      btn.disabled = false; btn.classList.remove('counting'); btn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
+      showToast(err.message || 'Failed to send invitation.', 'error');
+      return;
     }
 
-    function playerHasAnyCapture(pieces, color) {
-      var sl = Object.keys(pieces);
-      for (var i=0;i<sl.length;i++) {
-        var s=sl[i]; if(pieces[s]!==color)continue;
-        var mv=allowedMoves[s]||[];
-        for (var j=0;j<mv.length;j++) {
-          var t=mv[j]; if(!pieces[t]){var c=getCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
+    // 2. Countdown 10s sur le bouton
+    var count = 10;
+    btn.textContent = count;
+    var btnIvl = setInterval(function() {
+      count--;
+      if (count <= 0) {
+        clearInterval(btnIvl); delete inviteTimers[friend.uid];
+        btn.classList.remove('counting'); btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
+        // Annuler l'invitation si toujours pending
+        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: inviteId }).catch(function(){});
+        // Arrêter le polling de statut
+        if (inviteStatusTimers[inviteId]) { clearInterval(inviteStatusTimers[inviteId]); delete inviteStatusTimers[inviteId]; }
+        delete activeInviteIds[friend.uid];
+      } else {
+        btn.textContent = count;
+      }
+    }, 1000);
+    inviteTimers[friend.uid] = btnIvl;
+
+    // 3. Polling du statut: l'expéditeur surveille si l'invitation a été acceptée
+    var statusIvl = setInterval(async function() {
+      try {
+        var statusRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
+        if (statusRes.status === 'accepted') {
+          // Invitation acceptée → arrêter tout
+          clearInterval(statusIvl); delete inviteStatusTimers[inviteId];
+          clearInterval(btnIvl); delete inviteTimers[friend.uid];
+          delete activeInviteIds[friend.uid];
+          // Fermer invite modal, ouvrir gameSetupModal avec matchup
+          closeModal(inviteFriendsModal);
+          selectedGame = statusRes.game;
+          selectedMinutes = statusRes.minutes;
+          selectedColor = statusRes.color;
+          openGameSetup(statusRes.game, {
+            senderUsername: statusRes.senderUsername,
+            receiverUsername: statusRes.receiverUsername,
+            isSender: true,       // je suis le sender
+            inviteId: inviteId    // pour le sync polling
+          });
+        } else if (statusRes.status === 'declined' || statusRes.status === 'expired' || statusRes.status === 'cancelled' || statusRes.status === 'not_found') {
+          clearInterval(statusIvl); delete inviteStatusTimers[inviteId];
+          clearInterval(btnIvl); delete inviteTimers[friend.uid];
+          delete activeInviteIds[friend.uid];
+          btn.classList.remove('counting'); btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
+          if (statusRes.status === 'declined') showToast(friend.username + ' declined your invitation.', 'info');
         }
+      } catch(e) {}
+    }, 2000);
+    inviteStatusTimers[inviteId] = statusIvl;
+  }
+
+  document.getElementById('inviteModalBackBtn').addEventListener('click', function () {
+    // Annuler toutes les invitations en cours
+    Object.keys(inviteTimers).forEach(function(uid) { clearInterval(inviteTimers[uid]); });
+    Object.keys(inviteStatusTimers).forEach(function(id) { clearInterval(inviteStatusTimers[id]); });
+    Object.keys(activeInviteIds).forEach(function(uid) {
+      callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: activeInviteIds[uid] }).catch(function(){});
+    });
+    inviteTimers = {}; inviteStatusTimers = {}; activeInviteIds = {};
+    closeModal(inviteFriendsModal);
+    openGameSetup(selectedGame, null);
+  });
+
+  // ================================================================
+  // GAME INVITE NOTIFICATION — destinataire uniquement
+  // Polling toutes les 3s pour détecter une invitation entrante
+  // ================================================================
+  var ginNotif = document.getElementById('gameInviteNotif');
+  var ginProgressBar = document.getElementById('ginProgressBar');
+  var ginCountdownEl = document.getElementById('ginCountdown');
+  var ginUsernameEl = document.getElementById('ginUsername');
+  var ginAcceptBtn = document.getElementById('ginAcceptBtn');
+  var ginDeclineBtn = document.getElementById('ginDeclineBtn');
+  var ginTimer = null;
+  var currentGinInviteId = null;
+  var ginPollingTimer = null;
+  var acceptedInviteIds = new Set(); // IDs déjà acceptés → ne plus afficher
+
+  function startGameInvitePolling() {
+    if (ginPollingTimer) return;
+    ginPollingTimer = setInterval(async function() {
+      if (!currentUser) return;
+      try {
+        var res = await callSessionApi('check-game-invite', { uid: currentUser.uid });
+        if (res.invite) {
+          var iid = res.invite.inviteId;
+          // Ignorer: déjà affiché OU déjà accepté/refusé
+          if (iid !== currentGinInviteId && !acceptedInviteIds.has(iid)) {
+            currentGinInviteId = null;
+            showGameInviteNotif(res.invite);
+          }
+        } else {
+          // Pas d'invitation pending → si une notif est affichée pour une invite qui n'existe plus, cacher
+          // (cas: l'expéditeur a annulé pendant que le destinataire n'a pas encore répondu)
+          if (currentGinInviteId && ginNotif.classList.contains('gin-visible')) {
+            hideGameInviteNotif();
+          }
+        }
+      } catch(e) {}
+    }, 2500);
+  }
+
+  function showGameInviteNotif(invite) {
+    if (ginTimer) { clearInterval(ginTimer); ginTimer = null; }
+    currentGinInviteId = invite.inviteId;
+    ginUsernameEl.textContent = invite.fromUsername;
+    ginCountdownEl.textContent = '10';
+
+    // Reset complet de l'état visuel
+    ginNotif.classList.remove('gin-expanded', 'gin-visible');
+    ginProgressBar.style.transition = 'none';
+    ginProgressBar.style.transform = 'scaleX(1)';
+
+    // Force reflow pour que le reset soit bien appliqué avant l'animation
+    void ginNotif.offsetHeight;
+
+    // Afficher la notification
+    ginNotif.classList.add('gin-visible');
+
+    // Après 300ms, élargir et lancer la progress bar
+    setTimeout(function() {
+      ginNotif.classList.add('gin-expanded');
+      // Force reflow avant la transition de la progress bar
+      void ginProgressBar.offsetHeight;
+      ginProgressBar.style.transition = 'transform 10s linear';
+      ginProgressBar.style.transform = 'scaleX(0)';
+    }, 300);
+
+    var count = 10;
+    ginTimer = setInterval(function() {
+      count--;
+      ginCountdownEl.textContent = count > 0 ? count : '0';
+      if (count <= 0) { clearInterval(ginTimer); ginTimer = null; hideGameInviteNotif(); }
+    }, 1000);
+  }
+
+  function hideGameInviteNotif() {
+    if (ginTimer) { clearInterval(ginTimer); ginTimer = null; }
+    ginNotif.classList.remove('gin-visible', 'gin-expanded');
+    ginProgressBar.style.transition = 'none';
+    ginProgressBar.style.transform = 'scaleX(1)';
+    currentGinInviteId = null;
+  }
+
+  var _receiverCameFromFriends = false;
+
+  ginAcceptBtn.addEventListener('click', async function() {
+    if (!currentGinInviteId) return;
+    var inviteId = currentGinInviteId;
+    acceptedInviteIds.add(inviteId);
+    hideGameInviteNotif();
+    // Mémoriser si on était dans le modal friends
+    _receiverCameFromFriends = document.getElementById('playersModal').classList.contains('active');
+    // Fermer tous les modals ouverts avant d'ouvrir la room
+    document.querySelectorAll('.modal-overlay.active').forEach(function(m) {
+      if (m.id !== 'gameSetupModal') closeModal(m);
+    });
+    if (document.getElementById('removeFriendOverlay').classList.contains('active')) {
+      document.getElementById('removeFriendOverlay').classList.remove('active');
+    }
+    try {
+      var res = await callSessionApi('accept-game-invite', { uid: currentUser.uid, inviteId: inviteId });
+      if (res.success) {
+        selectedGame = res.game;
+        selectedMinutes = res.minutes;
+        selectedColor = res.color;
+        gameOrigin = 'room';
+        openGameSetup(res.game, {
+          senderUsername: res.senderUsername,
+          receiverUsername: res.receiverUsername,
+          isSender: false,
+          inviteId: inviteId
+        });
       }
-      return false;
+    } catch(err) {
+      showToast(err.message || 'Failed to accept invitation.', 'error');
+    }
+  });
+
+  ginDeclineBtn.addEventListener('click', async function() {
+    if (!currentGinInviteId) return;
+    var inviteId = currentGinInviteId;
+    acceptedInviteIds.add(inviteId); // marquer → ne plus réafficher
+    hideGameInviteNotif();
+    try { await callSessionApi('decline-game-invite', { uid: currentUser.uid, inviteId: inviteId }); }
+    catch(e) {}
+  });
+
+  // ── UID copy ─────────────────────────────────────────────────
+  var upmCopyUidBtn = document.getElementById('upmCopyUidBtn');
+  if (upmCopyUidBtn) {
+    upmCopyUidBtn.addEventListener('click', function () {
+      var uidText = document.getElementById('upmUid').textContent.replace('UID: ', '').trim();
+      if (!uidText || uidText === '—') return;
+      navigator.clipboard.writeText(uidText).then(function () { upmCopyUidBtn.innerHTML = '<i class="fas fa-check"></i>'; upmCopyUidBtn.classList.add('copied'); setTimeout(function () { upmCopyUidBtn.innerHTML = '<i class="fas fa-copy"></i>'; upmCopyUidBtn.classList.remove('copied'); }, 2000); }).catch(function () { showToast('Copy failed.', 'error'); });
+    });
+  }
+
+  // ── Email modal ───────────────────────────────────────────────
+  var emailModal = document.getElementById('emailModal');
+  function openEmailModal() {
+    if (!currentUser) return;
+    document.getElementById('emailModalUsername').textContent = currentUser.username || '____';
+    document.getElementById('emailModalUid').textContent = 'UID: ' + (currentUser.uid || '—');
+    document.getElementById('emailModalValue').textContent = currentUser.email || '—';
+    openModal(emailModal);
+  }
+  document.getElementById('emailModalCloseBtn').addEventListener('click', function () { closeModal(emailModal); });
+  document.getElementById('emailModalCloseFooterBtn').addEventListener('click', function () { closeModal(emailModal); });
+  emailModal.addEventListener('click', function (e) { if (e.target === emailModal) closeModal(emailModal); });
+
+  // ================================================================
+  // ROOM CHAT — via /api/session (server-side RTDB)
+  // ================================================================
+  // Ny chat dia mandeha amin'ny /api/session toy ny actions hafa rehetra.
+  // Tsy misy REST direct mankany amin'ny RTDB avy amin'ny browser —
+  // ny server (session.js) no mitantana ny read/write RTDB.
+  // ================================================================
+
+  var GS_CHAT_MAX   = 30;   // 30 caractères max par message (emoji = 1)
+  var GS_CHAT_LIMIT = 20;   // 20 messages visibles max
+
+  var gsChatInput    = document.getElementById('gsChatInput');
+  var gsChatSendBtn  = document.getElementById('gsChatSendBtn');
+  var gsChatMessages = document.getElementById('gsChatMessages');
+
+  var _chatRoomId      = null;
+  var _chatPollTimer   = null;
+  var _chatLastMsgCount = -1;
+
+  // ── Comptage correct (emoji = 1) ──────────────────────────────
+  function chatCharCount(val) { return Array.from(val).length; }
+
+  // ── Initialiser le chat d'une room ────────────────────────────
+  function initRoomChat(inviteId) {
+    _chatRoomId = inviteId;
+    _chatLastMsgCount = -1;
+    if (gsChatMessages) {
+      gsChatMessages.innerHTML = '<span class="gs-chat-placeholder">No messages yet\u2026</span>';
+    }
+    startChatPolling(inviteId);
+  }
+
+  // ── Arrêter le chat ───────────────────────────────────────────
+  function stopRoomChat() {
+    _chatRoomId = null;
+    if (_chatPollTimer) { clearInterval(_chatPollTimer); _chatPollTimer = null; }
+  }
+
+  // ── Polling toutes les 1.5s ───────────────────────────────────
+  function startChatPolling(inviteId) {
+    if (_chatPollTimer) { clearInterval(_chatPollTimer); _chatPollTimer = null; }
+    _chatPollTimer = setInterval(async function() {
+      if (!_chatRoomId || _chatRoomId !== inviteId) {
+        clearInterval(_chatPollTimer); _chatPollTimer = null; return;
+      }
+      try {
+        var res = await callSessionApi('get-chat-messages', { uid: currentUser.uid, inviteId: inviteId });
+        if (!res.success) return;
+        var msgs = res.messages || [];
+        if (msgs.length !== _chatLastMsgCount) {
+          _chatLastMsgCount = msgs.length;
+          renderChatMessages(msgs);
+        }
+      } catch(e) {}
+    }, 1500);
+  }
+
+  // ── Afficher les messages ─────────────────────────────────────
+  function renderChatMessages(msgs) {
+    if (!gsChatMessages) return;
+    if (!msgs || msgs.length === 0) {
+      gsChatMessages.innerHTML = '<span class="gs-chat-placeholder">No messages yet\u2026</span>';
+      return;
+    }
+    gsChatMessages.innerHTML = '';
+    var myUid = currentUser ? currentUser.uid : null;
+    msgs.forEach(function(msg) {
+      var isMine = msg.senderUid === myUid;
+      var wrap   = document.createElement('div');
+      wrap.className = 'gs-msg-wrap ' + (isMine ? 'gs-msg-mine' : 'gs-msg-theirs');
+      var bubble = document.createElement('div');
+      bubble.className = 'gs-msg-bubble';
+      bubble.textContent = msg.text;
+      wrap.appendChild(bubble);
+      gsChatMessages.appendChild(wrap);
+    });
+    gsChatMessages.scrollTop = gsChatMessages.scrollHeight;
+  }
+
+  // ── Envoyer un message ────────────────────────────────────────
+  async function sendChatMessage() {
+    if (!gsChatInput || !_chatRoomId || !currentUser) return;
+    var text = gsChatInput.value.trim();
+    if (!text || chatCharCount(text) === 0) return;
+    var chars = Array.from(text);
+    if (chars.length > GS_CHAT_MAX) text = chars.slice(0, GS_CHAT_MAX).join('');
+
+    // Vider l'input immédiatement
+    gsChatInput.value = '';
+    gsChatInput.style.height = 'auto';
+
+    // Loading spinner sur le bouton send
+    if (gsChatSendBtn) {
+      gsChatSendBtn.classList.add('loading');
+      gsChatSendBtn.disabled = true;
     }
 
-    function canPieceMove(spot, pieces, color, globalCapture) {
-      var mv=allowedMoves[spot]||[];
-      for(var i=0;i<mv.length;i++){
-        var t=mv[i]; if(pieces[t])continue;
-        var caps=getCaptures(pieces,spot,t,color);
-        var isCap=caps.approach.length>0||caps.withdrawal.length>0;
-        if(globalCapture?isCap:true)return true;
+    try {
+      await callSessionApi('send-chat-message', {
+        uid:      currentUser.uid,
+        inviteId: _chatRoomId,
+        text:     text
+      });
+      // Forcer un refresh immédiat
+      var res = await callSessionApi('get-chat-messages', { uid: currentUser.uid, inviteId: _chatRoomId });
+      if (res.success) {
+        _chatLastMsgCount = (res.messages || []).length;
+        renderChatMessages(res.messages || []);
       }
-      return false;
-    }
-
-    function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
-      var mv=allowedMoves[s]||[];
-      for(var i=0;i<mv.length;i++){
-        var t=mv[i];
-        if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue;
-        var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
-        var dir=(r2-r1)+','+(c2-c1);
-        if(lastDir&&lastDir===dir)continue;
-        var caps=getCaptures(pieces,s,t,color);
-        if(caps.approach.length>0||caps.withdrawal.length>0)return true;
+    } catch(e) {}
+    finally {
+      // Retirer le loading spinner
+      if (gsChatSendBtn) {
+        gsChatSendBtn.classList.remove('loading');
+        gsChatSendBtn.disabled = false;
       }
-      return false;
     }
+  }
 
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 13 — Historique hetsika adversaire (tahiry fotsiny)
-    // ═══════════════════════════════════════════════════════════════
-    // Ny lastTurnHistory ao amin'ny server dia mitahiry ny lalana
-    // rehetra nalehan'ny adversaire tamin'ny turn farany.
-    // Azo ampiasaina avy eo raha ilaina (résumé, fanamarihana, sns.)
-    //
-    // Naferina ny replay animation:
-    //   - Rehefa mahita hetsika vaovao avy amin'ny adversaire ny polling,
-    //     dia mampiseho mivantana ny état farany (tsy mamerina dingana).
-    //   - Ny lastTurnHistory dia voatahiry ao amin'ny server ihany.
+  // ── Input: resize auto + limite 30 chars ─────────────────────
+  if (gsChatInput) {
+    gsChatInput.addEventListener('input', function() {
+      if (chatCharCount(this.value) > GS_CHAT_MAX) {
+        var chars = Array.from(this.value);
+        this.value = chars.slice(0, GS_CHAT_MAX).join('');
+      }
+      this.style.height = 'auto';
+      var lineH = parseFloat(getComputedStyle(this).lineHeight) || 16;
+      var pad   = parseFloat(getComputedStyle(this).paddingTop) + parseFloat(getComputedStyle(this).paddingBottom);
+      var maxH  = Math.round(lineH * 2 + pad);
+      this.style.height = Math.min(this.scrollHeight, maxH) + 'px';
+    });
 
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 14 — Lancement
-    // ═══════════════════════════════════════════════════════════════
+    gsChatInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+        return;
+      }
+      var allowed = ['Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];
+      if (chatCharCount(this.value) >= GS_CHAT_MAX && !allowed.includes(e.key) && !e.ctrlKey && !e.metaKey) {
+        if (this.selectionStart === this.selectionEnd) e.preventDefault();
+      }
+    });
+  }
 
-    init();
+  if (gsChatSendBtn) {
+    gsChatSendBtn.addEventListener('click', function() { sendChatMessage(); });
+  }
 
-  })();
-  </script>
-</body>
-</html>
+  window._initRoomChat = initRoomChat;
+  window._stopRoomChat = stopRoomChat;
+
+  window.showToast = showToast;
+  loadSession();
+})();
