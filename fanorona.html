@@ -505,6 +505,12 @@
       // ── Envoi au backend (fire-and-forget, sans rollback) ──────
       sendMoveToBackend(origin, target, capturedSpots, dir);
 
+      // ── Stop automatique : rehefa vita hetsika iray dia ok automatic ──────
+      // (mitovy amin'ny handleStopBtn fa atao avy hatrany tsy miandry click)
+      var piecesSnapshot = Object.assign({}, localState.pieces);
+      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
+        .catch(function(e) { console.warn('auto stop-move error (non-blocking):', e); });
+
       // ── Réconciliation différée ────────────────────────────────
       scheduleReconcile();
     }
