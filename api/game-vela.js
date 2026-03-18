@@ -99,21 +99,29 @@ async function handleMakeMove(body, res) {
   const pieces  = { ...(game.pieces || {}) };
   const visited = [...(game.visited || [])];
 
+  // ── FIRST MOVER : set iray mandeha, rehefa hetsika voalohany indrindra ──
+  // Raha game.firstMover mbola tsy nisy → ity hetsika ity no voalohany → set.
+  // Io color io ihany no afaka manala pièce (capture) mandavan'ny lalao.
+  const firstMover = game.firstMover || myColor; // set raha vao voalohany
+  const canCapture = (firstMover === myColor);   // true raha firstMover ianao
+
   // Manetsika pio
   delete pieces[origin];
   pieces[target] = myColor;
 
-  // ── PIÈCE IRAY MONJA no esorina (voalohany ao amin'ny capturedSpots) ──
+  // ── PIÈCE IRAY MONJA no esorina — FIRSTMOVER IHANY ───────────────────────
+  // Raha tsy firstMover → capturedSpots nalefa ho [] avy amin'ny client koa,
+  // fa double-check eto ihany.
   // Ny lojika manala pièce maro dia voasoratra fa MBOLA TSY AMPIASAINA.
-  // Rehefa hampiana → soloina ity block ity:
-  //   if (Array.isArray(capturedSpots)) { capturedSpots.forEach(s => delete pieces[s]); }
-  if (Array.isArray(capturedSpots) && capturedSpots.length > 0) {
-    delete pieces[capturedSpots[0]]; // pièce voalohany ihany
-    // (capturedSpots[1..n] dia tsy esorina ankehitriny)
+  // Rehefa hampiana "piece faharoa afaka manala" → soloina ity fepetra ity.
+  const effectiveCaptured = canCapture && Array.isArray(capturedSpots) ? capturedSpots : [];
+  if (effectiveCaptured.length > 0) {
+    delete pieces[effectiveCaptured[0]]; // pièce voalohany ihany
+    // (effectiveCaptured[1..n] dia tsy esorina ankehitriny)
   }
 
   const newVisited = [...visited, origin];
-  const wasCapture = capturedSpots.length > 0;
+  const wasCapture = effectiveCaptured.length > 0;
 
   // ── AUTO-OK: Tsy jerena ny continuation, mifindra tour foana ──────────────
   // (Ny checkAvailableCaptures dia voasoratra eto fa tsy ampiasaina ankehitriny)
@@ -124,7 +132,7 @@ async function handleMakeMove(body, res) {
   const canContinue = !AUTO_OK_ALWAYS && wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
   const prevHistory     = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
+  const newHistoryEntry = { origin, target, capturedSpots: effectiveCaptured };
 
   if (canContinue) {
     // ── Multi-capture (disabled ankehitriny) ────────────────────────────────
@@ -134,6 +142,7 @@ async function handleMakeMove(body, res) {
       visited:     newVisited,
       lastDir:     dir || "",
       moveHistory: [...prevHistory, newHistoryEntry],
+      firstMover:  firstMover  // voasoratra iray mandeha
     });
     return res.status(200).json({ success: true, continuing: true });
 
@@ -149,7 +158,8 @@ async function handleMakeMove(body, res) {
       lastDir:         "",
       moveHistory:     [],
       lastTurnHistory: fullHistory,
-      lastTurnColor:   myColor
+      lastTurnColor:   myColor,
+      firstMover:      firstMover  // voasoratra iray mandeha, tsy ovaina
     });
     return res.status(200).json({ success: true, continuing: false });
   }
