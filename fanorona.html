@@ -367,9 +367,9 @@
 
     // ── Mamerina ny board rehefa confirmed ────────────────────
     function doRestartBoard(r) {
-      // r.myColor = color vaovao avy amin'ny server
-      myColor    = r.myColor;
-      myOppColor = myColor === 'maintso' ? 'mena' : 'maintso';
+      // myColor TSY OVAINA — color an'ilay mpilalao tsy mifamadika
+      // r.myColor avy amin'ny server dia mitovy amin'ny teo aloha
+      // (hena-fanamarinana fotsiny, tsy ampiasaina hanova)
       rrPending  = false;
       stopRrPolling();
 
@@ -380,11 +380,17 @@
       lastBlockedSpot    = null;
       canChangePiece     = true;
       pendingCaptures    = { approach: [], withdrawal: [], moveData: null };
-      piecesOnBoard      = {};
       movingInProgress   = false;
       if (reconcileTimer) { clearTimeout(reconcileTimer); reconcileTimer = null; }
 
-      // Re-enable board
+      // Esory ny pieces SVG rehetra mba tsy hisy mifanindry
+      var piecesGrp = document.getElementById('pieces-group');
+      if (piecesGrp) piecesGrp.innerHTML = '';
+      var guidesGrp = document.getElementById('guides-group');
+      if (guidesGrp) guidesGrp.innerHTML = '';
+      piecesOnBoard = {};
+
+      // Re-enable board (flip tsy ovaina — arakaraka ny myColor tsy niovavy)
       var board = document.getElementById('game-board');
       if (board) {
         board.classList.remove('lock-board');
@@ -399,7 +405,6 @@
         currentGameOverOverlay.parentNode.removeChild(currentGameOverOverlay);
       }
       currentGameOverOverlay = null;
-      // Koa avela izay sisa
       document.querySelectorAll('[data-gameover-overlay]').forEach(function(el) { el.remove(); });
 
       // Reload state avy amin'ny server
@@ -408,7 +413,6 @@
           if (d.success) {
             localState = copyState(d.game);
             applyLocalState();
-            // Averina ny rrPolling ho an'ny lalao vaovao
             startRrPolling();
           }
         }).catch(function(){});
