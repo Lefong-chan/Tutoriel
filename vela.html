@@ -543,19 +543,33 @@
       }
       // (effectiveCaptured[1..n] dia tsy esorina ankehitriny)
 
-      // ── AUTO-OK / MULTI-CAPTURE : miankina amin'ny fisa pieces an'ilay tsy firstMover ──
-      // Raha pieces an'ilay tsy firstMover dia 5 na latsaka → multi-capture active (player roa)
-      // Raha mihoatra ny 5 → AUTO-OK foana (canContinue=false)
+      // ── AUTO-OK / MULTI-CAPTURE ───────────────────────────────────────────────
+      // Jerena ny fisa pieces an'ilay tsy firstMover AORIAN'NY capture (newPieces).
       //
-      // Ny lojika checkAvailableCaptures dia voasoratra fa DISABLED raha > 5 pieces.
-      // Rehefa ampiana fepetra hafa → ovana ity condition ity ihany.
+      // FITSIPIKA :
+      //   - firstMover    → canContinue ALWAYS false (AUTO-OK foana, na 5 na tsy 5)
+      //     satria ny tsy firstMover no tsy maintsy afaka manao continue mouve voalohany
+      //   - tsy firstMover → canContinue active raha nonFirstMoverCount <= 5
+      //     (tsy firstMover = izy ihany, koa nonFirstMoverCount = pieces ANY)
+      //
+      // Rehefa tsy firstMover afaka canContinue (lasa 5 ny pieces any) →
+      //   avy eo vasta ny firstMover koa afaka canContinue (turn manaraka)
+      //   satria ny count dia efa <= 5 amin'izay.
+      //
+      // Ny lojika taloha (multiCaptureActive ho player roa) dia voasoratra
+      // fa OVAINA eto — firstMover dia AUTO-OK foana.
       var nonFirstMoverColor = (firstMover === null)
         ? myOppColor
         : (firstMover === myColor ? myOppColor : myColor);
       var nonFirstMoverCount = Object.keys(newPieces).filter(function(s) {
         return newPieces[s] === nonFirstMoverColor;
       }).length;
-      var multiCaptureActive = (nonFirstMoverCount <= 5);
+
+      var amIFirstMoverM = (firstMover === null || firstMover === myColor);
+
+      // firstMover → AUTO-OK foana (tsy afaka canContinue)
+      // tsy firstMover → canContinue raha nonFirstMoverCount (= pieces any) <= 5
+      var multiCaptureActive = !amIFirstMoverM && (nonFirstMoverCount <= 5);
 
       var canContinue = multiCaptureActive
         && wasCapture
