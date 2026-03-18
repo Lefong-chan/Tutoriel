@@ -1211,7 +1211,7 @@
         if (res.success) {
           if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
           if (window._stopRoomChat) window._stopRoomChat();
-          window.location.href = 'fanorona.html'
+          window.location.href = 'vela.html'
             + '?gameId='   + encodeURIComponent(res.gameId)
             + '&color=maintso'
             + '&inviteId=' + encodeURIComponent(matchupData.inviteId);
