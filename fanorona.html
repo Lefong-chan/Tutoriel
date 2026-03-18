@@ -25,22 +25,15 @@
       color: white; font-size: 1em; font-weight: 700; min-height: 44px;
     }
     .player-info { display: flex; align-items: center; gap: 8px; }
-    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); }
+    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
     .dot-maintso { background: #22c55e; }
     .dot-mena    { background: #ef4444; }
+    .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
     .player-name  { font-size: 0.95em; }
-    .player-label { font-size: 0.7em; font-weight: 400; opacity: 0.75; margin-left: 2px; }
-    /* Indicateur de tour sur le dot du joueur actif */
-    .player-dot.active-turn {
-      box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7);
-    }
     .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
 
     /* ── Plateau ── */
-    #game-board {
-      width: 95vw; max-width: 800px; max-height: 68vh;
-      display: block;
-    }
+    #game-board { width: 95vw; max-width: 800px; max-height: 68vh; display: block; }
     .grid-line { stroke: #333; stroke-width: 2; }
 
     /* ── Pièces & interactions ── */
@@ -88,24 +81,15 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Erreur ── */
-    #error-msg {
-      display: none; color: #fef08a; font-size: 1em;
-      margin-top: 10px; text-align: center;
-    }
+    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
   </style>
 </head>
 <body>
 
-  <!-- Loading -->
-  <div id="loading-overlay">
-    <div class="spinner"></div>
-    <span>Fananganana ny lalao…</span>
-  </div>
+  <div id="loading-overlay"><div class="spinner"></div><span>Fananganana ny lalao…</span></div>
 
-  <!-- Bande joueurs -->
   <div id="players-bar" style="display:none;"></div>
 
-  <!-- Plateau SVG -->
   <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
     <defs>
       <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
@@ -115,7 +99,6 @@
         <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
       </pattern>
     </defs>
-
     <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
       M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
       M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
@@ -123,56 +106,43 @@
       M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
       M300 0 L400 100 M400 0 L200 200
       M0 100 L100 200 M400 100 L300 200"/>
-
     <g id="spots-group"></g>
     <g id="guides-group"></g>
     <g id="pieces-group"></g>
   </svg>
 
-  <!-- Bouton Stop (multi-capture) -->
   <button id="stop-move-btn" style="display:none;">OK</button>
-
   <div id="error-msg"></div>
 
   <script>
   (function () {
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 1 — Helpers
+    //  SECTION 1 — Config & helpers
     // ═══════════════════════════════════════════════════════════════
 
     var SESSION_API_URL = '/api/session';
     var GAME_API_URL    = '/api/game';
     var POLL_INTERVAL   = 1500;
+    // Délai après dernier mouvement avant de vérifier la cohérence backend
+    var RECONCILE_DELAY = 5000;
 
     function showError(msg) {
-      var el = document.getElementById('error-msg');
-      el.textContent = msg; el.style.display = 'block';
+      document.getElementById('error-msg').textContent = msg;
+      document.getElementById('error-msg').style.display = 'block';
       document.getElementById('loading-overlay').classList.add('hidden');
     }
-
     function escapeHtml(s) {
-      return String(s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
-
     async function callApi(url, action, payload) {
       var r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({ action: action }, payload))
       });
       var d = await r.json();
       if (!r.ok) throw new Error(d.error || 'API error');
       return d;
-    }
-
-    // Fire-and-forget : ampitaina any API fa tsy miandry ny valiny vao mitohy ny UI
-    function fireAndForget(url, action, payload) {
-      callApi(url, action, payload).catch(function(e) {
-        console.warn('fireAndForget error [' + action + ']', e);
-      });
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -206,33 +176,38 @@
     };
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 3 — État local (optimistic)
+    //  SECTION 3 — État
     // ═══════════════════════════════════════════════════════════════
 
-    var myColor         = null;
-    var myOppColor      = null;
-    var gameId          = null;
-    var myUid           = null;
+    var myColor    = null;
+    var myOppColor = null;
+    var gameId     = null;
+    var myUid      = null;
 
-    // localState : copie locale du board, mise à jour immédiatement par le joueur
-    // serverState : dernier état reçu du serveur
-    var localState      = null;  // { pieces, turn, movingPiece, visited, lastDir }
-    var serverState     = null;
+    // localState : état du board affiché (optimistic)
+    var localState = null;
 
     var selectedSpot    = null;
     var lastBlockedSpot = null;
     var canChangePiece  = true;
     var pendingCaptures = { approach: [], withdrawal: [], moveData: null };
 
-    var piecesOnBoard   = {};
-    var pollTimer       = null;
+    var piecesOnBoard = {};
 
-    // ─── IDs des dots pour l'indicateur de tour ───────────────────
+    // File des mouvements envoyés au backend (en attente de confirmation)
+    // Chaque entrée : { origin, target, capturedSpots, dir, promise }
+    var moveQueue       = [];
+    // Nombre de mouvements dans le turn en cours (pour savoir si on est en plein mouvement)
+    var movingInProgress = false;
+
+    // Timer de réconciliation post-mouvement
+    var reconcileTimer = null;
+
     var myDotEl  = null;
     var oppDotEl = null;
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 4 — Initialisation
+    //  SECTION 4 — Init
     // ═══════════════════════════════════════════════════════════════
 
     var params   = new URLSearchParams(window.location.search);
@@ -241,14 +216,8 @@
     var inviteId = params.get('inviteId');
 
     async function init() {
-      if (!gameId_p || !color_p || !inviteId) {
-        showError('Diso ny fampidirana: tsy misy gameId, color, na inviteId.');
-        return;
-      }
-      if (color_p !== 'maintso' && color_p !== 'mena') {
-        showError('Diso ny color: ' + color_p);
-        return;
-      }
+      if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
+      if (color_p !== 'maintso' && color_p !== 'mena') { showError('Diso ny color.'); return; }
 
       var stored = localStorage.getItem('user');
       if (!stored) { window.location.href = 'login&register.html'; return; }
@@ -257,10 +226,7 @@
       if (!localUser || !localUser.uid) { window.location.href = 'login&register.html'; return; }
 
       try {
-        var data = await callApi(SESSION_API_URL, 'get-fanorona-game', {
-          uid:    localUser.uid,
-          gameId: gameId_p
-        });
+        var data = await callApi(SESSION_API_URL, 'get-fanorona-game', { uid: localUser.uid, gameId: gameId_p });
         if (!data.success) { showError('Tsy hita ny lalao.'); return; }
 
         myUid      = localUser.uid;
@@ -268,10 +234,7 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
-        var myUsername  = localUser.username || localUser.uid;
-        var oppUsername = data.opponentUsername || '???';
-
-        renderPlayersBar(myColor, myUsername, oppUsername);
+        renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
 
         if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
 
@@ -281,39 +244,39 @@
 
         drawBoardSpots();
 
-        document.getElementById('stop-move-btn').onclick = function () {
-          handleStopBtn();
-        };
+        document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
 
-        // Premier poll bloquant pour avoir l'état initial
-        await pollState();
-        pollTimer = setInterval(pollState, POLL_INTERVAL);
+        // Premier chargement bloquant
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
+        if (d.success) {
+          localState = copyState(d.game);
+          applyLocalState();
+        }
 
-      } catch(err) {
-        showError('Nisy olana: ' + err.message);
-      }
+        // Polling adversaire
+        setInterval(pollAdversaire, POLL_INTERVAL);
+
+      } catch(err) { showError('Nisy olana: ' + err.message); }
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 5 — Players bar (avec indicateur de tour)
+    //  SECTION 5 — Players bar
     // ═══════════════════════════════════════════════════════════════
 
     function renderPlayersBar(myCol, myUsername, oppUsername) {
       var bar = document.getElementById('players-bar');
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-
       bar.innerHTML =
-        '<div class="player-info" id="opp-info">' +
+        '<div class="player-info">' +
           '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
           '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
         '</div>' +
         '<span class="vs-sep">VS</span>' +
-        '<div class="player-info" id="my-info">' +
+        '<div class="player-info">' +
           '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
           '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
         '</div>';
-
       bar.style.display = 'flex';
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
@@ -322,58 +285,53 @@
     function updateTurnIndicator(turn) {
       if (!myDotEl || !oppDotEl) return;
       if (turn === myColor) {
-        myDotEl.classList.add('active-turn');
-        oppDotEl.classList.remove('active-turn');
+        myDotEl.classList.add('active-turn'); oppDotEl.classList.remove('active-turn');
       } else {
-        oppDotEl.classList.add('active-turn');
-        myDotEl.classList.remove('active-turn');
+        oppDotEl.classList.add('active-turn'); myDotEl.classList.remove('active-turn');
       }
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 6 — Polling (synchronisation adversaire)
+    //  SECTION 6 — Polling adversaire UNIQUEMENT
+    //  (ne modifie le state local que si c'est le tour de l'adversaire
+    //   OU si aucun mouvement n'est en cours côté joueur)
     // ═══════════════════════════════════════════════════════════════
 
-    async function pollState() {
+    async function pollAdversaire() {
       try {
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
+        var serverTurn = d.game.turn;
 
-        serverState = d.game;
-
-        // Si c'est le tour de l'adversaire (ou premier chargement), on applique l'état serveur
-        // Si c'est mon tour et que j'ai déjà un état local en cours, on ne réinitialise pas
-        var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
-
-        if (d.game.turn !== myColor) {
-          // Tour adversaire : appliquer directement l'état serveur
-          localState = copyState(d.game);
-          selectedSpot    = null;
-          lastBlockedSpot = null;
-          canChangePiece  = true;
-          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('guides-group').innerHTML = '';
-          document.getElementById('stop-move-btn').classList.remove('active');
-          renderPieces(localState.pieces, localState);
-          updateTurnIndicator(d.game.turn);
-        } else if (!localState || localState.turn !== myColor) {
-          // Transition : l'adversaire vient de finir, c'est maintenant mon tour
-          localState = copyState(d.game);
-          canChangePiece = true;
-          selectedSpot   = d.game.movingPiece || null;
-          if (selectedSpot) {
-            canChangePiece = false;
-            document.getElementById('stop-move-btn').classList.add('active');
+        if (serverTurn !== myColor) {
+          // Tour adversaire reçu → remplacer le state local si pas de mouvement en cours
+          if (!movingInProgress) {
+            localState = copyState(d.game);
+            selectedSpot    = null;
+            lastBlockedSpot = null;
+            canChangePiece  = true;
+            pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+            document.getElementById('guides-group').innerHTML = '';
+            document.getElementById('stop-move-btn').classList.remove('active');
+            applyLocalState();
           }
-          if (!hasPending) renderPieces(localState.pieces, localState);
-          updateTurnIndicator(d.game.turn);
+        } else if (serverTurn === myColor && !movingInProgress) {
+          // Transition : l'adversaire vient de finir, c'est mon tour
+          // (et je ne suis pas en train de jouer)
+          if (!localState || localState.turn !== myColor) {
+            localState     = copyState(d.game);
+            canChangePiece = true;
+            selectedSpot   = d.game.movingPiece || null;
+            if (selectedSpot) canChangePiece = false;
+            applyLocalState();
+          }
         }
-        // Si c'est mon tour et localState.turn === myColor → on ne touche pas au state local
-        // (le joueur est en train de jouer, optimistic UI actif)
 
-      } catch(e) {
-        console.warn('poll error', e);
-      }
+        // Si movingInProgress && serverTurn === myColor :
+        //   Le serveur a bien reçu mes moves (turn encore à moi ou vient de changer)
+        //   On ne touche pas au state local.
+
+      } catch(e) { console.warn('poll error', e); }
     }
 
     function copyState(game) {
@@ -386,6 +344,21 @@
       };
     }
 
+    function applyLocalState() {
+      updateTurnIndicator(localState.turn);
+      var stopBtn = document.getElementById('stop-move-btn');
+      if (localState.turn === myColor && localState.movingPiece) {
+        stopBtn.classList.add('active');
+      } else if (!movingInProgress) {
+        stopBtn.classList.remove('active');
+      }
+      renderPieces(localState.pieces, localState);
+      // Toujours afficher les guides si une pièce est sélectionnée
+      if (selectedSpot && localState.turn === myColor) {
+        renderGuides(selectedSpot, localState);
+      }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  SECTION 7 — Spots cliquables
     // ═══════════════════════════════════════════════════════════════
@@ -394,7 +367,6 @@
       var spotsGrp = document.getElementById('spots-group');
       spotsGrp.innerHTML = '';
       var flip = myColor === 'mena';
-
       rows.forEach(function(r, ri) {
         cols.forEach(function(c, ci) {
           var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -403,9 +375,7 @@
           circle.setAttribute('r', 22);
           circle.setAttribute('fill', 'transparent');
           circle.setAttribute('class', 'spot');
-          (function(spotID) {
-            circle.onclick = function() { handleSpotClick(spotID); };
-          })(r + c);
+          (function(spotID) { circle.onclick = function() { handleSpotClick(spotID); }; })(r + c);
           spotsGrp.appendChild(circle);
         });
       });
@@ -430,19 +400,20 @@
           selectedSpot    = null;
           lastBlockedSpot = spotID;
         }
+        // Guide affiché immédiatement
         renderGuides(selectedSpot || '', localState);
         renderPieces(pieces, localState);
         return;
       }
 
-      // ── Déplacement vers une case vide ─────────────────────────
+      // ── Déplacement ────────────────────────────────────────────
       if (!selectedSpot) return;
       if ((allowedMoves[selectedSpot] || []).indexOf(spotID) === -1) return;
       if (pieces[spotID]) return;
       if (localState.visited && localState.visited.indexOf(spotID) !== -1) return;
 
       var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
-      var isCaptureMove = (caps.approach.length > 0 || caps.withdrawal.length > 0);
+      var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
       if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
 
       var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
@@ -450,43 +421,53 @@
       var dir = (r2-r1) + ',' + (c2-c1);
       if (!canChangePiece && localState.lastDir === dir) return;
 
-      // ── Optimistic : mettre à jour le state local immédiatement ─
-      var origin = selectedSpot;
-      var newPieces = Object.assign({}, pieces);
+      var origin     = selectedSpot;
+      var newPieces  = Object.assign({}, pieces);
       delete newPieces[origin];
       newPieces[spotID] = myColor;
       var newVisited = (localState.visited || []).concat([origin]);
 
       if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
-        // Choix approach / withdrawal : montrer les deux options
+        // Choix approach / withdrawal
         pendingCaptures = {
-          approach:  caps.approach,
+          approach:   caps.approach,
           withdrawal: caps.withdrawal,
-          moveData:  { origin: origin, target: spotID, dir: dir }
+          moveData:   { origin: origin, target: spotID, dir: dir }
         };
-        // Mettre à jour visuellement la pièce qui a bougé
-        localState.pieces = newPieces;
+        localState.pieces  = newPieces;
         localState.visited = newVisited;
         selectedSpot = spotID;
         renderPieces(newPieces, localState);
+        // Guides vides pendant le choix
+        document.getElementById('guides-group').innerHTML = '';
         return;
       }
 
-      // ── Calcul des captures et application locale immédiate ─────
       var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
-      applyMoveLocally(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
+      doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
     }
 
-    function applyMoveLocally(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
-      // Supprimer les pièces capturées du state local
+    function confirmCapture(type) {
+      var md = pendingCaptures.moveData;
+      var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
+      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      var newPieces  = Object.assign({}, localState.pieces);
+      var newVisited = (localState.visited || []).slice();
+      doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
+    }
+
+    // ─── Cœur : appliquer un mouvement localement + envoyer au backend ─────
+    function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
+      // Supprimer captures
       capturedSpots.forEach(function(s) { delete newPieces[s]; });
 
-      // Vérifier si on peut continuer (multi-capture)
       var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
 
+      // ── Mise à jour locale immédiate ───────────────────────────
+      movingInProgress = true;
+      localState.pieces = newPieces;
+
       if (canContinue) {
-        // Mise à jour locale : reste mon tour, movingPiece = target
-        localState.pieces      = newPieces;
         localState.movingPiece = target;
         localState.visited     = newVisited;
         localState.lastDir     = dir;
@@ -494,8 +475,6 @@
         canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
       } else {
-        // Fin de tour : passer à l'adversaire localement
-        localState.pieces      = newPieces;
         localState.turn        = myOppColor;
         localState.movingPiece = '';
         localState.visited     = [];
@@ -506,35 +485,32 @@
         document.getElementById('stop-move-btn').classList.remove('active');
       }
 
-      document.getElementById('guides-group').innerHTML = '';
-      renderPieces(localState.pieces, localState);
+      // Guide affiché immédiatement après le mouvement
+      if (canContinue && selectedSpot) {
+        renderGuides(selectedSpot, localState);
+      } else {
+        document.getElementById('guides-group').innerHTML = '';
+      }
+
       updateTurnIndicator(localState.turn);
+      renderPieces(localState.pieces, localState);
 
-      // ── Envoyer au serveur en arrière-plan (fire-and-forget) ────
-      fireAndForget(GAME_API_URL, 'make-move', {
-        uid: myUid, gameId: gameId,
-        origin: origin, target: target,
-        capturedSpots: capturedSpots, dir: dir
-      });
-    }
+      // ── Envoi au backend (fire-and-forget, sans rollback) ──────
+      sendMoveToBackend(origin, target, capturedSpots, dir);
 
-    function confirmCapture(type) {
-      var md = pendingCaptures.moveData;
-      var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
-      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-
-      var newPieces  = Object.assign({}, localState.pieces);
-      var newVisited = (localState.visited || []);
-
-      applyMoveLocally(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
+      // ── Réconciliation différée ────────────────────────────────
+      // On attend RECONCILE_DELAY après le DERNIER mouvement du turn
+      // pour vérifier que tout est cohérent côté backend
+      if (!canContinue) {
+        scheduleReconcile();
+      }
     }
 
     function handleStopBtn() {
       if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
-
       var piecesSnapshot = Object.assign({}, localState.pieces);
 
-      // Fin de tour localement
+      movingInProgress = true;
       localState.turn        = myOppColor;
       localState.movingPiece = '';
       localState.visited     = [];
@@ -544,18 +520,99 @@
       canChangePiece  = true;
       document.getElementById('stop-move-btn').classList.remove('active');
       document.getElementById('guides-group').innerHTML = '';
-      renderPieces(localState.pieces, localState);
       updateTurnIndicator(localState.turn);
+      renderPieces(localState.pieces, localState);
 
-      // Envoyer au serveur
-      fireAndForget(GAME_API_URL, 'stop-move', {
-        uid: myUid, gameId: gameId,
-        pieces: piecesSnapshot
-      });
+      // Envoyer stop au backend
+      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
+        .catch(function(e) { console.warn('stop-move error', e); });
+
+      scheduleReconcile();
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 9 — Rendu des pièces
+    //  SECTION 9 — Envoi backend & réconciliation
+    //
+    //  Principe :
+    //  - Chaque mouvement est envoyé immédiatement (fire-and-forget)
+    //  - Aucun rollback UI pendant les mouvements
+    //  - Après le dernier mouvement du turn (fin ou stop), on attend
+    //    RECONCILE_DELAY ms, puis on vérifie le backend.
+    //  - Si l'adversaire a déjà reçu l'état (polling côté serveur),
+    //    on l'affiche immédiatement sans attendre.
+    //  - En cas de désync réseau : on prend le lastDir/movingPiece
+    //    du backend comme "position de récupération" (jamais de retour arrière).
+    // ═══════════════════════════════════════════════════════════════
+
+    function sendMoveToBackend(origin, target, capturedSpots, dir) {
+      callApi(GAME_API_URL, 'make-move', {
+        uid: myUid, gameId: gameId,
+        origin: origin, target: target,
+        capturedSpots: capturedSpots, dir: dir
+      }).catch(function(e) {
+        console.warn('make-move backend error (non-blocking):', e);
+        // Pas de rollback UI : on laisse la réconciliation gérer ça
+      });
+    }
+
+    function scheduleReconcile() {
+      if (reconcileTimer) clearTimeout(reconcileTimer);
+      reconcileTimer = setTimeout(function() {
+        reconcileTimer = null;
+        doReconcile();
+      }, RECONCILE_DELAY);
+    }
+
+    async function doReconcile() {
+      try {
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
+        if (!d.success) return;
+
+        movingInProgress = false;
+
+        var serverTurn = d.game.turn;
+
+        if (serverTurn !== myColor) {
+          // Le backend a bien changé de tour → état correct
+          // Si l'UI affiche déjà le bon état (tour adversaire), ne rien faire
+          if (localState.turn !== myColor) return; // déjà ok
+          // Sinon, synchroniser
+          localState = copyState(d.game);
+          selectedSpot    = null;
+          lastBlockedSpot = null;
+          canChangePiece  = true;
+          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+          document.getElementById('guides-group').innerHTML = '';
+          document.getElementById('stop-move-btn').classList.remove('active');
+          applyLocalState();
+
+        } else {
+          // Le backend dit encore mon tour → soit le move est toujours en cours
+          // (multi-capture), soit il y a eu un souci réseau partiel.
+          // On prend la position backend comme référence SANS remettre en arrière :
+          // on adopte le movingPiece du serveur comme point de départ.
+          var serverMoving = d.game.movingPiece || '';
+          if (serverMoving) {
+            // Le serveur a un movingPiece : si l'UI est déjà sur un meilleur état,
+            // on garde l'UI. Sinon on adopte le serveur.
+            selectedSpot   = localState.movingPiece || serverMoving;
+            canChangePiece = false;
+            localState.movingPiece = selectedSpot;
+            document.getElementById('stop-move-btn').classList.add('active');
+          }
+          // Rerender avec le state actuel (pas de rollback)
+          if (selectedSpot) renderGuides(selectedSpot, localState);
+          renderPieces(localState.pieces, localState);
+          updateTurnIndicator(localState.turn);
+        }
+      } catch(e) {
+        movingInProgress = false;
+        console.warn('reconcile error', e);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 10 — Rendu des pièces
     // ═══════════════════════════════════════════════════════════════
 
     function renderPieces(pieces, stateData) {
@@ -564,7 +621,6 @@
       var globalCapture = playerHasAnyCapture(pieces, myColor);
       var flip          = myColor === 'mena';
 
-      // ── Réconciliation DOM (animation de déplacement) ──────────
       var newPiecesOnBoard = {};
       var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
       var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
@@ -600,14 +656,12 @@
 
       var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
 
-      // ── Mise à jour visuelle de chaque pièce ───────────────────
       Object.keys(pieces).forEach(function(spot) {
         var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
         if (ri < 0 || ci < 0) return;
         var entry = piecesOnBoard[spot];
         if (!entry) return;
-        var g      = entry.el;
-        var circle = g.querySelector('circle');
+        var g = entry.el, circle = g.querySelector('circle');
 
         var svgX = ci * 50;
         var svgY = flip ? (4 - ri) * 50 : ri * 50;
@@ -626,7 +680,6 @@
             circle.setAttribute('class', 'movable-piece');
         }
 
-        // Cibles de capture
         var isApp  = pendingCaptures.approach.indexOf(spot)   !== -1;
         var isWith = pendingCaptures.withdrawal.indexOf(spot) !== -1;
         g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
@@ -643,7 +696,6 @@
         }
       });
 
-      // Lock board si tour adversaire ou choix en attente
       var board = document.getElementById('game-board');
       if (!isMyTurn || hasPending) board.classList.add('lock-board');
       else board.classList.remove('lock-board');
@@ -658,7 +710,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 10 — Guides (points jaunes)
+    //  SECTION 11 — Guides (points jaunes) — toujours affichés
     // ═══════════════════════════════════════════════════════════════
 
     function renderGuides(startSpot, stateData) {
@@ -668,21 +720,20 @@
       if (!startSpot) return;
 
       var pieces  = stateData.pieces;
-      var visited = stateData.visited;
-      var lastDir = stateData.lastDir;
+      var visited = stateData.visited  || [];
+      var lastDir = stateData.lastDir  || '';
       var flip    = myColor === 'mena';
       var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
       var moves = allowedMoves[startSpot] || [];
 
       moves.forEach(function(target) {
-        if (pieces[target] || (visited && visited.indexOf(target) !== -1)) return;
+        if (pieces[target] || visited.indexOf(target) !== -1) return;
         var caps = getCaptures(pieces, startSpot, target, myColor);
-        var isCaptureMove = (caps.approach.length > 0 || caps.withdrawal.length > 0);
+        var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
         if (globalCapturePossible && !isCaptureMove) return;
 
-        var r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-        var r1 = rows.indexOf(startSpot[0]);
-        var c1 = cols.indexOf(startSpot[1]);
+        var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
+        var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
         var dir = (r2-r1) + ',' + (c2-c1);
         if (!canChangePiece && lastDir === dir) return;
 
@@ -690,79 +741,66 @@
         var svgY = flip ? (4 - r2) * 50 : r2 * 50;
 
         var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', svgX);
-        dot.setAttribute('cy', svgY);
-        dot.setAttribute('r', 6);
-        dot.setAttribute('class', 'guide-dot');
+        dot.setAttribute('cx', svgX); dot.setAttribute('cy', svgY);
+        dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
         grp.appendChild(dot);
       });
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 11 — Règles du jeu
+    //  SECTION 12 — Règles du jeu
     // ═══════════════════════════════════════════════════════════════
 
     function getCaptures(pieces, s, e, color) {
-      var r1=rows.indexOf(s[0]), c1=cols.indexOf(s[1]);
-      var r2=rows.indexOf(e[0]), c2=cols.indexOf(e[1]);
-      var enemy = color==='maintso' ? 'mena' : 'maintso';
-      var dr=r2-r1, dc=c2-c1;
+      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
+      var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
       function scan(row,col,sr,sc) {
         var res=[],cr=row+sr,cc=col+sc;
-        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy) {
-          res.push(rows[cr]+cols[cc]); cr+=sr; cc+=sc;
-        }
+        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}
         return res;
       }
       return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
     }
 
     function playerHasAnyCapture(pieces, color) {
-      var spotList = Object.keys(pieces);
-      for (var i=0; i<spotList.length; i++) {
-        var s = spotList[i];
-        if (pieces[s] !== color) continue;
-        var moves = allowedMoves[s] || [];
-        for (var j=0; j<moves.length; j++) {
-          var t = moves[j];
-          if (!pieces[t]) {
-            var c = getCaptures(pieces, s, t, color);
-            if (c.approach.length > 0 || c.withdrawal.length > 0) return true;
-          }
+      var sl = Object.keys(pieces);
+      for (var i=0;i<sl.length;i++) {
+        var s=sl[i]; if(pieces[s]!==color)continue;
+        var mv=allowedMoves[s]||[];
+        for (var j=0;j<mv.length;j++) {
+          var t=mv[j]; if(!pieces[t]){var c=getCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
         }
       }
       return false;
     }
 
     function canPieceMove(spot, pieces, color, globalCapture) {
-      var moves = allowedMoves[spot] || [];
-      for (var i=0; i<moves.length; i++) {
-        var target = moves[i];
-        if (pieces[target]) continue;
-        var caps = getCaptures(pieces, spot, target, color);
-        var isCap = (caps.approach.length > 0 || caps.withdrawal.length > 0);
-        if (globalCapture ? isCap : true) return true;
+      var mv=allowedMoves[spot]||[];
+      for(var i=0;i<mv.length;i++){
+        var t=mv[i]; if(pieces[t])continue;
+        var caps=getCaptures(pieces,spot,t,color);
+        var isCap=caps.approach.length>0||caps.withdrawal.length>0;
+        if(globalCapture?isCap:true)return true;
       }
       return false;
     }
 
     function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
-      var moves = allowedMoves[s] || [];
-      for (var i=0; i<moves.length; i++) {
-        var t = moves[i];
-        if (pieces[t] || (visited && visited.indexOf(t) !== -1)) continue;
-        var r1=rows.indexOf(s[0]), c1=cols.indexOf(s[1]);
-        var r2=rows.indexOf(t[0]), c2=cols.indexOf(t[1]);
+      var mv=allowedMoves[s]||[];
+      for(var i=0;i<mv.length;i++){
+        var t=mv[i];
+        if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue;
+        var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
         var dir=(r2-r1)+','+(c2-c1);
-        if (lastDir && lastDir === dir) continue;
-        var caps = getCaptures(pieces, s, t, color);
-        if (caps.approach.length > 0 || caps.withdrawal.length > 0) return true;
+        if(lastDir&&lastDir===dir)continue;
+        var caps=getCaptures(pieces,s,t,color);
+        if(caps.approach.length>0||caps.withdrawal.length>0)return true;
       }
       return false;
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 12 — Lancement
+    //  SECTION 13 — Lancement
     // ═══════════════════════════════════════════════════════════════
 
     init();
