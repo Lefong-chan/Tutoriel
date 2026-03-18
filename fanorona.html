@@ -426,7 +426,13 @@
 
       // ── Sélection d'une pièce ──────────────────────────────────
       if (canChangePiece && pieces[spotID] === myColor) {
-        if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
+        // FIRST MOVER CHECK :
+        // Raha firstMover → canPieceMove mijery capture (lojika normal)
+        // Raha tsy firstMover → canPieceMove tsy mila capture (globalCapture=false)
+        // (Ny lojika playerHasAnyCapture dia voasoratra fa DISABLED ho an'ilay tsy firstMover)
+        var amIFirstMover = (firstMover === null || firstMover === myColor);
+        var globalCap = amIFirstMover ? playerHasAnyCapture(pieces, myColor) : false;
+        if (canPieceMove(spotID, pieces, myColor, globalCap)) {
           selectedSpot    = spotID;
           lastBlockedSpot = null;
         } else {
@@ -447,7 +453,12 @@
 
       var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
       var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-      if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+      // FIRST MOVER CHECK :
+      // Raha firstMover → tsy afaka mandeha raha misy capture azo atao nefa tsy capture ny hetsika
+      // Raha tsy firstMover → afaka mandeha any na aiza na aiza (tsy voatery capture)
+      // (Ny fepetra playerHasAnyCapture dia voasoratra fa DISABLED ho an'ilay tsy firstMover)
+      var amIFirstMover2 = (firstMover === null || firstMover === myColor);
+      if (amIFirstMover2 && playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
 
       var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
       var r2 = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
@@ -788,28 +799,51 @@
       var pieces  = stateData.pieces;
       var visited = stateData.visited  || [];
       var lastDir = stateData.lastDir  || '';
-      var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
-      var moves = allowedMoves[startSpot] || [];
+      var moves   = allowedMoves[startSpot] || [];
 
-      moves.forEach(function(target) {
-        if (pieces[target] || visited.indexOf(target) !== -1) return;
-        var caps = getCaptures(pieces, startSpot, target, myColor);
-        var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-        if (globalCapturePossible && !isCaptureMove) return;
+      // ── FIRST MOVER CHECK ──────────────────────────────────────────────────
+      // Raha myColor === firstMover (na mbola tsy set) → lojika normal (mitady capture)
+      // Raha myColor !== firstMover → toerana malalaka rehetra no asehana (tsy mijery capture)
+      //
+      // Ny lojika taloha (globalCapturePossible + isCaptureMove) dia voasoratra
+      // fa DISABLED ho an'ilay tsy firstMover — rehefa hampiana → ovana ity fepetra ity.
+      var amIFirstMover = (firstMover === null || firstMover === myColor);
 
-        var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
-        var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
-        var dir = (r2-r1) + ',' + (c2-c1);
-        if (!canChangePiece && lastDir === dir) return;
+      if (amIFirstMover) {
+        // ── firstMover : lojika normal — mitady capture ──────────────────────
+        var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
+        moves.forEach(function(target) {
+          if (pieces[target] || visited.indexOf(target) !== -1) return;
+          var caps = getCaptures(pieces, startSpot, target, myColor);
+          var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+          if (globalCapturePossible && !isCaptureMove) return; // voasoratra fa active ho firstMover
 
-        var svgX = c2 * 50;
-        var svgY = r2 * 50;
+          var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
+          var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
+          var dir = (r2-r1) + ',' + (c2-c1);
+          if (!canChangePiece && lastDir === dir) return;
 
-        var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', svgX); dot.setAttribute('cy', svgY);
-        dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
-        grp.appendChild(dot);
-      });
+          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', c2 * 50); dot.setAttribute('cy', r2 * 50);
+          dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
+          grp.appendChild(dot);
+        });
+      } else {
+        // ── tsy firstMover : toerana malalaka rehetra, tsy mijery capture ────
+        // (Ny lojika capture dia voasoratra ao ambony fa DISABLED eto)
+        moves.forEach(function(target) {
+          if (pieces[target] || visited.indexOf(target) !== -1) return;
+          var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
+          var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
+          var dir = (r2-r1) + ',' + (c2-c1);
+          if (!canChangePiece && lastDir === dir) return;
+
+          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', c2 * 50); dot.setAttribute('cy', r2 * 50);
+          dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
+          grp.appendChild(dot);
+        });
+      }
     }
 
 
