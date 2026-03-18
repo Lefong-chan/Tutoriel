@@ -356,6 +356,33 @@
       return firstMover === null || firstMover === myColor;
     }
 
+    // checkPhase1Defeat : jerena raha resy ilay tsy firstMover (lojika 1 ihany).
+    // Antony resy : tsy mahita capture na inona na inona ao amin'ny board.
+    // Alert : amin'ny player roa (resy / mandresy).
+    // Tsy ampiasaina ao amin'ny lojika 2 (isPhase2).
+    var ph1DefeatAlertShown = false;
+    function checkPhase1Defeat(pieces) {
+      if (ph1DefeatAlertShown) return;
+      if (!firstMover) return;
+      if (isPhase2(pieces)) return; // lojika 2 — tsy ampiasaina eto
+      var nonFMColor = firstMover === myColor ? myOppColor : myColor;
+      // Jerena raha tsy misy capture azo atao na ho an'ny iza na ho an'ny iza
+      var nonFMHasCapture    = playerHasAnyCapture(pieces, nonFMColor);
+      var fmHasCapture       = playerHasAnyCapture(pieces, firstMover === myColor ? myColor : myOppColor);
+      // Resy ilay tsy firstMover raha tsy misy capture azo atao na ho an'ny iza na ho an'ny iza
+      // (ny board dia tsy misy capture intsony → ny tsy firstMover dia resy)
+      if (!nonFMHasCapture && !fmHasCapture) {
+        ph1DefeatAlertShown = true;
+        if (myColor === nonFMColor) {
+          // Ianao ilay resy
+          setTimeout(function() { alert('Resy ianao — tsy nisy capture!'); }, 100);
+        } else {
+          // Ianao ilay mandresy
+          setTimeout(function() { alert('Mandresy ianao — ny adversaire tsy nahita capture!'); }, 100);
+        }
+      }
+    }
+
     function ph1Poll(game) {
       if (movingInProgress) return;
       var serverTurn = game.turn;
@@ -384,6 +411,8 @@
       document.getElementById('guides-group').innerHTML = '';
       document.getElementById('stop-move-btn').classList.remove('active');
       applyLocalState();
+      // Jerena raha resy (hahitan'ny firstMover koa ny alert rehefa tonga turn azy)
+      checkPhase1Defeat(localState.pieces);
     }
 
     function copyState(game) {
@@ -530,6 +559,13 @@
       updateTurnIndicator(localState.turn);
       renderPieces(localState.pieces, localState);
       sendMoveToBackend(origin, target, effectiveCaptured, dir);
+
+      // Jerena raha resy ilay tsy firstMover (lojika 1 ihany)
+      // Atao rehefa niafara ny turn (tsy firstMover nanao hetsika tsy misy capture)
+      if (!canContinue && !amIFirstMover() && effectiveCaptured.length === 0) {
+        checkPhase1Defeat(localState.pieces);
+      }
+
       if (!canContinue) scheduleReconcile();
     }
 
