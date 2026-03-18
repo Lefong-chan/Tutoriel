@@ -124,6 +124,7 @@ async function handleMakeMove(body, res) {
   } else {
     const nextColor = myColor === "maintso" ? "mena" : "maintso";
     const fullHistory = [...prevHistory, newHistoryEntry];
+    const nextTurnId = (game.lastTurnId || 0) + 1;
     await gameRef.update({
       pieces,
       turn:            nextColor,
@@ -132,7 +133,8 @@ async function handleMakeMove(body, res) {
       lastDir:         "",
       moveHistory:     [],
       lastTurnHistory: fullHistory,
-      lastTurnColor:   myColor
+      lastTurnColor:   myColor,
+      lastTurnId:      nextTurnId
     });
     return res.status(200).json({ success: true, continuing: false });
   }
@@ -155,6 +157,7 @@ async function handleStopMove(body, res) {
 
   const nextColor = myColor === "maintso" ? "mena" : "maintso";
   const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
+  const stopTurnId = (game.lastTurnId || 0) + 1;
   await gameRef.update({
     pieces,
     turn:            nextColor,
@@ -163,7 +166,8 @@ async function handleStopMove(body, res) {
     lastDir:         "",
     moveHistory:     [],
     lastTurnHistory: stopHistory,
-    lastTurnColor:   myColor
+    lastTurnColor:   myColor,
+    lastTurnId:      stopTurnId
   });
   return res.status(200).json({ success: true });
 }
