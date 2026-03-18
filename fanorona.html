@@ -307,45 +307,32 @@
         if (!d.success) return;
         var serverTurn = d.game.turn;
 
-      // Ne rien écraser pendant un mouvement local
-      if (movingInProgress) return;
+        // Ne rien écraser pendant un mouvement local
+        if (movingInProgress) return;
 
-        if (serverTurn !== myColor) {
-          // Tour adversaire en cours → afficher son état courant
-          localState = copyState(d.game);
-          selectedSpot    = null;
-          lastBlockedSpot = null;
-          canChangePiece  = true;
-          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('guides-group').innerHTML = '';
-          document.getElementById('stop-move-btn').classList.remove('active');
-          applyLocalState();
+        // Raha mbola tsy tour anao (adversaire manao hetsika) → tsy manao na inona na inona
+        // Miandry fotsiny ny tour anao vao mampiseho ny état final
+        if (serverTurn !== myColor) return;
 
-        } else {
-          // serverTurn === myColor → l'adversaire vient de finir
-          var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
-          var histColor = d.game.lastTurnColor || '';
-          var histKey   = histColor + '|' + history.length + '|' +
-                          (history.length > 0 ? history[history.length - 1].target : '');
+        // Tour anao → adversaire vita ny hetsikany
+        // Mampiseho mivantana ny état farany (tsy replay, tsy animation)
+        var histColor = d.game.lastTurnColor || '';
+        var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
+        var histKey   = histColor + '|' + history.length + '|' +
+                        (history.length > 0 ? history[history.length - 1].target : '');
 
-          if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
-            // Hetsika vaovao avy amin'ny adversaire → tahirizina ny history fa tsy mampiseho replay
-            lastSeenHistKey = histKey;
-            // Ny lastTurnHistory dia tahirizina ao amin'ny server — azo ampiasaina avy eo raha ilaina
-            // Mampiseho mivantana ny état farany (tsy replay)
-            localState     = copyState(d.game);
-            canChangePiece = true;
-            selectedSpot   = d.game.movingPiece || null;
-            if (selectedSpot) canChangePiece = false;
-            applyLocalState();
-          } else if (!localState || localState.turn !== myColor) {
-            localState     = copyState(d.game);
-            canChangePiece = true;
-            selectedSpot   = d.game.movingPiece || null;
-            if (selectedSpot) canChangePiece = false;
-            applyLocalState();
-          }
+        if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
+          lastSeenHistKey = histKey;
         }
+
+        localState      = copyState(d.game);
+        canChangePiece  = true;
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+        document.getElementById('guides-group').innerHTML = '';
+        document.getElementById('stop-move-btn').classList.remove('active');
+        applyLocalState();
 
       } catch(e) { console.warn('poll error', e); }
     }
