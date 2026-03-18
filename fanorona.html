@@ -54,16 +54,12 @@
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
 
-    /* ── Bouton Stop ── */
+    /* ── Bouton OK (visible mais sans fonctionnalité active) ── */
     #stop-move-btn {
       width: 60px; height: 60px; border-radius: 50%;
       background: #f44336; color: white; border: 4px solid white;
-      font-size: 30px; font-weight: bold; cursor: pointer;
+      font-size: 30px; font-weight: bold; cursor: default;
       margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none;
-    }
-    #stop-move-btn.active {
-      opacity: 1; transform: scale(1.1);
-      box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all;
     }
 
     /* ── Loading ── */
@@ -125,7 +121,6 @@
     var SESSION_API_URL = '/api/session';
     var GAME_API_URL    = '/api/game';
     var POLL_INTERVAL   = 1500;
-    // Délai après dernier mouvement avant de vérifier la cohérence backend
     var RECONCILE_DELAY = 5000;
 
     function showError(msg) {
@@ -185,11 +180,6 @@
     var gameId     = null;
     var myUid      = null;
 
-    // ── Mouve continue (disabled — tsy ampiasaina aloa, fa tsy esorina) ──
-    // Asiana true ity mba hanafahana ny lojika mouve continue
-    var ENABLE_CONTINUE_MOVE = false;
-
-    // localState : état du board affiché (optimistic)
     var localState = null;
 
     var selectedSpot    = null;
@@ -199,16 +189,10 @@
 
     var piecesOnBoard = {};
 
-    // File des mouvements envoyés au backend (en attente de confirmation)
-    // Chaque entrée : { origin, target, capturedSpots, dir, promise }
-    var moveQueue       = [];
-    // Nombre de mouvements dans le turn en cours (pour savoir si on est en plein mouvement)
     var movingInProgress = false;
 
-    // Fanalahidian'ny hetsika farany niseho (mba tsy hiseho indroa)
     var lastSeenHistKey   = null;
 
-    // Timer de réconciliation post-mouvement
     var reconcileTimer = null;
 
     var myDotEl  = null;
@@ -252,16 +236,15 @@
 
         drawBoardSpots();
 
-        document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
+        // Bouton OK visible mais sans fonctionnalité
+        // document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
 
-        // Premier chargement bloquant
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
           localState = copyState(d.game);
           applyLocalState();
         }
 
-        // Polling adversaire
         setInterval(pollAdversaire, POLL_INTERVAL);
 
       } catch(err) { showError('Nisy olana: ' + err.message); }
@@ -301,8 +284,6 @@
 
     // ═══════════════════════════════════════════════════════════════
     //  SECTION 6 — Polling adversaire UNIQUEMENT
-    //  (ne modifie le state local que si c'est le tour de l'adversaire
-    //   OU si aucun mouvement n'est en cours côté joueur)
     // ═══════════════════════════════════════════════════════════════
 
     async function pollAdversaire() {
@@ -311,11 +292,8 @@
         if (!d.success) return;
         var serverTurn = d.game.turn;
 
-        // Ne rien écraser pendant un mouvement local
         if (movingInProgress) return;
 
-        // Raha mbola tsy tour anao → adversaire manao hetsika
-        // Havaozina ny pieces mba hita ny pio nalehany (tsy replay, tsy trail)
         if (serverTurn !== myColor) {
           if (localState) {
             localState.pieces = Object.assign({}, d.game.pieces);
@@ -325,11 +303,8 @@
           return;
         }
 
-        // Tour anao — raha efa manao hetsika ianao (misy selectedSpot na movingPiece),
-        // tsy ovaina ny state mba tsy hanafoana ny selection nataonao
         if (selectedSpot || (localState && localState.movingPiece)) return;
 
-        // Tonga eto fotsiny raha tour anao SY tsy mbola nanao selection ianao
         var histColor = d.game.lastTurnColor || '';
         var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
         var histKey   = histColor + '|' + history.length + '|' +
@@ -339,7 +314,6 @@
           lastSeenHistKey = histKey;
         }
 
-        // Havaozina ny localState fotsiny raha tena nisy fanovana
         var serverPiecesStr = JSON.stringify(d.game.pieces);
         var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
         if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
@@ -350,7 +324,6 @@
         lastBlockedSpot = null;
         pendingCaptures = { approach: [], withdrawal: [], moveData: null };
         document.getElementById('guides-group').innerHTML = '';
-        document.getElementById('stop-move-btn').classList.remove('active');
         applyLocalState();
 
       } catch(e) { console.warn('poll error', e); }
@@ -368,14 +341,8 @@
 
     function applyLocalState() {
       updateTurnIndicator(localState.turn);
-      var stopBtn = document.getElementById('stop-move-btn');
-      if (localState.turn === myColor && localState.movingPiece) {
-        stopBtn.classList.add('active');
-      } else if (!movingInProgress) {
-        stopBtn.classList.remove('active');
-      }
+      // Bouton OK : toujours inactif (visible seulement, sans pointer-events)
       renderPieces(localState.pieces, localState);
-      // Toujours afficher les guides si une pièce est sélectionnée
       if (selectedSpot && localState.turn === myColor) {
         renderGuides(selectedSpot, localState);
       }
@@ -421,7 +388,6 @@
           selectedSpot    = null;
           lastBlockedSpot = spotID;
         }
-        // Guide affiché immédiatement
         renderGuides(selectedSpot || '', localState);
         renderPieces(pieces, localState);
         return;
@@ -459,7 +425,6 @@
         localState.visited = newVisited;
         selectedSpot = spotID;
         renderPieces(newPieces, localState);
-        // Guides vides pendant le choix
         document.getElementById('guides-group').innerHTML = '';
         return;
       }
@@ -478,63 +443,14 @@
     }
 
     // ─── Cœur : appliquer un mouvement localement + envoyer au backend ─────
+    // Hisaka iray ihany — rehefa vita ilay hetsika, turn adversaire avy hatrany
     function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
       // Supprimer captures
       capturedSpots.forEach(function(s) { delete newPieces[s]; });
 
-      // ENABLE_CONTINUE_MOVE = false → auto-stop aorian'ny hetsika iray (miova ho adversaire avy hatrany)
-      var canContinue = ENABLE_CONTINUE_MOVE && wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
-
-      // ── Mise à jour locale immédiate ───────────────────────────
+      // ── Mise à jour locale immédiate — toujours fin de tour ──────
       movingInProgress = true;
-      localState.pieces = newPieces;
-
-      if (canContinue) {
-        localState.movingPiece = target;
-        localState.visited     = newVisited;
-        localState.lastDir     = dir;
-        selectedSpot   = target;
-        canChangePiece = false;
-        document.getElementById('stop-move-btn').classList.add('active');
-      } else {
-        // Miova ho adversaires avy hatrany — tsy mila miandry reconcile
-        movingInProgress       = false;
-        localState.turn        = myOppColor;
-        localState.movingPiece = '';
-        localState.visited     = [];
-        localState.lastDir     = '';
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        canChangePiece  = true;
-        document.getElementById('stop-move-btn').classList.remove('active');
-      }
-
-      // Guide affiché immédiatement après le mouvement
-      if (canContinue && selectedSpot) {
-        renderGuides(selectedSpot, localState);
-      } else {
-        document.getElementById('guides-group').innerHTML = '';
-      }
-
-      updateTurnIndicator(localState.turn);
-      renderPieces(localState.pieces, localState);
-
-      // ── Envoi au backend (fire-and-forget, sans rollback) ──────
-      sendMoveToBackend(origin, target, capturedSpots, dir);
-
-      // ── Réconciliation différée ────────────────────────────────
-      // On attend RECONCILE_DELAY après le DERNIER mouvement du turn
-      // pour vérifier que tout est cohérent côté backend
-      if (!canContinue) {
-        scheduleReconcile();
-      }
-    }
-
-    function handleStopBtn() {
-      if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
-      var piecesSnapshot = Object.assign({}, localState.pieces);
-
-      movingInProgress = true;
+      localState.pieces      = newPieces;
       localState.turn        = myOppColor;
       localState.movingPiece = '';
       localState.visited     = [];
@@ -542,30 +458,20 @@
       selectedSpot    = null;
       lastBlockedSpot = null;
       canChangePiece  = true;
-      document.getElementById('stop-move-btn').classList.remove('active');
+
       document.getElementById('guides-group').innerHTML = '';
       updateTurnIndicator(localState.turn);
       renderPieces(localState.pieces, localState);
 
-      // Envoyer stop au backend
-      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
-        .catch(function(e) { console.warn('stop-move error', e); });
+      // ── Envoi au backend ──────────────────────────────────────
+      sendMoveToBackend(origin, target, capturedSpots, dir);
 
+      // ── Réconciliation différée ───────────────────────────────
       scheduleReconcile();
     }
 
     // ═══════════════════════════════════════════════════════════════
     //  SECTION 9 — Envoi backend & réconciliation
-    //
-    //  Principe :
-    //  - Chaque mouvement est envoyé immédiatement (fire-and-forget)
-    //  - Aucun rollback UI pendant les mouvements
-    //  - Après le dernier mouvement du turn (fin ou stop), on attend
-    //    RECONCILE_DELAY ms, puis on vérifie le backend.
-    //  - Si l'adversaire a déjà reçu l'état (polling côté serveur),
-    //    on l'affiche immédiatement sans attendre.
-    //  - En cas de désync réseau : on prend le lastDir/movingPiece
-    //    du backend comme "position de récupération" (jamais de retour arrière).
     // ═══════════════════════════════════════════════════════════════
 
     function sendMoveToBackend(origin, target, capturedSpots, dir) {
@@ -575,7 +481,6 @@
         capturedSpots: capturedSpots, dir: dir
       }).catch(function(e) {
         console.warn('make-move backend error (non-blocking):', e);
-        // Pas de rollback UI : on laisse la réconciliation gérer ça
       });
     }
 
@@ -597,35 +502,16 @@
         var serverTurn = d.game.turn;
 
         if (serverTurn !== myColor) {
-          // Le backend a bien changé de tour → état correct
-          // Si l'UI affiche déjà le bon état (tour adversaire), ne rien faire
-          if (localState.turn !== myColor) return; // déjà ok
-          // Sinon, synchroniser
+          if (localState.turn !== myColor) return;
           localState = copyState(d.game);
           selectedSpot    = null;
           lastBlockedSpot = null;
           canChangePiece  = true;
           pendingCaptures = { approach: [], withdrawal: [], moveData: null };
           document.getElementById('guides-group').innerHTML = '';
-          document.getElementById('stop-move-btn').classList.remove('active');
           applyLocalState();
-
         } else {
-          // Le backend dit encore mon tour → soit le move est toujours en cours
-          // (multi-capture), soit il y a eu un souci réseau partiel.
-          // On prend la position backend comme référence SANS remettre en arrière :
-          // on adopte le movingPiece du serveur comme point de départ.
-          var serverMoving = d.game.movingPiece || '';
-          if (serverMoving) {
-            // Le serveur a un movingPiece : si l'UI est déjà sur un meilleur état,
-            // on garde l'UI. Sinon on adopte le serveur.
-            selectedSpot   = localState.movingPiece || serverMoving;
-            canChangePiece = false;
-            localState.movingPiece = selectedSpot;
-            document.getElementById('stop-move-btn').classList.add('active');
-          }
-          // Rerender avec le state actuel (pas de rollback)
-          if (selectedSpot) renderGuides(selectedSpot, localState);
+          // Tour toujours à moi côté backend — rerender sans rollback
           renderPieces(localState.pieces, localState);
           updateTurnIndicator(localState.turn);
         }
@@ -692,7 +578,6 @@
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
         circle.style.pointerEvents = 'all';
-        // Rehefa manindry pio, alefa any amin'ny spot marina (mba tsy hivaingana ny click)
         circle.onclick = (function(s) {
           return function(e) { e.stopPropagation(); handleSpotClick(s); };
         })(spot);
@@ -714,7 +599,6 @@
           circle.classList.add('capture-target');
           circle.style.pointerEvents = 'all';
           var ct = isApp ? 'approach' : 'withdrawal';
-          // Override onclick — eto confirmCapture no ilaina fa tsy handleSpotClick
           circle.onclick = (function(type) {
             return function(e) { e.stopPropagation(); confirmCapture(type); };
           })(ct);
@@ -737,7 +621,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 11 — Guides (points jaunes) — toujours affichés
+    //  SECTION 11 — Guides (points jaunes)
     // ═══════════════════════════════════════════════════════════════
 
     function renderGuides(startSpot, stateData) {
@@ -772,7 +656,6 @@
         grp.appendChild(dot);
       });
     }
-
 
     // ═══════════════════════════════════════════════════════════════
     //  SECTION 12 — Règles du jeu
@@ -812,34 +695,8 @@
       return false;
     }
 
-    function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
-      var mv=allowedMoves[s]||[];
-      for(var i=0;i<mv.length;i++){
-        var t=mv[i];
-        if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue;
-        var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
-        var dir=(r2-r1)+','+(c2-c1);
-        if(lastDir&&lastDir===dir)continue;
-        var caps=getCaptures(pieces,s,t,color);
-        if(caps.approach.length>0||caps.withdrawal.length>0)return true;
-      }
-      return false;
-    }
-
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 13 — Historique hetsika adversaire (tahiry fotsiny)
-    // ═══════════════════════════════════════════════════════════════
-    // Ny lastTurnHistory ao amin'ny server dia mitahiry ny lalana
-    // rehetra nalehan'ny adversaire tamin'ny turn farany.
-    // Azo ampiasaina avy eo raha ilaina (résumé, fanamarihana, sns.)
-    //
-    // Naferina ny replay animation:
-    //   - Rehefa mahita hetsika vaovao avy amin'ny adversaire ny polling,
-    //     dia mampiseho mivantana ny état farany (tsy mamerina dingana).
-    //   - Ny lastTurnHistory dia voatahiry ao amin'ny server ihany.
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 14 — Lancement
+    //  SECTION 13 — Lancement
     // ═══════════════════════════════════════════════════════════════
 
     init();
