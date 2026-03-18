@@ -42,10 +42,14 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
-      case "get-state":     return await handleGetState(payload, res);
-      case "make-move":     return await handleMakeMove(payload, res);
-      case "stop-move":     return await handleStopMove(payload, res);
-      case "restart-game":  return await handleRestartGame(payload, res);
+      case "get-state":         return await handleGetState(payload, res);
+      case "make-move":         return await handleMakeMove(payload, res);
+      case "stop-move":         return await handleStopMove(payload, res);
+      case "restart-game":      return await handleRestartGame(payload, res);
+      case "request-restart":   return await handleRequestRestart(payload, res);
+      case "get-restart-request": return await handleGetRestartRequest(payload, res);
+      case "confirm-restart":   return await handleConfirmRestart(payload, res);
+      case "cancel-restart":    return await handleCancelRestart(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -174,6 +178,139 @@ async function handleStopMove(body, res) {
     moveHistory:     [],
     lastTurnHistory: stopHistory,
     lastTurnColor:   myColor
+  });
+  return res.status(200).json({ success: true });
+}
+
+// ── Request restart (iray mangataka, iray manaiky na mandà) ───────────────
+// Body: { uid, gameId }
+async function handleRequestRestart(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  // Voatahiry ny uid nangataka sy ny username
+  const myColor = getMyColor(game, uid);
+  const myUsername = game.senderUid === uid ? game.senderUsername : game.receiverUsername;
+  await gameRef.update({
+    restartRequest:         uid,
+    restartRequestUsername: myUsername,
+    restartConfirmed:       false,
+  });
+  return res.status(200).json({ success: true });
+}
+
+// ── Jerena ny restart request ──────────────────────────────────────────────
+// Body: { uid, gameId }
+async function handleGetRestartRequest(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const game = await rtdbGet(gamesRef.child(gameId));
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  const requested  = !!(game.restartRequest);
+  const requestedBy = game.restartRequest || null;
+  const confirmed  = !!(game.restartConfirmed);
+
+  if (confirmed) {
+    // Mamerina ny myColor vaovao raha confirmed
+    const myColor = getMyColor(game, uid);
+    return res.status(200).json({
+      success: true, requested: false, confirmed: true,
+      myColor,
+      senderColor: game.senderColor, receiverColor: game.receiverColor,
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    requested,
+    requestedBy,
+    requestedByUsername: game.restartRequestUsername || null,
+    confirmed: false,
+  });
+}
+
+// ── Manaiky restart ────────────────────────────────────────────────────────
+// Body: { uid, gameId }
+async function handleConfirmRestart(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  // Tsy azo hanaiky ny fangatahany manokana
+  if (game.restartRequest === uid)
+    return res.status(400).json({ error: "Tsy azonao ekena ny fangatahana nataonao." });
+
+  // Mifamadika ny colors
+  const prevSenderColor   = game.senderColor   || "maintso";
+  const prevReceiverColor = game.receiverColor || "mena";
+  const newSenderColor    = prevSenderColor   === "maintso" ? "mena" : "maintso";
+  const newReceiverColor  = prevReceiverColor === "maintso" ? "mena" : "maintso";
+
+  const initialPieces = {};
+  const R = ["A","B","C","D","E"];
+  const C = ["1","2","3","4","5","6","7","8","9"];
+  R.forEach((r, ri) => {
+    C.forEach((c, ci) => {
+      const key = r + c;
+      if (ri < 2)       initialPieces[key] = "mena";
+      else if (ri > 2)  initialPieces[key] = "maintso";
+      else {
+        if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
+        else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
+      }
+    });
+  });
+
+  await gameRef.set({
+    pieces:                initialPieces,
+    turn:                  "maintso",
+    senderUid:             game.senderUid,
+    senderUsername:        game.senderUsername,
+    senderColor:           newSenderColor,
+    receiverUid:           game.receiverUid,
+    receiverUsername:      game.receiverUsername,
+    receiverColor:         newReceiverColor,
+    startedAt:             Date.now(),
+    movingPiece:           "",
+    visited:               [],
+    lastDir:               "",
+    moveHistory:           [],
+    lastTurnHistory:       [],
+    lastTurnColor:         "",
+    restartRequest:        null,
+    restartRequestUsername: null,
+    restartConfirmed:      true,
+  });
+
+  const myColor = game.senderUid === uid ? newSenderColor : newReceiverColor;
+  return res.status(200).json({ success: true, confirmed: true, myColor,
+    senderColor: newSenderColor, receiverColor: newReceiverColor });
+}
+
+// ── Mandà restart ──────────────────────────────────────────────────────────
+// Body: { uid, gameId }
+async function handleCancelRestart(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+
+  await gameRef.update({
+    restartRequest:         null,
+    restartRequestUsername: null,
+    restartConfirmed:       false,
   });
   return res.status(200).json({ success: true });
 }
