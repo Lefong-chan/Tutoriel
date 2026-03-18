@@ -210,6 +210,15 @@
     var myDotEl  = null;
     var oppDotEl = null;
 
+    // firstMover : izay color nanetsika voalohany indrindra tamin'ny lalao.
+    // Io color io ihany no afaka manala pièce (capture).
+    // Set iray mandeha rehefa tonga avy amin'ny server (tsy azo ovaina).
+    // Mbola tsy nisy hetsika raha null.
+    //
+    // Lojika: raha myColor !== firstMover → capturedSpots = [] foana ao amin'ny doMove.
+    // (Ny lojika manala pièce ao amin'ny doMove dia voasoratra fa disabled raha tsy firstMover)
+    var firstMover = null;
+
     // ═══════════════════════════════════════════════════════════════
     //  SECTION 4 — Init
     // ═══════════════════════════════════════════════════════════════
@@ -254,6 +263,8 @@
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
           localState = copyState(d.game);
+          // Set firstMover avy amin'ny server raha efa misy
+          if (d.game.firstMover) firstMover = d.game.firstMover;
           applyLocalState();
         }
 
@@ -341,6 +352,10 @@
         if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
 
         localState      = copyState(d.game);
+        // Set firstMover avy amin'ny server (iray mandeha, tsy azo ovaina)
+        if (firstMover === null && d.game.firstMover) {
+          firstMover = d.game.firstMover;
+        }
         canChangePiece  = true;
         selectedSpot    = null;
         lastBlockedSpot = null;
@@ -359,6 +374,7 @@
         movingPiece: game.movingPiece || '',
         visited:     (game.visited || []).slice(),
         lastDir:     game.lastDir || '',
+        firstMover:  game.firstMover || null,
       };
     }
 
@@ -488,14 +504,23 @@
     //   soloina ity andalana ity: var canContinue = wasCapture && checkAvailableCaptures(...)
     //
     function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
-      // ── PIÈCE IRAY MONJA no esorina (voalohany ao amin'ny capturedSpots) ──
-      // Ny lojika manala pièce maro (capturedSpots.forEach) dia voasoratra
-      // fa MBOLA TSY AMPIASAINA — rehefa hampiana → ovana ity block ity:
-      //   capturedSpots.forEach(function(s) { delete newPieces[s]; });
-      if (capturedSpots.length > 0) {
-        delete newPieces[capturedSpots[0]]; // pièce voalohany ihany
+      // ── FIRST MOVER ihany no afaka manala pièce ───────────────────────────
+      // Raha myColor === firstMover (na mbola tsy set) → capture normal
+      // Raha myColor !== firstMover → capturedSpots voatery ho [] (tsy misy capture)
+      //
+      // Ny lojika manala pièce (capturedSpots[0]) dia voasoratra fa
+      // DISABLED raha tsy firstMover — rehefa hampiana ny "piece faharoa afaka manala"
+      // dia soloina fotsiny ity fepetra ity.
+      var effectiveCaptured = (firstMover === null || firstMover === myColor)
+        ? capturedSpots
+        : []; // tsy firstMover → tsy afaka manala pièce
+
+      // ── PIÈCE IRAY MONJA no esorina (voalohany ao amin'ny effectiveCaptured) ──
+      // Ny lojika manala pièce maro dia voasoratra fa MBOLA TSY AMPIASAINA.
+      if (effectiveCaptured.length > 0) {
+        delete newPieces[effectiveCaptured[0]]; // pièce voalohany ihany
       }
-      // (sisa ao amin'ny capturedSpots[1..n] dia tsy esorina ankehitriny)
+      // (effectiveCaptured[1..n] dia tsy esorina ankehitriny)
 
       // AUTO-OK foana ankehitriny — multi-capture mbola tsy active
       var canContinue = false;
@@ -533,7 +558,8 @@
       renderPieces(localState.pieces, localState);
 
       // ── Envoi au backend (fire-and-forget, sans rollback) ──────
-      sendMoveToBackend(origin, target, capturedSpots, dir);
+      // Nalefa effectiveCaptured ([] raha tsy firstMover) mba mifanaraka amin'ny UI
+      sendMoveToBackend(origin, target, effectiveCaptured, dir);
 
       // ── Réconciliation différée ────────────────────────────────
       // On attend RECONCILE_DELAY après le DERNIER mouvement du turn
