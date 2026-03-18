@@ -203,7 +203,8 @@
 
     // Replay animation adversaire
     var replayInProgress  = false;
-    var lastSeenHistKey   = null;
+    var lastSeenTurnId    = -1;   // lastTurnId du dernier replay joué
+    var replayQueue       = [];   // file de replays en attente
 
     // Timer de réconciliation post-mouvement
     var reconcileTimer = null;
@@ -308,32 +309,36 @@
         if (!d.success) return;
         var serverTurn = d.game.turn;
 
-        // Ne rien écraser pendant un mouvement local ou un replay
-        if (replayInProgress || movingInProgress) return;
+        // Ne rien écraser pendant un mouvement local
+        if (movingInProgress) return;
 
         if (serverTurn !== myColor) {
-          // Tour adversaire en cours → afficher son état courant
-          localState = copyState(d.game);
-          selectedSpot    = null;
-          lastBlockedSpot = null;
-          canChangePiece  = true;
-          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('guides-group').innerHTML = '';
-          document.getElementById('stop-move-btn').classList.remove('active');
-          applyLocalState();
+          // Tour adversaire en cours → afficher son état courant (si pas de replay)
+          if (!replayInProgress) {
+            localState = copyState(d.game);
+            selectedSpot    = null;
+            lastBlockedSpot = null;
+            canChangePiece  = true;
+            pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+            document.getElementById('guides-group').innerHTML = '';
+            document.getElementById('stop-move-btn').classList.remove('active');
+            applyLocalState();
+          }
 
         } else {
-          // serverTurn === myColor → l'adversaire vient de finir
+          // serverTurn === myColor → l'adversaire vient de finir son tour
           var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
           var histColor = d.game.lastTurnColor || '';
-          var histKey   = histColor + '|' + history.length + '|' +
-                          (history.length > 0 ? history[history.length - 1].target : '');
+          var turnId    = d.game.lastTurnId || 0;
 
-          if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
-            lastSeenHistKey = histKey;
+          if (histColor === myOppColor && history.length > 0 && turnId > lastSeenTurnId) {
+            // Nouveau tour adversaire pas encore joué → mettre en file
+            lastSeenTurnId = turnId;
+            var finalState     = copyState(d.game);
             var stateBeforeOpp = rebuildStateBeforeReplay(history, d.game);
-            replayOpponentMoves(history, stateBeforeOpp, copyState(d.game));
-          } else if (!localState || localState.turn !== myColor) {
+            replayQueue.push({ history: history, startState: stateBeforeOpp, finalState: finalState });
+            if (!replayInProgress) processReplayQueue();
+          } else if (!replayInProgress && (!localState || localState.turn !== myColor)) {
             localState     = copyState(d.game);
             canChangePiece = true;
             selectedSpot   = d.game.movingPiece || null;
@@ -343,6 +348,13 @@
         }
 
       } catch(e) { console.warn('poll error', e); }
+    }
+
+    // Joue les replays en file les uns après les autres
+    function processReplayQueue() {
+      if (replayQueue.length === 0) return;
+      var next = replayQueue.shift();
+      replayOpponentMoves(next.history, next.startState, next.finalState);
     }
 
     // Reconstitue le state AVANT que l'adversaire joue
@@ -871,6 +883,10 @@
           document.getElementById('stop-move-btn').classList.remove('active');
           replayInProgress = false;
           applyLocalState();
+          // Jouer le replay suivant s'il y en a un en attente
+          if (replayQueue.length > 0) {
+            setTimeout(processReplayQueue, 300);
+          }
           return;
         }
 
