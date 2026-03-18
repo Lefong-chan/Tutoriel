@@ -161,17 +161,12 @@
         ].join(';');
 
         // iWon = true raha myColor no nandresy
-        var iWon   = (winnerColor === myColor);
-        var myMsg  = iWon ? '🏆 Nandresy ianao!'         : '😔 Resy ianao!';
-        var oppMsg = iWon ? '😔 Resy ilay mifanandrina!' : '🏆 Nandresy ilay mifanandrina!';
+        var iWon  = (winnerColor === myColor);
+        var myMsg = iWon ? '🏆 Nandresy ianao!' : '😔 Resy ianao!';
 
         var title = document.createElement('div');
-        title.style.cssText = 'font-size:1.5em;font-weight:800;margin-bottom:10px;';
+        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
         title.textContent = myMsg;
-
-        var sub = document.createElement('div');
-        sub.style.cssText = 'font-size:1em;opacity:0.75;margin-bottom:28px;';
-        sub.textContent = oppMsg;
 
         var btn = document.createElement('button');
         btn.textContent = 'OK';
@@ -186,7 +181,6 @@
         };
 
         box.appendChild(title);
-        box.appendChild(sub);
         box.appendChild(btn);
         overlay.appendChild(box);
         document.body.appendChild(overlay);
@@ -473,7 +467,8 @@
           // Jereo capture — raha tsy mahita capture ny mpilalao (myColor) → resy
           var myHasCap = playerHasAnyCapture(localState.pieces, myColor);
           if (!myHasCap) {
-            showGameOverAlert(myOppColor, 4000);
+            // Tsy nahita capture ny mpilalao (myColor) → myColor NANDRESY (izy no tsy nahita capture)
+            showGameOverAlert(myColor, 4000);
           }
         }
       }
@@ -645,7 +640,8 @@
           // Tsy lany piece, jereo capture
           var advHasCapture = playerHasAnyCapture(piecesAfterMove, myOppColor);
           if (!advHasCapture) {
-            showGameOverAlert(myColor, 4000);
+            // Adversaire tsy mahita capture → adversaire NANDRESY (izy no tsy nahita capture)
+            showGameOverAlert(myOppColor, 4000);
           }
         }
       }
@@ -683,7 +679,8 @@
       } else {
         var advHasCapture2 = playerHasAnyCapture(localState.pieces, myOppColor);
         if (!advHasCapture2) {
-          showGameOverAlert(myColor, 4000);
+          // Adversaire tsy mahita capture → adversaire NANDRESY
+          showGameOverAlert(myOppColor, 4000);
         }
       }
     }
