@@ -1,7 +1,4 @@
 // api/game.js
-// Fitantanana ny état ny lalao Fanorona ao amin'ny Firebase RTDB
-// Tsy misy Firebase config eto – ampiasaina ny admin SDK avy amin'ny env vars (tahaka session.js)
-
 import admin from "firebase-admin";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
@@ -18,9 +15,8 @@ if (!admin.apps.length) {
   });
 }
 
-const rtdb        = admin.database();
-const gamesRef    = rtdb.ref("games");
-const invitesRef  = rtdb.ref("gameInvites");
+const rtdb     = admin.database();
+const gamesRef = rtdb.ref("games");
 
 async function rtdbGet(ref) {
   const snap = await ref.once("value");
@@ -42,9 +38,10 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
-      case "get-state":    return await handleGetState(payload, res);
-      case "make-move":    return await handleMakeMove(payload, res);
-      case "stop-move":    return await handleStopMove(payload, res);
+      case "get-state":   return await handleGetState(payload, res);
+      case "make-move":   return await handleMakeMove(payload, res);
+      case "stop-move":   return await handleStopMove(payload, res);
+      case "ack-replay":  return await handleAckReplay(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -53,8 +50,7 @@ export default async function handler(req, res) {
   }
 }
 
-// ── Mamerina ny état rehetra ny lalao ──────────────────────────────────────
-// Body: { uid, gameId }
+// ── get-state ──────────────────────────────────────────────────────────────
 async function handleGetState(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
@@ -67,12 +63,7 @@ async function handleGetState(body, res) {
   return res.status(200).json({ success: true, game });
 }
 
-// ── Manao dingana (miampy capture) ─────────────────────────────────────────
-// Body: { uid, gameId, origin, target, capturedSpots, captureType }
-//   origin        : toerana nialan'ny pio (ex: "C5")
-//   target        : toerana nialanana (ex: "C6")
-//   capturedSpots : ["D6","E6"] – pio nabo nanalana
-//   captureType   : "approach" | "withdrawal" | null
+// ── make-move ──────────────────────────────────────────────────────────────
 async function handleMakeMove(body, res) {
   const { uid, gameId, origin, target, capturedSpots = [], dir } = body;
   if (!uid || !gameId || !origin || !target)
@@ -80,68 +71,60 @@ async function handleMakeMove(body, res) {
 
   const gameRef = gamesRef.child(gameId);
   const game    = await rtdbGet(gameRef);
-  if (!game)                         return res.status(404).json({ error: "Game not found." });
+  if (!game) return res.status(404).json({ error: "Game not found." });
   if (game.senderUid !== uid && game.receiverUid !== uid)
-                                     return res.status(403).json({ error: "Not authorized." });
+    return res.status(403).json({ error: "Not authorized." });
 
   const myColor = game.senderUid === uid ? "maintso" : "mena";
-  if (game.turn !== myColor)         return res.status(400).json({ error: "Tsy anjaranao." });
-
-  // Raha misy movingPiece, ny origin dia tsy maintsy izany movingPiece izany
+  if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (game.movingPiece && game.movingPiece !== origin)
     return res.status(400).json({ error: "Pio hafa tsy azo hetsehina izao." });
 
   const pieces  = { ...(game.pieces || {}) };
   const visited = [...(game.visited || [])];
 
-  // Manetsika pio
   delete pieces[origin];
   pieces[target] = myColor;
-
-  // Manala pio nabo
-  if (Array.isArray(capturedSpots)) {
-    capturedSpots.forEach(s => delete pieces[s]);
-  }
+  if (Array.isArray(capturedSpots)) capturedSpots.forEach(s => delete pieces[s]);
 
   const newVisited = [...visited, origin];
   const wasCapture = capturedSpots.length > 0;
-
-  // Jerena raha mbola azo hihazoana mihetsika (multi-capture)
   const canContinue = wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
   const prevHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
+  const entry = { origin, target, capturedSpots: capturedSpots || [] };
 
   if (canContinue) {
+    // Turn mitohy — accumulate history, tsy mbola ampiditra ao amin'ny pendingReplays
     await gameRef.update({
       pieces,
       movingPiece: target,
       visited:     newVisited,
       lastDir:     dir || "",
-      moveHistory: [...prevHistory, newHistoryEntry]
+      moveHistory: [...prevHistory, entry]
     });
     return res.status(200).json({ success: true, continuing: true });
   } else {
-    const nextColor = myColor === "maintso" ? "mena" : "maintso";
-    const fullHistory = [...prevHistory, newHistoryEntry];
-    const nextTurnId = (game.lastTurnId || 0) + 1;
+    // Turn vita — ampiditra ny history ao amin'ny pendingReplays[adversaire]
+    const oppColor    = myColor === "maintso" ? "mena" : "maintso";
+    const fullHistory = [...prevHistory, entry];
+    const pending     = Array.isArray(game.pendingReplays?.[oppColor])
+                        ? game.pendingReplays[oppColor] : [];
+
     await gameRef.update({
       pieces,
-      turn:            nextColor,
-      movingPiece:     "",
-      visited:         [],
-      lastDir:         "",
-      moveHistory:     [],
-      lastTurnHistory: fullHistory,
-      lastTurnColor:   myColor,
-      lastTurnId:      nextTurnId
+      turn:                              oppColor,
+      movingPiece:                       "",
+      visited:                           [],
+      lastDir:                           "",
+      moveHistory:                       [],
+      [`pendingReplays/${oppColor}`]:    [...pending, { moves: fullHistory }]
     });
     return res.status(200).json({ success: true, continuing: false });
   }
 }
 
-// ── Mijanona an-tsaina (bouton OK) ─────────────────────────────────────────
-// Body: { uid, gameId, pieces }
+// ── stop-move ──────────────────────────────────────────────────────────────
 async function handleStopMove(body, res) {
   const { uid, gameId, pieces } = body;
   if (!uid || !gameId || !pieces)
@@ -155,24 +138,49 @@ async function handleStopMove(body, res) {
   if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (!game.movingPiece)     return res.status(400).json({ error: "Tsy misy movingPiece." });
 
-  const nextColor = myColor === "maintso" ? "mena" : "maintso";
-  const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  const stopTurnId = (game.lastTurnId || 0) + 1;
+  const oppColor   = myColor === "maintso" ? "mena" : "maintso";
+  const history    = Array.isArray(game.moveHistory) ? game.moveHistory : [];
+  const pending    = Array.isArray(game.pendingReplays?.[oppColor])
+                     ? game.pendingReplays[oppColor] : [];
+
   await gameRef.update({
     pieces,
-    turn:            nextColor,
-    movingPiece:     "",
-    visited:         [],
-    lastDir:         "",
-    moveHistory:     [],
-    lastTurnHistory: stopHistory,
-    lastTurnColor:   myColor,
-    lastTurnId:      stopTurnId
+    turn:                              oppColor,
+    movingPiece:                       "",
+    visited:                           [],
+    lastDir:                           "",
+    moveHistory:                       [],
+    [`pendingReplays/${oppColor}`]:    [...pending, { moves: history }]
   });
   return res.status(200).json({ success: true });
 }
 
-// ── Helper: jerena raha misy capture mbola azo atao ────────────────────────
+// ── ack-replay ─────────────────────────────────────────────────────────────
+// Ny adversaire dia manambara fa naka ny replay voalohany →afafy
+async function handleAckReplay(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  const myColor = game.senderUid === uid ? "maintso" : "mena";
+  const pending = Array.isArray(game.pendingReplays?.[myColor])
+                  ? game.pendingReplays[myColor] : [];
+
+  if (pending.length > 0) {
+    await gameRef.update({
+      [`pendingReplays/${myColor}`]: pending.slice(1)
+    });
+  }
+
+  return res.status(200).json({ success: true });
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 const ROWS = ['A','B','C','D','E'];
 const COLS = ['1','2','3','4','5','6','7','8','9'];
 
