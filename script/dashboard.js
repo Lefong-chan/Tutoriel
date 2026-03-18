@@ -1042,12 +1042,16 @@
 
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._stopRoomChat) window._stopRoomChat();
-          var myCol = isSender ? 'maintso' : 'mena';
           // Fanorona → fanorona.html ; Fanorona & Vela / Vela → vela.html
           var destPage2 = (selectedGame === 'fanorona') ? 'fanorona.html' : 'vela.html';
+          // Sender mahazo ny color nofidiny; Receiver mahazo ny mifanohitra
+          // res.color = selectedColor an'ilay sender ('green' na 'red')
+          var senderCol2 = (res.color === 'red') ? 'mena' : 'maintso';
+          var receiverCol2 = (res.color === 'red') ? 'maintso' : 'mena';
+          var myCol2 = isSender ? senderCol2 : receiverCol2;
           var url2 = destPage2
             + '?gameId='   + encodeURIComponent(res.gameId || inviteId)
-            + '&color='    + encodeURIComponent(myCol)
+            + '&color='    + encodeURIComponent(myCol2)
             + '&inviteId=' + encodeURIComponent(inviteId);
           if (selectedGame === 'both') url2 += '&source=both';
           window.location.href = url2;
@@ -1217,9 +1221,11 @@
           if (window._stopRoomChat) window._stopRoomChat();
           // Fanorona & Vela → vela.html ; Fanorona → fanorona.html ; Vela → vela.html
           var destPage = (selectedGame === 'fanorona') ? 'fanorona.html' : 'vela.html';
+          // Sender: color nofidiny no ampiasaina (green→maintso, red→mena)
+          var senderColor = (selectedColor === 'red') ? 'mena' : 'maintso';
           var url = destPage
             + '?gameId='   + encodeURIComponent(res.gameId)
-            + '&color=maintso'
+            + '&color='    + encodeURIComponent(senderColor)
             + '&inviteId=' + encodeURIComponent(matchupData.inviteId);
           if (selectedGame === 'both') url += '&source=both';
           window.location.href = url;
