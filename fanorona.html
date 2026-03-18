@@ -53,6 +53,7 @@
     .lock-board .spot { pointer-events: none !important; }
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
+    .trail-dot  { fill: none; stroke: #FF6600; stroke-width: 3; opacity: 0.85; pointer-events: none; }
 
     /* ── Bouton Stop ── */
     #stop-move-btn {
@@ -107,6 +108,7 @@
       M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
       M300 0 L400 100 M400 0 L200 200
       M0 100 L100 200 M400 100 L300 200"/>
+    <g id="trail-group"></g>
     <g id="guides-group"></g>
     <g id="pieces-group"></g>
     <g id="spots-group"></g>
@@ -310,8 +312,19 @@
         // Ne rien écraser pendant un mouvement local
         if (movingInProgress) return;
 
-        // Raha mbola tsy tour anao → tsy manao na inona na inona
-        if (serverTurn !== myColor) return;
+        // Raha mbola tsy tour anao → adversaire manao hetsika
+        // Asehoy ny trail (toerana nalehany) fa tsy havaozina ny board
+        if (serverTurn !== myColor) {
+          var oppTrail = Array.isArray(d.game.trailSpots) ? d.game.trailSpots : [];
+          renderTrail(oppTrail);
+          // Avezo ny pieces koa mba hita ny pio nalehany
+          if (localState) {
+            localState.trailSpots = oppTrail;
+            localState.pieces     = Object.assign({}, d.game.pieces);
+            renderPieces(localState.pieces, localState);
+          }
+          return;
+        }
 
         // Tour anao — raha efa manao hetsika ianao (misy selectedSpot na movingPiece),
         // tsy ovaina ny state mba tsy hanafoana ny selection nataonao
@@ -350,7 +363,8 @@
         turn:        game.turn,
         movingPiece: game.movingPiece || '',
         visited:     (game.visited || []).slice(),
-        lastDir:     game.lastDir || ''
+        lastDir:     game.lastDir || '',
+        trailSpots:  (game.trailSpots || []).slice()
       };
     }
 
@@ -363,6 +377,14 @@
         stopBtn.classList.remove('active');
       }
       renderPieces(localState.pieces, localState);
+      // Mampiseho trail ny adversaire (toerana rehetra nalehany tamin'io turn io)
+      if (localState.turn === myColor) {
+        // Tour anao — mety misy trail avy tamin'ny adversaire
+        renderTrail(localState.trailSpots || []);
+      } else {
+        // Tour adversaire — ataovy hita ny trail azy izao
+        renderTrail(localState.trailSpots || []);
+      }
       // Toujours afficher les guides si une pièce est sélectionnée
       if (selectedSpot && localState.turn === myColor) {
         renderGuides(selectedSpot, localState);
@@ -488,6 +510,7 @@
         localState.movingPiece = '';
         localState.visited     = [];
         localState.lastDir     = '';
+        localState.trailSpots  = [];
         selectedSpot    = null;
         lastBlockedSpot = null;
         canChangePiece  = true;
@@ -524,11 +547,13 @@
       localState.movingPiece = '';
       localState.visited     = [];
       localState.lastDir     = '';
+      localState.trailSpots  = [];
       selectedSpot    = null;
       lastBlockedSpot = null;
       canChangePiece  = true;
       document.getElementById('stop-move-btn').classList.remove('active');
       document.getElementById('guides-group').innerHTML = '';
+      document.getElementById('trail-group').innerHTML = '';
       updateTurnIndicator(localState.turn);
       renderPieces(localState.pieces, localState);
 
@@ -759,6 +784,27 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
+    //  SECTION 11b — Trail (toerana nalehana ny adversaire)
+    // ═══════════════════════════════════════════════════════════════
+
+    function renderTrail(trailSpots) {
+      var grp = document.getElementById('trail-group');
+      if (!grp) return;
+      grp.innerHTML = '';
+      if (!trailSpots || trailSpots.length === 0) return;
+      trailSpots.forEach(function(spot) {
+        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+        if (ri < 0 || ci < 0) return;
+        var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', ci * 50);
+        dot.setAttribute('cy', ri * 50);
+        dot.setAttribute('r', 14);
+        dot.setAttribute('class', 'trail-dot');
+        grp.appendChild(dot);
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     //  SECTION 12 — Règles du jeu
     // ═══════════════════════════════════════════════════════════════
 
@@ -809,6 +855,22 @@
       }
       return false;
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 13 — Historique hetsika adversaire (tahiry fotsiny)
+    // ═══════════════════════════════════════════════════════════════
+    // Ny lastTurnHistory ao amin'ny server dia mitahiry ny lalana
+    // rehetra nalehan'ny adversaire tamin'ny turn farany.
+    // Azo ampiasaina avy eo raha ilaina (résumé, fanamarihana, sns.)
+    //
+    // Naferina ny replay animation:
+    //   - Rehefa mahita hetsika vaovao avy amin'ny adversaire ny polling,
+    //     dia mampiseho mivantana ny état farany (tsy mamerina dingana).
+    //   - Ny lastTurnHistory dia voatahiry ao amin'ny server ihany.
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 14 — Lancement
+    // ═══════════════════════════════════════════════════════════════
 
     init();
 
