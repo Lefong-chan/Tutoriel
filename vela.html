@@ -261,6 +261,9 @@
     var gameId_p = params.get('gameId');
     var color_p  = params.get('color');
     var inviteId = params.get('inviteId');
+    // source: 'both' raha avy amin'ny Fanorona & Vela invitation
+    //         tsy misy (na 'vela') raha avy amin'ny Vela invitation
+    var gameSource = params.get('source') || 'vela';
 
     // ═══════════════════════════════════════════════════════════════
     //  PHASE CHECK
