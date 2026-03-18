@@ -1043,10 +1043,14 @@
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._stopRoomChat) window._stopRoomChat();
           var myCol = isSender ? 'maintso' : 'mena';
-          window.location.href = 'vela.html'
+          // Fanorona → fanorona.html ; Fanorona & Vela / Vela → vela.html
+          var destPage2 = (selectedGame === 'fanorona') ? 'fanorona.html' : 'vela.html';
+          var url2 = destPage2
             + '?gameId='   + encodeURIComponent(res.gameId || inviteId)
             + '&color='    + encodeURIComponent(myCol)
             + '&inviteId=' + encodeURIComponent(inviteId);
+          if (selectedGame === 'both') url2 += '&source=both';
+          window.location.href = url2;
         } else if (res.status === 'declined' && isSender) {
           // Receiver a quitté → sender reste dans la room
           var evtKey = inviteId + ':declined';
@@ -1211,10 +1215,14 @@
         if (res.success) {
           if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
           if (window._stopRoomChat) window._stopRoomChat();
-          window.location.href = 'vela.html'
+          // Fanorona & Vela → vela.html ; Fanorona → fanorona.html ; Vela → vela.html
+          var destPage = (selectedGame === 'fanorona') ? 'fanorona.html' : 'vela.html';
+          var url = destPage
             + '?gameId='   + encodeURIComponent(res.gameId)
             + '&color=maintso'
             + '&inviteId=' + encodeURIComponent(matchupData.inviteId);
+          if (selectedGame === 'both') url += '&source=both';
+          window.location.href = url;
         } else {
           showToast('Failed to start game.', 'error');
           if (launchBtn) launchBtn.disabled = false;
