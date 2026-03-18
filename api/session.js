@@ -886,6 +886,7 @@ async function handleStartFanoronaGame(body, res) {
     await gameRef.set({
       pieces:            initialPieces,
       turn:              "maintso",
+      prevFirstTurn:     "maintso",   // voatahiry ho an'ny restart
       senderUid:         invite.fromUid,
       senderUsername,
       senderColor:       senderColorGame,
