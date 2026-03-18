@@ -200,9 +200,9 @@
     // Nombre de mouvements dans le turn en cours (pour savoir si on est en plein mouvement)
     var movingInProgress = false;
 
-    // Replay animation de l'adversaire
-    var replayInProgress = false;
-    var lastSeenTurnColor = null;  // pour détecter un nouveau tour adversaire
+    // Replay animation adversaire
+    var replayInProgress  = false;
+    var lastSeenHistKey   = null;   // empêche de rejouer le même tour deux fois
 
     // Timer de réconciliation post-mouvement
     var reconcileTimer = null;
@@ -307,46 +307,70 @@
         if (!d.success) return;
         var serverTurn = d.game.turn;
 
+        // Pendant un replay ou un mouvement local, on n'écrase rien
+        if (replayInProgress || movingInProgress) return;
+
         if (serverTurn !== myColor) {
-          // Tour adversaire en cours → mettre à jour si pas de mouvement local ni replay
-          if (!movingInProgress && !replayInProgress) {
-            localState = copyState(d.game);
-            selectedSpot    = null;
-            lastBlockedSpot = null;
-            canChangePiece  = true;
-            pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-            document.getElementById('guides-group').innerHTML = '';
-            document.getElementById('stop-move-btn').classList.remove('active');
+          // Tour adversaire en cours (il n'a pas encore fini) → afficher son état courant
+          localState = copyState(d.game);
+          selectedSpot    = null;
+          lastBlockedSpot = null;
+          canChangePiece  = true;
+          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+          document.getElementById('guides-group').innerHTML = '';
+          document.getElementById('stop-move-btn').classList.remove('active');
+          applyLocalState();
+
+        } else {
+          // serverTurn === myColor → l'adversaire vient de finir son tour
+          var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
+          var histColor = d.game.lastTurnColor || '';
+
+          // Clé unique pour ce tour adversaire
+          var histKey = histColor + '|' + history.length + '|' +
+                        (history.length > 0 ? history[history.length - 1].target : '');
+
+          if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
+            // Nouveau tour adversaire avec des dingana à rejouer
+            lastSeenHistKey = histKey;
+            // Calculer le state AVANT que l'adversaire joue (= pieces avant son premier move)
+            var stateBeforeOpp = rebuildStateBeforeReplay(history, d.game);
+            replayOpponentMoves(history, stateBeforeOpp, copyState(d.game));
+          } else {
+            // Pas de replay nouveau → appliquer directement
+            localState     = copyState(d.game);
+            canChangePiece = true;
+            selectedSpot   = d.game.movingPiece || null;
+            if (selectedSpot) canChangePiece = false;
             applyLocalState();
-          }
-        } else if (serverTurn === myColor && !movingInProgress && !replayInProgress) {
-          // Transition : l'adversaire vient de finir, c'est mon tour
-          if (!localState || localState.turn !== myColor) {
-            // Vérifier si c'est un nouveau tour adversaire (lastTurnColor = myOppColor)
-            var history = d.game.lastTurnHistory;
-            var histColor = d.game.lastTurnColor;
-            var finalState = copyState(d.game);
-
-            // Replay seulement si l'adversaire vient de jouer (lastTurnColor = myOppColor)
-            // et qu'on n'a pas encore rejoué ce tour (lastSeenTurnColor change)
-            var histKey = histColor + '_' + (history ? history.length : 0) +
-                          '_' + (history && history.length > 0 ? history[history.length-1].target : '');
-
-            if (histColor === myOppColor && history && history.length > 0 && lastSeenTurnColor !== histKey) {
-              lastSeenTurnColor = histKey;
-              // Lancer le replay animé
-              replayOpponentMoves(history, finalState);
-            } else {
-              localState     = finalState;
-              canChangePiece = true;
-              selectedSpot   = d.game.movingPiece || null;
-              if (selectedSpot) canChangePiece = false;
-              applyLocalState();
-            }
           }
         }
 
       } catch(e) { console.warn('poll error', e); }
+    }
+
+    // Reconstruit le state (pieces) tel qu'il était AVANT que l'adversaire joue
+    // en annulant tous ses dingana dans l'ordre inverse
+    function rebuildStateBeforeReplay(history, serverGame) {
+      var pieces = Object.assign({}, serverGame.pieces);
+      // Rejouer à l'envers pour retrouver l'état initial
+      for (var i = history.length - 1; i >= 0; i--) {
+        var m = history[i];
+        // Remettre la pièce à son origin, enlever du target
+        delete pieces[m.target];
+        pieces[m.origin] = myOppColor;
+        // Remettre les pièces capturées
+        if (m.capturedSpots) {
+          m.capturedSpots.forEach(function(s) { pieces[s] = myColor; });
+        }
+      }
+      return {
+        pieces:      pieces,
+        turn:        myOppColor,
+        movingPiece: '',
+        visited:     [],
+        lastDir:     ''
+      };
     }
 
     function copyState(game) {
@@ -381,12 +405,11 @@
     function drawBoardSpots() {
       var spotsGrp = document.getElementById('spots-group');
       spotsGrp.innerHTML = '';
-      var flip = myColor === 'mena';
       rows.forEach(function(r, ri) {
         cols.forEach(function(c, ci) {
           var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           circle.setAttribute('cx', ci * 50);
-          circle.setAttribute('cy', flip ? (4 - ri) * 50 : ri * 50);
+          circle.setAttribute('cy', ri * 50);
           circle.setAttribute('r', 22);
           circle.setAttribute('fill', 'transparent');
           circle.setAttribute('class', 'spot');
@@ -634,7 +657,6 @@
       var grp           = document.getElementById('pieces-group');
       var isMyTurn      = stateData.turn === myColor;
       var globalCapture = playerHasAnyCapture(pieces, myColor);
-      var flip          = myColor === 'mena';
 
       var newPiecesOnBoard = {};
       var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
@@ -679,7 +701,7 @@
         var g = entry.el, circle = g.querySelector('circle');
 
         var svgX = ci * 50;
-        var svgY = flip ? (4 - ri) * 50 : ri * 50;
+        var svgY = ri * 50;
         g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
@@ -737,7 +759,6 @@
       var pieces  = stateData.pieces;
       var visited = stateData.visited  || [];
       var lastDir = stateData.lastDir  || '';
-      var flip    = myColor === 'mena';
       var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
       var moves = allowedMoves[startSpot] || [];
 
@@ -753,7 +774,7 @@
         if (!canChangePiece && lastDir === dir) return;
 
         var svgX = c2 * 50;
-        var svgY = flip ? (4 - r2) * 50 : r2 * 50;
+        var svgY = r2 * 50;
 
         var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         dot.setAttribute('cx', svgX); dot.setAttribute('cy', svgY);
@@ -818,38 +839,37 @@
     //  SECTION 13 — Replay animation adversaire
     // ═══════════════════════════════════════════════════════════════
 
-    // Rejoue les dingana de l'adversaire un par un, puis applique l'état final
-    function replayOpponentMoves(history, finalState) {
-      if (!history || history.length === 0) {
-        localState = finalState;
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        canChangePiece  = true;
-        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-        document.getElementById('guides-group').innerHTML = '';
-        document.getElementById('stop-move-btn').classList.remove('active');
-        replayInProgress = false;
-        applyLocalState();
-        return;
-      }
-
+    // Rejoue les dingana de l'adversaire un par un, sans ambiguïté DOM.
+    // startState : pieces AVANT que l'adversaire joue (reconstruit)
+    // finalState : state du serveur après son tour (à appliquer à la fin)
+    function replayOpponentMoves(history, startState, finalState) {
       replayInProgress = true;
 
-      // Reconstituer l'état avant le premier move de l'adversaire :
-      // on part de l'état actuel affiché (localState.pieces avant que l'adv joue)
-      var replayPieces = Object.assign({}, localState.pieces);
+      // Réinitialiser complètement le DOM des pièces pour éviter les "doubles"
+      var grp = document.getElementById('pieces-group');
+      grp.innerHTML = '';
+      piecesOnBoard = {};
+      document.getElementById('guides-group').innerHTML = '';
 
-      // Appliquer chaque étape avec un délai
-      var step = 0;
+      // Afficher d'abord l'état AVANT le premier move
+      renderPieces(startState.pieces, startState);
+
+      var step        = 0;
+      var stepPieces  = Object.assign({}, startState.pieces);
+
       function doStep() {
         if (step >= history.length) {
-          // Fin du replay → appliquer l'état final du serveur
-          localState = finalState;
+          // Fin du replay → appliquer l'état serveur définitif
+          // Reset DOM une dernière fois pour être sûr
+          var grp2 = document.getElementById('pieces-group');
+          grp2.innerHTML = '';
+          piecesOnBoard = {};
+
+          localState      = finalState;
           selectedSpot    = null;
           lastBlockedSpot = null;
           canChangePiece  = true;
           pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('guides-group').innerHTML = '';
           document.getElementById('stop-move-btn').classList.remove('active');
           replayInProgress = false;
           applyLocalState();
@@ -859,27 +879,31 @@
         var move = history[step];
         step++;
 
-        // Appliquer ce dingana sur replayPieces (pieces adversaire = myOppColor)
-        delete replayPieces[move.origin];
-        replayPieces[move.target] = myOppColor;
+        // Appliquer ce dingana sur stepPieces
+        delete stepPieces[move.origin];
+        stepPieces[move.target] = myOppColor;
         if (move.capturedSpots && move.capturedSpots.length > 0) {
-          move.capturedSpots.forEach(function(s) { delete replayPieces[s]; });
+          move.capturedSpots.forEach(function(s) { delete stepPieces[s]; });
         }
 
-        // Afficher cet état intermédiaire
+        // Afficher cet état intermédiaire avec un reset DOM propre à chaque étape
         var interimState = {
-          pieces:      Object.assign({}, replayPieces),
+          pieces:      Object.assign({}, stepPieces),
           turn:        myOppColor,
           movingPiece: move.target,
           visited:     [],
           lastDir:     ''
         };
+        var grpStep = document.getElementById('pieces-group');
+        grpStep.innerHTML = '';
+        piecesOnBoard = {};
         renderPieces(interimState.pieces, interimState);
 
-        setTimeout(doStep, 420);
+        setTimeout(doStep, 450);
       }
 
-      doStep();
+      // Légère pause avant de commencer (laisser le premier rendu s'afficher)
+      setTimeout(doStep, 300);
     }
 
     // ═══════════════════════════════════════════════════════════════
