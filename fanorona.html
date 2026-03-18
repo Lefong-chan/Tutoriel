@@ -367,12 +367,8 @@
 
     // ── Mamerina ny board rehefa confirmed ────────────────────
     function doRestartBoard(r) {
-      // myColor TSY OVAINA — color an'ilay mpilalao tsy mifamadika
-      // r.myColor avy amin'ny server dia mitovy amin'ny teo aloha
-      // (hena-fanamarinana fotsiny, tsy ampiasaina hanova)
-      rrPending  = false;
+      rrPending          = false;
       stopRrPolling();
-
       gameOverTriggered  = false;
       currentBtnReplay   = null;
       currentBtnOk       = null;
@@ -383,14 +379,14 @@
       movingInProgress   = false;
       if (reconcileTimer) { clearTimeout(reconcileTimer); reconcileTimer = null; }
 
-      // Esory ny pieces SVG rehetra mba tsy hisy mifanindry
+      // Esory ny pieces SVG rehetra tanteraka (tsy hisy mifanindry)
       var piecesGrp = document.getElementById('pieces-group');
       if (piecesGrp) piecesGrp.innerHTML = '';
       var guidesGrp = document.getElementById('guides-group');
       if (guidesGrp) guidesGrp.innerHTML = '';
       piecesOnBoard = {};
 
-      // Re-enable board (flip tsy ovaina — arakaraka ny myColor tsy niovavy)
+      // Re-enable board
       var board = document.getElementById('game-board');
       if (board) {
         board.classList.remove('lock-board');
@@ -400,7 +396,7 @@
       var stopBtn = document.getElementById('stop-move-btn');
       if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = ''; }
 
-      // Esorina ny overlay resy/nandresy AORIAN'NY restart confirmed
+      // Esorina ny overlay resy/nandresy
       if (currentGameOverOverlay && currentGameOverOverlay.parentNode) {
         currentGameOverOverlay.parentNode.removeChild(currentGameOverOverlay);
       }
@@ -410,11 +406,26 @@
       // Reload state avy amin'ny server
       callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId })
         .then(function(d) {
-          if (d.success) {
-            localState = copyState(d.game);
-            applyLocalState();
-            startRrPolling();
-          }
+          if (!d.success) return;
+          localState = copyState(d.game);
+
+          // ── Ampidirana no-transition mba tsy hipikapika ──────────
+          // Pieces rehetra vaovao → no-transition aloha, averina avy hatrany
+          var style = document.createElement('style');
+          style.id  = 'no-trans-restart';
+          style.textContent = '.piece-group { transition: none !important; }';
+          document.head.appendChild(style);
+
+          applyLocalState();
+          startRrPolling();
+
+          // Averina ny transition aorian'ny frame iray
+          requestAnimationFrame(function() {
+            requestAnimationFrame(function() {
+              var s = document.getElementById('no-trans-restart');
+              if (s) s.parentNode.removeChild(s);
+            });
+          });
         }).catch(function(){});
     }
 
