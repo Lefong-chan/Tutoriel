@@ -110,11 +110,7 @@ async function handleMakeMove(body, res) {
   const canContinue = wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
   const prevHistory    = Array.isArray(game.moveHistory)   ? game.moveHistory   : [];
-  const prevTrail      = Array.isArray(game.trailSpots)    ? game.trailSpots    : [];
   const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
-  // trailSpots : toerana rehetra nalehana (target) tamin'io turn io — hitan'ny adversaires avy hatrany
-  const newTrail = [...prevTrail, target];
-
   if (canContinue) {
     await gameRef.update({
       pieces,
@@ -122,7 +118,6 @@ async function handleMakeMove(body, res) {
       visited:     newVisited,
       lastDir:     dir || "",
       moveHistory: [...prevHistory, newHistoryEntry],
-      trailSpots:  newTrail
     });
     return res.status(200).json({ success: true, continuing: true });
   } else {
@@ -135,7 +130,6 @@ async function handleMakeMove(body, res) {
       visited:         [],
       lastDir:         "",
       moveHistory:     [],
-      trailSpots:      [],
       lastTurnHistory: fullHistory,
       lastTurnColor:   myColor
     });
@@ -167,7 +161,6 @@ async function handleStopMove(body, res) {
     visited:         [],
     lastDir:         "",
     moveHistory:     [],
-    trailSpots:      [],
     lastTurnHistory: stopHistory,
     lastTurnColor:   myColor
   });
