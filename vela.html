@@ -219,6 +219,11 @@
     // (Ny lojika manala pièce ao amin'ny doMove dia voasoratra fa disabled raha tsy firstMover)
     var firstMover = null;
 
+    // nonFirstMoverHasContinued : true raha efa nanao continue mouve ilay tsy firstMover.
+    // Rehefa true → firstMover afaka canContinue foana (na dia <= 5 aza ny pieces).
+    // Voasoratra ao amin'ny Firebase ary asain'ny copyState.
+    var nonFirstMoverHasContinued = false;
+
     // ═══════════════════════════════════════════════════════════════
     //  SECTION 4 — Init
     // ═══════════════════════════════════════════════════════════════
@@ -265,6 +270,8 @@
           localState = copyState(d.game);
           // Set firstMover avy amin'ny server raha efa misy
           if (d.game.firstMover) firstMover = d.game.firstMover;
+          // Set nonFirstMoverHasContinued
+          if (d.game.nonFirstMoverHasContinued) nonFirstMoverHasContinued = true;
           applyLocalState();
         }
 
@@ -356,6 +363,8 @@
         if (firstMover === null && d.game.firstMover) {
           firstMover = d.game.firstMover;
         }
+        // Set nonFirstMoverHasContinued raha tonga avy amin'ny server
+        if (d.game.nonFirstMoverHasContinued) nonFirstMoverHasContinued = true;
         canChangePiece  = true;
         selectedSpot    = null;
         lastBlockedSpot = null;
@@ -369,12 +378,13 @@
 
     function copyState(game) {
       return {
-        pieces:      Object.assign({}, game.pieces),
-        turn:        game.turn,
-        movingPiece: game.movingPiece || '',
-        visited:     (game.visited || []).slice(),
-        lastDir:     game.lastDir || '',
-        firstMover:  game.firstMover || null,
+        pieces:                   Object.assign({}, game.pieces),
+        turn:                     game.turn,
+        movingPiece:              game.movingPiece || '',
+        visited:                  (game.visited || []).slice(),
+        lastDir:                  game.lastDir || '',
+        firstMover:               game.firstMover || null,
+        nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
       };
     }
 
@@ -544,20 +554,13 @@
       // (effectiveCaptured[1..n] dia tsy esorina ankehitriny)
 
       // ── AUTO-OK / MULTI-CAPTURE ───────────────────────────────────────────────
-      // Jerena ny fisa pieces an'ilay tsy firstMover AORIAN'NY capture (newPieces).
-      //
       // FITSIPIKA :
-      //   - firstMover    → canContinue ALWAYS false (AUTO-OK foana, na 5 na tsy 5)
-      //     satria ny tsy firstMover no tsy maintsy afaka manao continue mouve voalohany
-      //   - tsy firstMover → canContinue active raha nonFirstMoverCount <= 5
-      //     (tsy firstMover = izy ihany, koa nonFirstMoverCount = pieces ANY)
+      //   - tsy firstMover → canContinue raha nonFirstMoverCount <= 5
+      //   - firstMover     → canContinue DISABLED raha tsy efa nanao continue ilay tsy firstMover
+      //                      (nonFirstMoverHasContinued = false → AUTO-OK foana)
+      //                      raha nonFirstMoverHasContinued = true → afaka canContinue foana
       //
-      // Rehefa tsy firstMover afaka canContinue (lasa 5 ny pieces any) →
-      //   avy eo vasta ny firstMover koa afaka canContinue (turn manaraka)
-      //   satria ny count dia efa <= 5 amin'izay.
-      //
-      // Ny lojika taloha (multiCaptureActive ho player roa) dia voasoratra
-      // fa OVAINA eto — firstMover dia AUTO-OK foana.
+      // Ny lojika taloha (firstMover AUTO-OK foana) dia voasoratra fa OVAINA eto.
       var nonFirstMoverColor = (firstMover === null)
         ? myOppColor
         : (firstMover === myColor ? myOppColor : myColor);
@@ -567,9 +570,16 @@
 
       var amIFirstMoverM = (firstMover === null || firstMover === myColor);
 
-      // firstMover → AUTO-OK foana (tsy afaka canContinue)
-      // tsy firstMover → canContinue raha nonFirstMoverCount (= pieces any) <= 5
-      var multiCaptureActive = !amIFirstMoverM && (nonFirstMoverCount <= 5);
+      var multiCaptureActive;
+      if (!amIFirstMoverM) {
+        // tsy firstMover : canContinue raha pieces AN'NY firstMover <= 5
+        multiCaptureActive = (nonFirstMoverCount <= 5);
+      } else {
+        // firstMover : canContinue ONLY raha efa nanao continue ilay tsy firstMover
+        // (nonFirstMoverHasContinued = true)
+        // Raha mbola tsy nanao continue izy → AUTO-OK foana
+        multiCaptureActive = nonFirstMoverHasContinued;
+      }
 
       var canContinue = multiCaptureActive
         && wasCapture
@@ -586,6 +596,10 @@
         selectedSpot   = target;
         canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
+        // Raha tsy firstMover no manao canContinue voalohany → set flag
+        if (!amIFirstMoverM && !nonFirstMoverHasContinued) {
+          nonFirstMoverHasContinued = true;
+        }
       } else {
         localState.turn        = myOppColor;
         localState.movingPiece = '';
