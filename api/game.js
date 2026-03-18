@@ -113,7 +113,6 @@ async function handleMakeMove(body, res) {
   const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
 
   if (canContinue) {
-    // Mbola mitohy ny turn – movingPiece voaray
     await gameRef.update({
       pieces,
       movingPiece: target,
@@ -123,7 +122,6 @@ async function handleMakeMove(body, res) {
     });
     return res.status(200).json({ success: true, continuing: true });
   } else {
-    // Vita ny turn – manova turn, mitahiry ny lastTurnHistory ho an'ny adversaire
     const nextColor = myColor === "maintso" ? "mena" : "maintso";
     const fullHistory = [...prevHistory, newHistoryEntry];
     await gameRef.update({
