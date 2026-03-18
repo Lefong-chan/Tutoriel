@@ -219,12 +219,15 @@ async function handleGetRestartRequest(body, res) {
   const confirmed  = !!(game.restartConfirmed);
 
   if (confirmed) {
-    // Mamerina ny myColor vaovao raha confirmed
+    // Mamerina ny myColor — TSY MIOVA (color an'ilay mpilalao tsy ovaina)
     const myColor = getMyColor(game, uid);
     return res.status(200).json({
-      success: true, requested: false, confirmed: true,
+      success:       true,
+      requested:     false,
+      confirmed:     true,
       myColor,
-      senderColor: game.senderColor, receiverColor: game.receiverColor,
+      senderColor:   game.senderColor   || "maintso",
+      receiverColor: game.receiverColor || "mena",
     });
   }
 
@@ -247,16 +250,20 @@ async function handleConfirmRestart(body, res) {
   if (!game) return res.status(404).json({ error: "Game not found." });
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
-  // Tsy azo hanaiky ny fangatahany manokana
   if (game.restartRequest === uid)
     return res.status(400).json({ error: "Tsy azonao ekena ny fangatahana nataonao." });
 
-  // Mifamadika ny colors
-  const prevSenderColor   = game.senderColor   || "maintso";
-  const prevReceiverColor = game.receiverColor || "mena";
-  const newSenderColor    = prevSenderColor   === "maintso" ? "mena" : "maintso";
-  const newReceiverColor  = prevReceiverColor === "maintso" ? "mena" : "maintso";
+  // TSY OVAINA ny senderColor/receiverColor — mitovy amin'ny teo aloha
+  const senderColor   = game.senderColor   || "maintso";
+  const receiverColor = game.receiverColor || "mena";
 
+  // Ny turn voalohany no mifamadika:
+  // Raha maintso no nanomboka teo aloha → mena izao no manomboka, ary ny mifanohitra
+  const prevFirstTurn = game.prevFirstTurn || "maintso"; // turn voalohany tamin'ny lalao teo aloha
+  const newFirstTurn  = prevFirstTurn === "maintso" ? "mena" : "maintso";
+
+  // initialPieces: maintso dia rows E,D (ambany); mena dia rows A,B (ambony)
+  // → mitovy foana ny toerana, tsy ovaina arakaraka ny color
   const initialPieces = {};
   const R = ["A","B","C","D","E"];
   const C = ["1","2","3","4","5","6","7","8","9"];
@@ -274,13 +281,14 @@ async function handleConfirmRestart(body, res) {
 
   await gameRef.set({
     pieces:                initialPieces,
-    turn:                  "maintso",
+    turn:                  newFirstTurn,   // mifamadika ny turn voalohany
+    prevFirstTurn:         newFirstTurn,   // voatahiry ho an'ny restart manaraka
     senderUid:             game.senderUid,
     senderUsername:        game.senderUsername,
-    senderColor:           newSenderColor,
+    senderColor:           senderColor,    // TSY MIOVA
     receiverUid:           game.receiverUid,
     receiverUsername:      game.receiverUsername,
-    receiverColor:         newReceiverColor,
+    receiverColor:         receiverColor,  // TSY MIOVA
     startedAt:             Date.now(),
     movingPiece:           "",
     visited:               [],
@@ -293,9 +301,15 @@ async function handleConfirmRestart(body, res) {
     restartConfirmed:      true,
   });
 
-  const myColor = game.senderUid === uid ? newSenderColor : newReceiverColor;
-  return res.status(200).json({ success: true, confirmed: true, myColor,
-    senderColor: newSenderColor, receiverColor: newReceiverColor });
+  // myColor = color an'ilay mpilalao — TSY MIOVA
+  const myColor = game.senderUid === uid ? senderColor : receiverColor;
+  return res.status(200).json({
+    success:       true,
+    confirmed:     true,
+    myColor,
+    senderColor,
+    receiverColor,
+  });
 }
 
 // ── Mandà restart ──────────────────────────────────────────────────────────
