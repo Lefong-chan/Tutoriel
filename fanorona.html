@@ -467,6 +467,10 @@
     // confirmCapture : rehefa misy approach sy withdrawal roa,
     // ny player dia misafidy iray. Rehefa avy nisafidy → doMove no atao.
     // AUTO-OK : doMove eto koa dia AUTO-OK (canContinue=false foana).
+    //
+    // PIÈCE IRAY MONJA : nalefa ny capturedSpots feno any amin'ny doMove,
+    // fa ao anatin'ny doMove ihany no esorina ny voalohany fotsiny.
+    // (Ny lojika manala pièce maro tao aloha dia tsy esorina, fa disabled)
     function confirmCapture(type) {
       var md = pendingCaptures.moveData;
       var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
@@ -484,8 +488,14 @@
     //   soloina ity andalana ity: var canContinue = wasCapture && checkAvailableCaptures(...)
     //
     function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
-      // Supprimer captures
-      capturedSpots.forEach(function(s) { delete newPieces[s]; });
+      // ── PIÈCE IRAY MONJA no esorina (voalohany ao amin'ny capturedSpots) ──
+      // Ny lojika manala pièce maro (capturedSpots.forEach) dia voasoratra
+      // fa MBOLA TSY AMPIASAINA — rehefa hampiana → ovana ity block ity:
+      //   capturedSpots.forEach(function(s) { delete newPieces[s]; });
+      if (capturedSpots.length > 0) {
+        delete newPieces[capturedSpots[0]]; // pièce voalohany ihany
+      }
+      // (sisa ao amin'ny capturedSpots[1..n] dia tsy esorina ankehitriny)
 
       // AUTO-OK foana ankehitriny — multi-capture mbola tsy active
       var canContinue = false;
