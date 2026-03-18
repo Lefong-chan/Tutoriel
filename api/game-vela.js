@@ -123,15 +123,25 @@ async function handleMakeMove(body, res) {
   const newVisited = [...visited, origin];
   const wasCapture = effectiveCaptured.length > 0;
 
-  // ── AUTO-OK / MULTI-CAPTURE : miankina amin'ny fisa pieces an'ilay tsy firstMover ──
-  // Raha pieces an'ilay tsy firstMover dia 5 na latsaka → multi-capture active (player roa)
-  // Raha mihoatra ny 5 → AUTO-OK foana (canContinue=false)
+  // ── AUTO-OK / MULTI-CAPTURE ───────────────────────────────────────────────
+  // Jerena ny fisa pieces an'ilay tsy firstMover AORIAN'NY capture (pieces).
   //
-  // Ny AUTO_OK_ALWAYS=true taloha dia voasoratra fa DISABLED amin'izao.
-  // Rehefa ampiana fepetra hafa → ovana ity condition ity ihany.
+  // FITSIPIKA :
+  //   - firstMover    → canContinue ALWAYS false (AUTO-OK foana, na 5 na tsy 5)
+  //     satria ny tsy firstMover no tsy maintsy afaka manao continue mouve voalohany
+  //   - tsy firstMover → canContinue active raha nonFirstMoverCount <= 5
+  //     (nonFirstMoverCount = pieces an'ny firstMover, satria tsy firstMover = izy)
+  //
+  // Ny lojika taloha (multiCaptureActive ho player roa) dia voasoratra
+  // fa OVAINA eto — firstMover dia AUTO-OK foana.
   const nonFirstMoverColor = firstMover === "maintso" ? "mena" : "maintso";
   const nonFirstMoverCount = Object.values(pieces).filter(v => v === nonFirstMoverColor).length;
-  const multiCaptureActive = (nonFirstMoverCount <= 5);
+
+  const amIFirstMoverM = (firstMover === myColor);
+
+  // firstMover → AUTO-OK foana (tsy afaka canContinue)
+  // tsy firstMover → canContinue raha pieces an'ny firstMover <= 5
+  const multiCaptureActive = !amIFirstMoverM && (nonFirstMoverCount <= 5);
 
   const canContinue = multiCaptureActive
     && wasCapture
