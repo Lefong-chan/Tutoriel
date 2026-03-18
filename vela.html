@@ -119,53 +119,81 @@
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // ── Alert fandresy/resy (lojika 1 ihany) ──────────────────────
-    function showGameOverAlert(winnerColor) {
-      // Mamorona overlay custom alert
-      var overlay = document.createElement('div');
-      overlay.style.cssText = [
-        'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
-        'display:flex','justify-content:center','align-items:center',
-        'z-index:9999','flex-direction:column','gap:0'
-      ].join(';');
-
-      var box = document.createElement('div');
-      box.style.cssText = [
-        'background:#1a3a5c','border-radius:18px','padding:36px 40px',
-        'text-align:center','color:white','font-family:sans-serif',
-        'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
-      ].join(';');
-
-      var myMsg   = winnerColor === myColor ? '🏆 Nandresy ianao!' : '😔 Resy ianao!';
-      var oppMsg  = winnerColor === myColor ? '😔 Resy ilay mifanandrina!' : '🏆 Nandresy ilay mifanandrina!';
-
-      var title = document.createElement('div');
-      title.style.cssText = 'font-size:1.5em;font-weight:800;margin-bottom:10px;';
-      title.textContent = myMsg;
-
-      var sub = document.createElement('div');
-      sub.style.cssText = 'font-size:1em;opacity:0.75;margin-bottom:28px;';
-      sub.textContent = oppMsg;
-
-      var btn = document.createElement('button');
-      btn.textContent = 'OK';
-      btn.style.cssText = [
-        'background:#0092FF','color:white','border:none',
-        'border-radius:10px','padding:12px 48px',
-        'font-size:1.1em','font-weight:700','cursor:pointer',
-        'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
-      ].join(';');
-      btn.onclick = function() {
-        window.location.href = 'dashboard.html';
-      };
-
-      box.appendChild(title);
-      box.appendChild(sub);
-      box.appendChild(btn);
-      overlay.appendChild(box);
-      document.body.appendChild(overlay);
+    // ── Disable board tanteraka (lojika 1) ───────────────────────
+    var gameOverTriggered = false;
+    function disableBoardCompletely() {
+      var board = document.getElementById('game-board');
+      if (board) board.classList.add('lock-board');
+      var stopBtn = document.getElementById('stop-move-btn');
+      if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = 'none'; }
+      document.getElementById('guides-group').innerHTML = '';
+      document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el) {
+        el.removeAttribute('class');
+      });
+      document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
     }
-    async function callApi(url, action, payload) {
+
+    // ── Alert fandresy/resy (lojika 1 + lany piece) ──────────────
+    // winnerColor = color ilay nandresy
+    // delayMs     = fotoana andrasana alohan'ny hiseho ny alert (default 4000)
+    function showGameOverAlert(winnerColor, delayMs) {
+      if (gameOverTriggered) return;
+      gameOverTriggered = true;
+
+      // Disable board avy hatrany — tsy afaka mihisaka intsony ny joueurs roa
+      disableBoardCompletely();
+
+      var delay = (typeof delayMs === 'number') ? delayMs : 4000;
+
+      setTimeout(function() {
+        var overlay = document.createElement('div');
+        overlay.style.cssText = [
+          'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
+          'display:flex','justify-content:center','align-items:center',
+          'z-index:9999','flex-direction:column','gap:0'
+        ].join(';');
+
+        var box = document.createElement('div');
+        box.style.cssText = [
+          'background:#1a3a5c','border-radius:18px','padding:36px 40px',
+          'text-align:center','color:white','font-family:sans-serif',
+          'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
+        ].join(';');
+
+        // iWon = true raha myColor no nandresy
+        var iWon   = (winnerColor === myColor);
+        var myMsg  = iWon ? '🏆 Nandresy ianao!'         : '😔 Resy ianao!';
+        var oppMsg = iWon ? '😔 Resy ilay mifanandrina!' : '🏆 Nandresy ilay mifanandrina!';
+
+        var title = document.createElement('div');
+        title.style.cssText = 'font-size:1.5em;font-weight:800;margin-bottom:10px;';
+        title.textContent = myMsg;
+
+        var sub = document.createElement('div');
+        sub.style.cssText = 'font-size:1em;opacity:0.75;margin-bottom:28px;';
+        sub.textContent = oppMsg;
+
+        var btn = document.createElement('button');
+        btn.textContent = 'OK';
+        btn.style.cssText = [
+          'background:#0092FF','color:white','border:none',
+          'border-radius:10px','padding:12px 48px',
+          'font-size:1.1em','font-weight:700','cursor:pointer',
+          'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
+        ].join(';');
+        btn.onclick = function() {
+          window.location.href = 'dashboard.html';
+        };
+
+        box.appendChild(title);
+        box.appendChild(sub);
+        box.appendChild(btn);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+      }, delay);
+    }
+
+        async function callApi(url, action, payload) {
       var r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({ action: action }, payload))
@@ -433,12 +461,20 @@
       applyLocalState();
 
       // ── Fanamarinana resy/nandresy (lojika 1) — amin'ny poll ─────
-      // Rehefa tonga ny tanin'ny mpilalao (myColor), jereo raha mahita
-      // capture izy. Raha tsy mahita → resy izy (adversaire nandresy).
       if (!isGameFrozen(localState.pieces)) {
-        var myHasCap = playerHasAnyCapture(localState.pieces, myColor);
-        if (!myHasCap) {
-          showGameOverAlert(myOppColor);
+        var myPieceCountP  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPieceCountP = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        if (myPieceCountP === 0) {
+          // Lany ny piece ahy (adversaire nandresy) — miandry hetsika hiseho 2s
+          showGameOverAlert(myOppColor, 2000);
+        } else if (oppPieceCountP === 0) {
+          showGameOverAlert(myColor, 2000);
+        } else {
+          // Jereo capture — raha tsy mahita capture ny mpilalao (myColor) → resy
+          var myHasCap = playerHasAnyCapture(localState.pieces, myColor);
+          if (!myHasCap) {
+            showGameOverAlert(myOppColor, 4000);
+          }
         }
       }
     }
@@ -590,16 +626,27 @@
       if (!canContinue) scheduleReconcile();
 
       // ── Fanamarinana resy/nandresy (lojika 1 ihany) ──────────────
-      // Rehefa vita ny dingana iray (tsy misy mitohy), jereo raha misy
-      // capture azon'ilay adversaire. Raha tsy misy → alert.
+      // Fitsapana 1: lany piece ny adversaire → myColor nandresy (2s delay)
+      // Fitsapana 2: adversaire tsy mahita capture → myColor nandresy (4s delay)
       if (!canContinue) {
         var piecesAfterMove = localState.pieces;
-        // Ilay adversaire = myOppColor (ilay tsy nanao capture, mifindra fotsiny)
-        var advHasCapture = playerHasAnyCapture(piecesAfterMove, myOppColor);
-        if (!advHasCapture) {
-          // Ilay adversaire (mifindra fotsiny) tsy mahita capture → resy izy
-          // myColor = nandresy
-          showGameOverAlert(myColor);
+
+        // Fitsapana lany piece (0 piece = resy)
+        var myPieceCount  = Object.keys(piecesAfterMove).filter(function(s){ return piecesAfterMove[s]===myColor; }).length;
+        var oppPieceCount = Object.keys(piecesAfterMove).filter(function(s){ return piecesAfterMove[s]===myOppColor; }).length;
+
+        if (oppPieceCount === 0) {
+          // Lany ny piece adversaire → myColor nandresy, 2s delay
+          showGameOverAlert(myColor, 2000);
+        } else if (myPieceCount === 0) {
+          // Lany ny piece ahy → myOppColor nandresy, 2s delay
+          showGameOverAlert(myOppColor, 2000);
+        } else {
+          // Tsy lany piece, jereo capture
+          var advHasCapture = playerHasAnyCapture(piecesAfterMove, myOppColor);
+          if (!advHasCapture) {
+            showGameOverAlert(myColor, 4000);
+          }
         }
       }
     }
@@ -627,9 +674,17 @@
       scheduleReconcile();
 
       // ── Fanamarinana resy/nandresy rehefa mijanona (lojika 1) ────
-      var advHasCapture2 = playerHasAnyCapture(localState.pieces, myOppColor);
-      if (!advHasCapture2) {
-        showGameOverAlert(myColor);
+      var myPieceCount2  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+      var oppPieceCount2 = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+      if (oppPieceCount2 === 0) {
+        showGameOverAlert(myColor, 2000);
+      } else if (myPieceCount2 === 0) {
+        showGameOverAlert(myOppColor, 2000);
+      } else {
+        var advHasCapture2 = playerHasAnyCapture(localState.pieces, myOppColor);
+        if (!advHasCapture2) {
+          showGameOverAlert(myColor, 4000);
+        }
       }
     }
 
@@ -867,6 +922,15 @@
       document.getElementById('guides-group').innerHTML = '';
       document.getElementById('stop-move-btn').classList.remove('active');
       ph2ApplyLocalState();
+
+      // ── Fanamarinana lany piece (lojika 2) — amin'ny poll ────────
+      var ph2PollMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+      var ph2PollOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+      if (ph2PollMyCount === 0) {
+        showGameOverAlert(myOppColor, 2000);
+      } else if (ph2PollOppCount === 0) {
+        showGameOverAlert(myColor, 2000);
+      }
     }
 
     function ph2HandleSpotClick(spotID) {
@@ -972,6 +1036,19 @@
       ph2RenderPieces(ph2_localState.pieces, ph2_localState);
       ph2SendMoveToBackend(origin, target, capturedSpots, dir);
       if (!canContinue) ph2ScheduleReconcile();
+
+      // ── Fanamarinana lany piece (lojika 2) ───────────────────────
+      // Lojika 2: miseho ny alert rehefa lany piece (2s delay)
+      // Miandry ny hetsika farany hiseho vao miseho ny alert.
+      if (!canContinue) {
+        var ph2OppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+        var ph2MyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+        if (ph2OppCount === 0) {
+          showGameOverAlert(myColor, 2000);
+        } else if (ph2MyCount === 0) {
+          showGameOverAlert(myOppColor, 2000);
+        }
+      }
     }
 
     function ph2HandleStopBtn() {
@@ -994,6 +1071,15 @@
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('stop-move error', e); });
       ph2ScheduleReconcile();
+
+      // ── Fanamarinana lany piece rehefa mijanona (lojika 2) ───────
+      var ph2StopOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+      var ph2StopMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+      if (ph2StopOppCount === 0) {
+        showGameOverAlert(myColor, 2000);
+      } else if (ph2StopMyCount === 0) {
+        showGameOverAlert(myOppColor, 2000);
+      }
     }
 
     function ph2SendMoveToBackend(origin, target, capturedSpots, dir) {
