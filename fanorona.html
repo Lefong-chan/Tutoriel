@@ -748,12 +748,22 @@
         })(spot);
 
         if (isMyTurn && pieces[spot] === myColor) {
-          if (selectedSpot === spot)
+          if (selectedSpot === spot) {
             circle.setAttribute('class', 'selected-piece');
-          else if (lastBlockedSpot === spot)
+          } else if (lastBlockedSpot === spot) {
             circle.setAttribute('class', 'blocked-piece');
-          else if (!stateData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture))
-            circle.setAttribute('class', 'movable-piece');
+          } else if (!stateData.movingPiece) {
+            // ── FIRST MOVER CHECK ──────────────────────────────────────────
+            // firstMover → lojika normal : movable-piece raha mahita capture (na misy capture)
+            //   (Ny canPieceMove miaraka amin'ny globalCapture no manapa-kevitra)
+            // tsy firstMover → movable-piece raha afaka mihetsika any na aiza na aiza
+            //   (tsy mitady capture — canPieceMove miaraka amin'ny globalCapture=false)
+            //   (Ny lojika taloha miaraka amin'ny globalCapture dia voasoratra fa DISABLED eto)
+            var amIFirstMoverR = (firstMover === null || firstMover === myColor);
+            var gcForRender    = amIFirstMoverR ? globalCapture : false;
+            if (canPieceMove(spot, pieces, myColor, gcForRender))
+              circle.setAttribute('class', 'movable-piece');
+          }
         }
 
         var isApp  = pendingCaptures.approach.indexOf(spot)   !== -1;
