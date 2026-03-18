@@ -195,13 +195,15 @@
     }
 
     // ── Alert fandresy/resy ───────────────────────────────────────
-    // winnerColor = color ilay nandresy
-    // delayMs     = fotoana andrasana (default 2000)
+    // winnerColor = color ilay nandresy | delayMs = fotoana andrasana (default 2000)
+    // currentOverlay — roahina rehefa confirmed restart
+    var currentGameOverOverlay = null;
+    var currentBtnReplay       = null;
+    var currentBtnOk           = null;
+
     function showGameOverAlert(winnerColor, delayMs) {
       if (gameOverTriggered) return;
       gameOverTriggered = true;
-
-      // Disable board avy hatrany — tsy afaka mihisaka intsony
       disableBoardCompletely();
 
       var delay = (typeof delayMs === 'number') ? delayMs : 2000;
@@ -213,6 +215,8 @@
           'display:flex','justify-content:center','align-items:center',
           'z-index:9999','flex-direction:column','gap:0'
         ].join(';');
+        overlay.setAttribute('data-gameover-overlay', '1');
+        currentGameOverOverlay = overlay;
 
         var box = document.createElement('div');
         box.style.cssText = [
@@ -227,12 +231,12 @@
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:24px;';
         title.textContent = myMsg;
+        box.appendChild(title);
 
-        // ── Buttons row: flex, OK eo ankavia, Hamerina eo ankavanana ──
         var btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;width:100%;';
 
-        // Button OK → dashboard.html
+        // Button OK → dashboard
         var btnOk = document.createElement('button');
         btnOk.textContent = 'OK';
         btnOk.style.cssText = [
@@ -241,54 +245,42 @@
           'font-size:1em','font-weight:700','cursor:pointer',
           'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
         ].join(';');
-        btnOk.onclick = function() {
-          window.location.href = 'dashboard.html';
-        };
+        btnOk.onclick = function() { window.location.href = 'dashboard.html'; };
+        currentBtnOk = btnOk;
 
-        box.appendChild(title);
-
-        // Button Hamerina — haseho FOTSINY raha gameSource === 'fanorona'
         if (gameSource === 'fanorona') {
+          // Button Hamerina — mangataka restart amin'ny adversaire
           var btnReplay = document.createElement('button');
           btnReplay.textContent = 'Hamerina';
           btnReplay.style.cssText = [
             'flex:1','background:#22c55e','color:white','border:none',
             'border-radius:10px','padding:12px 0',
             'font-size:1em','font-weight:700','cursor:pointer',
-            'box-shadow:0 2px 10px rgba(34,197,94,0.4)'
+            'box-shadow:0 2px 10px rgba(34,197,94,0.4)','transition:opacity 0.2s'
           ].join(';');
+          currentBtnReplay = btnReplay;
 
           btnReplay.onclick = function() {
-            if (rrPending) return; // efa nangataka, miandry
-            btnReplay.disabled = true;
-            // Mangataka restart — adversaire no hanaiky na handà
+            if (rrPending) return;
+            rrPending = true;
+            btnReplay.disabled    = true;
+            btnReplay.textContent = 'Miandry…';
+            btnReplay.style.opacity = '0.7';
+            // Mangataka restart — overlay TSY ESORINA, miandry valiny
             callApi(GAME_API_URL, 'request-restart', { uid: myUid, gameId: gameId })
               .then(function(r) {
-                if (r.success) {
-                  rrPending = true;
-                  btnReplay.textContent = 'Miandry…';
-                  // Miandry ny valim-pangataham-bita — polling
-                  var waitTimer = setInterval(function() {
-                    callApi(GAME_API_URL, 'get-restart-request', { uid: myUid, gameId: gameId })
-                      .then(function(rr) {
-                        if (rr.confirmed) {
-                          clearInterval(waitTimer);
-                          doRestartBoard(rr);
-                          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-                        } else if (!rr.requested) {
-                          // Nandà ilay adversaire
-                          clearInterval(waitTimer);
-                          rrPending = false;
-                          btnReplay.disabled  = false;
-                          btnReplay.textContent = 'Hamerina';
-                        }
-                      }).catch(function(){});
-                  }, 1500);
-                } else {
-                  btnReplay.disabled = false;
+                if (!r.success) {
+                  rrPending = false;
+                  btnReplay.disabled    = false;
+                  btnReplay.textContent = 'Hamerina';
+                  btnReplay.style.opacity = '1';
                 }
+                // Raha success: miandry — ny rrPolling no handraharaha
               }).catch(function() {
-                btnReplay.disabled = false;
+                rrPending = false;
+                btnReplay.disabled    = false;
+                btnReplay.textContent = 'Hamerina';
+                btnReplay.style.opacity = '1';
               });
           };
 
@@ -299,13 +291,12 @@
         }
 
         box.appendChild(btnRow);
-        overlay.setAttribute('data-gameover-overlay', '1');
         overlay.appendChild(box);
         document.body.appendChild(overlay);
       }, delay);
     }
 
-    // ── Restart notification functions ───────────────────────
+    // ── Restart notification (adversaire mahita) ──────────────
     function showRrNotif(username) {
       var notif = document.getElementById('rrNotif');
       var rrUser = document.getElementById('rrUsername');
@@ -315,69 +306,85 @@
       notif.classList.add('rr-visible');
       setTimeout(function() { notif.classList.add('rr-expanded'); }, 80);
     }
-
     function hideRrNotif() {
       var notif = document.getElementById('rrNotif');
       if (notif) notif.classList.remove('rr-visible', 'rr-expanded');
     }
 
+    // ── Accept / Decline buttons — wired apres DOM ready ─────
+    var rrAcceptEl  = document.getElementById('rrAcceptBtn');
+    var rrDeclineEl = document.getElementById('rrDeclineBtn');
+    if (rrAcceptEl) {
+      rrAcceptEl.addEventListener('click', function() {
+        hideRrNotif();
+        callApi(GAME_API_URL, 'confirm-restart', { uid: myUid, gameId: gameId })
+          .then(function(r) {
+            if (r.success) doRestartBoard(r);
+          }).catch(function(){});
+      });
+    }
+    if (rrDeclineEl) {
+      rrDeclineEl.addEventListener('click', function() {
+        hideRrNotif();
+        callApi(GAME_API_URL, 'cancel-restart', { uid: myUid, gameId: gameId }).catch(function(){});
+      });
+    }
+
+    // ── Restart polling — miandry confirmed na declined ───────
     function startRrPolling() {
       if (rrPollingTimer) return;
       rrPollingTimer = setInterval(function() {
         if (!myUid || !gameId) return;
         callApi(GAME_API_URL, 'get-restart-request', { uid: myUid, gameId: gameId })
           .then(function(r) {
-            if (r.requested && r.requestedBy !== myUid) {
+            if (r.confirmed) {
+              // Confirmed — restart ny lalao
+              hideRrNotif();
+              doRestartBoard(r);
+            } else if (r.requested && r.requestedBy !== myUid) {
               // Adversaire nangataka restart — asehoy notification
               showRrNotif(r.requestedByUsername || oppUsername);
-            } else {
+            } else if (!r.requested) {
+              // Tsy misy request (nandà na voafafa)
               hideRrNotif();
+              // Raha aho no nangataka ary nandà izy → averina ny button
+              if (rrPending) {
+                rrPending = false;
+                if (currentBtnReplay) {
+                  currentBtnReplay.disabled    = false;
+                  currentBtnReplay.textContent = 'Hamerina';
+                  currentBtnReplay.style.opacity = '1';
+                }
+              }
             }
           }).catch(function(){});
-      }, 2000);
+      }, 1500);
     }
 
     function stopRrPolling() {
       if (rrPollingTimer) { clearInterval(rrPollingTimer); rrPollingTimer = null; }
     }
 
-    // ── Manaiky restart (rrAcceptBtn) ─────────────────────────
-    document.addEventListener('DOMContentLoaded', function() {
-      var rrAccept  = document.getElementById('rrAcceptBtn');
-      var rrDecline = document.getElementById('rrDeclineBtn');
-      if (rrAccept) {
-        rrAccept.addEventListener('click', function() {
-          hideRrNotif();
-          callApi(GAME_API_URL, 'confirm-restart', { uid: myUid, gameId: gameId })
-            .then(function(r) {
-              if (r.success) doRestartBoard(r);
-            }).catch(function(){});
-        });
-      }
-      if (rrDecline) {
-        rrDecline.addEventListener('click', function() {
-          hideRrNotif();
-          callApi(GAME_API_URL, 'cancel-restart', { uid: myUid, gameId: gameId }).catch(function(){});
-        });
-      }
-    });
-
-    // ── Mamerina ny board rehefa manaiky restart ───────────────
+    // ── Mamerina ny board rehefa confirmed ────────────────────
     function doRestartBoard(r) {
+      // r.myColor = color vaovao avy amin'ny server
       myColor    = r.myColor;
       myOppColor = myColor === 'maintso' ? 'mena' : 'maintso';
       rrPending  = false;
       stopRrPolling();
 
-      gameOverTriggered = false;
-      selectedSpot      = null;
-      lastBlockedSpot   = null;
-      canChangePiece    = true;
-      pendingCaptures   = { approach: [], withdrawal: [], moveData: null };
-      piecesOnBoard     = {};
-      movingInProgress  = false;
+      gameOverTriggered  = false;
+      currentBtnReplay   = null;
+      currentBtnOk       = null;
+      selectedSpot       = null;
+      lastBlockedSpot    = null;
+      canChangePiece     = true;
+      pendingCaptures    = { approach: [], withdrawal: [], moveData: null };
+      piecesOnBoard      = {};
+      movingInProgress   = false;
       if (reconcileTimer) { clearTimeout(reconcileTimer); reconcileTimer = null; }
 
+      // Re-enable board
       var board = document.getElementById('game-board');
       if (board) {
         board.classList.remove('lock-board');
@@ -387,15 +394,21 @@
       var stopBtn = document.getElementById('stop-move-btn');
       if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = ''; }
 
-      // Esory ny overlay resy/nandresy raha mbola misy
+      // Esorina ny overlay resy/nandresy AORIAN'NY restart confirmed
+      if (currentGameOverOverlay && currentGameOverOverlay.parentNode) {
+        currentGameOverOverlay.parentNode.removeChild(currentGameOverOverlay);
+      }
+      currentGameOverOverlay = null;
+      // Koa avela izay sisa
       document.querySelectorAll('[data-gameover-overlay]').forEach(function(el) { el.remove(); });
 
-      // Reload state
+      // Reload state avy amin'ny server
       callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId })
         .then(function(d) {
           if (d.success) {
             localState = copyState(d.game);
             applyLocalState();
+            // Averina ny rrPolling ho an'ny lalao vaovao
             startRrPolling();
           }
         }).catch(function(){});
