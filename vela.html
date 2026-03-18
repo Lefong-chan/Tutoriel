@@ -543,8 +543,23 @@
       }
       // (effectiveCaptured[1..n] dia tsy esorina ankehitriny)
 
-      // AUTO-OK foana ankehitriny — multi-capture mbola tsy active
-      var canContinue = false;
+      // ── AUTO-OK / MULTI-CAPTURE : miankina amin'ny fisa pieces an'ilay tsy firstMover ──
+      // Raha pieces an'ilay tsy firstMover dia 5 na latsaka → multi-capture active (player roa)
+      // Raha mihoatra ny 5 → AUTO-OK foana (canContinue=false)
+      //
+      // Ny lojika checkAvailableCaptures dia voasoratra fa DISABLED raha > 5 pieces.
+      // Rehefa ampiana fepetra hafa → ovana ity condition ity ihany.
+      var nonFirstMoverColor = (firstMover === null)
+        ? myOppColor
+        : (firstMover === myColor ? myOppColor : myColor);
+      var nonFirstMoverCount = Object.keys(newPieces).filter(function(s) {
+        return newPieces[s] === nonFirstMoverColor;
+      }).length;
+      var multiCaptureActive = (nonFirstMoverCount <= 5);
+
+      var canContinue = multiCaptureActive
+        && wasCapture
+        && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
 
       // ── Mise à jour locale immédiate ───────────────────────────
       movingInProgress = true;
