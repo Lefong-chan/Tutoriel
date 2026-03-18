@@ -310,12 +310,14 @@
         // Ne rien écraser pendant un mouvement local
         if (movingInProgress) return;
 
-        // Raha mbola tsy tour anao (adversaire manao hetsika) → tsy manao na inona na inona
-        // Miandry fotsiny ny tour anao vao mampiseho ny état final
+        // Raha mbola tsy tour anao → tsy manao na inona na inona
         if (serverTurn !== myColor) return;
 
-        // Tour anao → adversaire vita ny hetsikany
-        // Mampiseho mivantana ny état farany (tsy replay, tsy animation)
+        // Tour anao — raha efa manao hetsika ianao (misy selectedSpot na movingPiece),
+        // tsy ovaina ny state mba tsy hanafoana ny selection nataonao
+        if (selectedSpot || (localState && localState.movingPiece)) return;
+
+        // Tonga eto fotsiny raha tour anao SY tsy mbola nanao selection ianao
         var histColor = d.game.lastTurnColor || '';
         var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
         var histKey   = histColor + '|' + history.length + '|' +
@@ -324,6 +326,11 @@
         if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
           lastSeenHistKey = histKey;
         }
+
+        // Havaozina ny localState fotsiny raha tena nisy fanovana
+        var serverPiecesStr = JSON.stringify(d.game.pieces);
+        var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
+        if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
 
         localState      = copyState(d.game);
         canChangePiece  = true;
