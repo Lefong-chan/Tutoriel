@@ -5,105 +5,92 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fanorona</title>
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
       font-family: sans-serif;
-      margin: 0;
-      padding: 0;
+      margin: 0; padding: 0;
       background: #0092FF;
       overflow: hidden;
       height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
     }
+
+    /* ── Info turn ── */
+    #info-box { color: white; margin-bottom: 6px; font-weight: bold; }
+    #turn-display { margin: 0; font-size: 1.1em; }
 
     /* ── Bande joueurs ── */
     #players-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      width: 95vw;
-      max-width: 800px;
-      margin-bottom: 10px;
-      padding: 8px 14px;
-      background: rgba(0,0,0,0.25);
-      border-radius: 12px;
-      color: white;
-      font-size: 1em;
-      font-weight: 700;
-      min-height: 44px;
+      display: flex; justify-content: space-between; align-items: center;
+      width: 95vw; max-width: 800px;
+      margin-bottom: 8px; padding: 8px 14px;
+      background: rgba(0,0,0,0.25); border-radius: 12px;
+      color: white; font-size: 1em; font-weight: 700; min-height: 44px;
     }
-    .player-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .player-dot {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      border: 2px solid rgba(255,255,255,0.6);
-    }
+    .player-info { display: flex; align-items: center; gap: 8px; }
+    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); }
     .dot-maintso { background: #22c55e; }
     .dot-mena    { background: #ef4444; }
-    .player-name { font-size: 0.95em; }
-    .player-label {
-      font-size: 0.7em;
-      font-weight: 400;
-      opacity: 0.75;
-      margin-left: 2px;
-    }
-    .vs-sep {
-      font-size: 0.85em;
-      opacity: 0.6;
-      font-weight: 400;
-    }
+    .player-name  { font-size: 0.95em; }
+    .player-label { font-size: 0.7em; font-weight: 400; opacity: 0.75; margin-left: 2px; }
+    .vs-sep       { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
 
     /* ── Plateau ── */
     #game-board {
-      width: 95vw;
-      max-width: 800px;
-      max-height: 75vh;
+      width: 95vw; max-width: 800px; max-height: 68vh;
       display: block;
     }
     .grid-line { stroke: #333; stroke-width: 2; }
 
+    /* ── Pièces & interactions ── */
+    .flipped { transform: rotate(180deg); }
+    .piece-group { transition: transform 0.2s ease-in-out; }
+    .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
+    .movable-piece  { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
+    .blocked-piece  { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
+    .capture-target {
+      stroke: darkorange; stroke-width: 5px; cursor: pointer;
+      pointer-events: all !important; stroke-dasharray: 5;
+      animation: dash 1s linear infinite;
+    }
+    @keyframes dash { to { stroke-dashoffset: 10; } }
+    .spot { cursor: pointer; pointer-events: all; }
+    .lock-board .spot { pointer-events: none !important; }
+    .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+    .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
+
+    /* ── Bouton Stop ── */
+    #stop-move-btn {
+      width: 60px; height: 60px; border-radius: 50%;
+      background: #f44336; color: white; border: 4px solid white;
+      font-size: 30px; font-weight: bold; cursor: pointer;
+      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none;
+    }
+    #stop-move-btn.active {
+      opacity: 1; transform: scale(1.1);
+      box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all;
+    }
+
     /* ── Loading ── */
     #loading-overlay {
-      position: fixed;
-      inset: 0;
-      background: #0092FF;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 100;
-      color: white;
-      font-size: 1.2em;
-      font-weight: 700;
-      flex-direction: column;
-      gap: 16px;
+      position: fixed; inset: 0; background: #0092FF;
+      display: flex; justify-content: center; align-items: center;
+      z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
+      flex-direction: column; gap: 16px;
     }
     #loading-overlay.hidden { display: none; }
     .spinner {
-      width: 36px;
-      height: 36px;
-      border: 4px solid rgba(255,255,255,0.3);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+      width: 36px; height: 36px;
+      border: 4px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Erreur ── */
     #error-msg {
-      display: none;
-      color: #fef08a;
-      font-size: 1em;
-      margin-top: 10px;
-      text-align: center;
+      display: none; color: #fef08a; font-size: 1em;
+      margin-top: 10px; text-align: center;
     }
   </style>
 </head>
@@ -115,10 +102,13 @@
     <span>Fananganana ny lalao…</span>
   </div>
 
-  <!-- Bande joueurs -->
-  <div id="players-bar" style="display:none;">
-    <!-- rempli par JS -->
+  <!-- Turn info -->
+  <div id="info-box" style="display:none;">
+    <h2 id="turn-display">Mampiditra...</h2>
   </div>
+
+  <!-- Bande joueurs -->
+  <div id="players-bar" style="display:none;"></div>
 
   <!-- Plateau SVG -->
   <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
@@ -139,89 +129,178 @@
       M300 0 L400 100 M400 0 L200 200
       M0 100 L100 200 M400 100 L300 200"/>
 
+    <g id="spots-group"></g>
+    <g id="guides-group"></g>
     <g id="pieces-group"></g>
   </svg>
+
+  <!-- Bouton Stop (multi-capture) -->
+  <button id="stop-move-btn" style="display:none;">OK</button>
 
   <div id="error-msg"></div>
 
   <script>
-  (function() {
+  (function () {
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 1 — Helpers communs
+    // ═══════════════════════════════════════════════════════════════
+
     var SESSION_API_URL = '/api/session';
+    var GAME_API_URL    = '/api/game';
+    var POLL_INTERVAL   = 1500; // ms
 
-    // ── Lire les paramètres URL ──────────────────────────────
-    var params   = new URLSearchParams(window.location.search);
-    var gameId   = params.get('gameId');
-    var myColor  = params.get('color');   // 'maintso' ou 'mena'
-    var inviteId = params.get('inviteId');
-
-    var rows = ['A','B','C','D','E'];
-    var cols = ['1','2','3','4','5','6','7','8','9'];
-
-    // ── Helpers ──────────────────────────────────────────────
     function showError(msg) {
       var el = document.getElementById('error-msg');
-      el.textContent = msg;
-      el.style.display = 'block';
+      el.textContent = msg; el.style.display = 'block';
       document.getElementById('loading-overlay').classList.add('hidden');
     }
 
-    async function callSessionApi(action, payload) {
-      var r = await fetch(SESSION_API_URL, {
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function callApi(url, action, payload) {
+      var r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({ action: action }, payload))
       });
       var d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Session error.');
+      if (!r.ok) throw new Error(d.error || 'API error');
       return d;
     }
 
-    // ── Dessin du plateau ────────────────────────────────────
-    // myColor = 'maintso' → maintso en bas (rangées D,E proches de l'utilisateur)
-    // myColor = 'mena'    → mena en bas
-    // Le plateau SVG est dessiné row A (ri=0) en haut, row E (ri=4) en bas.
-    // Si myColor='maintso' : maintso (ri>2) est déjà en bas → OK
-    // Si myColor='mena'    : on inverse l'axe Y pour que mena soit en bas
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 2 — Constantes du jeu
+    // ═══════════════════════════════════════════════════════════════
 
-    function drawPieces(pieces, myCol) {
-      var grp = document.getElementById('pieces-group');
-      grp.innerHTML = '';
+    var rows = ['A','B','C','D','E'];
+    var cols = ['1','2','3','4','5','6','7','8','9'];
 
-      var flip = (myCol === 'mena'); // si mena, on retourne le plateau
+    var allowedMoves = {
+      'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],
+      'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
+      'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
+      'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],
+      'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],
+      'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
+      'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
+      'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],
+      'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
+      'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],
+      'C6':['B6','C5','C7','D6'],
+      'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],
+      'C9':['B8','B9','C8','D8','D9'],
+      'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
+      'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],
+      'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
+      'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
+      'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],
+      'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
+      'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
+    };
 
-      for (var spot in pieces) {
-        var ri = rows.indexOf(spot[0]);
-        var ci = cols.indexOf(spot[1]);
-        if (ri < 0 || ci < 0) continue;
-        var color = pieces[spot];
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 3 — État du jeu (client)
+    // ═══════════════════════════════════════════════════════════════
 
-        // Coordonnées SVG
-        var svgX = ci * 50;
-        var svgY = flip ? (4 - ri) * 50 : ri * 50; // inversion Y si mena
+    var myColor         = null;
+    var gameId          = null;
+    var myUid           = null;
+    var selectedSpot    = null;
+    var lastBlockedSpot = null;
+    var canChangePiece  = true;
+    var pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
+    var piecesOnBoard   = {};
+    var lastKnownState  = null;
+    var pollTimer       = null;
+    var isMakingMove    = false;
 
-        var g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        g.setAttribute("transform", "translate(" + svgX + "," + svgY + ")");
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 4 — Initialisation
+    // ═══════════════════════════════════════════════════════════════
 
-        var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("r", "12");
-        circle.setAttribute("fill", "url(#" + color + "-pat)");
+    var params   = new URLSearchParams(window.location.search);
+    var gameId_p = params.get('gameId');
+    var color_p  = params.get('color');
+    var inviteId = params.get('inviteId');
 
-        g.appendChild(circle);
-        grp.appendChild(g);
+    async function init() {
+      if (!gameId_p || !color_p || !inviteId) {
+        showError('Diso ny fampidirana: tsy misy gameId, color, na inviteId.');
+        return;
+      }
+      if (color_p !== 'maintso' && color_p !== 'mena') {
+        showError('Diso ny color: ' + color_p);
+        return;
+      }
+
+      var stored = localStorage.getItem('user');
+      if (!stored) { window.location.href = 'login&register.html'; return; }
+      var localUser = null;
+      try { localUser = JSON.parse(stored); } catch(e) {}
+      if (!localUser || !localUser.uid) { window.location.href = 'login&register.html'; return; }
+
+      try {
+        // Vérification autorisation + récupération usernames via session API
+        var data = await callApi(SESSION_API_URL, 'get-fanorona-game', {
+          uid:    localUser.uid,
+          gameId: gameId_p
+        });
+        if (!data.success) { showError('Tsy hita ny lalao.'); return; }
+
+        myUid   = localUser.uid;
+        gameId  = gameId_p;
+        myColor = color_p;
+
+        var myUsername  = localUser.username || localUser.uid;
+        var oppUsername = data.opponentUsername || '???';
+
+        renderPlayersBar(myColor, myUsername, oppUsername);
+
+        // Orientation plateau
+        var board = document.getElementById('game-board');
+        if (myColor === 'mena') board.classList.add('flipped');
+
+        // Afficher les éléments
+        document.getElementById('info-box').style.display      = 'block';
+        document.getElementById('game-board').style.display    = 'block';
+        document.getElementById('stop-move-btn').style.display = 'block';
+        document.getElementById('loading-overlay').classList.add('hidden');
+
+        drawBoardSpots();
+
+        // Bouton Stop (fin de multi-capture)
+        document.getElementById('stop-move-btn').onclick = async function () {
+          if (!lastKnownState) return;
+          if (lastKnownState.turn === myColor && lastKnownState.movingPiece) {
+            await callApi(GAME_API_URL, 'stop-move', {
+              uid: myUid, gameId: gameId,
+              pieces: lastKnownState.pieces
+            });
+          }
+        };
+
+        // Démarrer le polling
+        await pollState();
+        pollTimer = setInterval(pollState, POLL_INTERVAL);
+
+      } catch(err) {
+        showError('Nisy olana: ' + err.message);
       }
     }
 
-    // ── Bande joueurs ────────────────────────────────────────
-    // myColor=maintso → je suis en bas (Green), adversaire en haut (Red)
-    // myColor=mena    → je suis en bas (Red),   adversaire en haut (Green)
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 5 — Players bar
+    // ═══════════════════════════════════════════════════════════════
+
     function renderPlayersBar(myCol, myUsername, oppUsername) {
       var bar = document.getElementById('players-bar');
-
-      // Joueur du bas = moi, joueur du haut = adversaire
-      // Dans la barre : adversaire à gauche (haut du plateau), moi à droite (bas)
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-
       bar.innerHTML =
         '<div class="player-info">' +
           '<div class="player-dot ' + oppDotClass + '"></div>' +
@@ -234,67 +313,373 @@
           '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
           '<div class="player-dot ' + myDotClass + '"></div>' +
         '</div>';
-
       bar.style.display = 'flex';
     }
 
-    function escapeHtml(s) {
-      return String(s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 6 — Polling (synchronisation en temps réel)
+    // ═══════════════════════════════════════════════════════════════
+
+    async function pollState() {
+      try {
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
+        if (!d.success) return;
+        var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
+        if (!hasPending) {
+          applyServerState(d.game);
+        } else {
+          lastKnownState = d.game;
+        }
+      } catch(e) {
+        console.warn('poll error', e);
+      }
     }
 
-    // ── Initialisation ───────────────────────────────────────
-    async function init() {
-      // Vérifier les paramètres
-      if (!gameId || !myColor || !inviteId) {
-        showError('Diso ny fampidirana: tsy misy gameId na color.');
-        return;
-      }
-      if (myColor !== 'maintso' && myColor !== 'mena') {
-        showError('Diso ny color: ' + myColor);
-        return;
-      }
+    function applyServerState(game) {
+      lastKnownState = game;
+      var display = document.getElementById('turn-display');
+      var stopBtn = document.getElementById('stop-move-btn');
 
-      // Récupérer session locale
-      var stored = localStorage.getItem('user');
-      if (!stored) { window.location.href = 'login&register.html'; return; }
-      var localUser = null;
-      try { localUser = JSON.parse(stored); } catch(e) {}
-      if (!localUser || !localUser.uid) { window.location.href = 'login&register.html'; return; }
+      if (game.turn === myColor) {
+        if (display) { display.textContent = 'ANJARANAO'; display.style.color = '#ADFF2F'; }
+        if (game.movingPiece) {
+          selectedSpot   = game.movingPiece;
+          canChangePiece = false;
+          if (stopBtn) stopBtn.classList.add('active');
+        } else {
+          canChangePiece = true;
+          if (stopBtn) stopBtn.classList.remove('active');
+        }
+        if (selectedSpot && pendingCaptures.approach.length === 0) {
+          renderGuides(selectedSpot, game);
+        }
+      } else {
+        if (display) { display.textContent = 'Miandry ny hafa...'; display.style.color = 'white'; }
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        if (stopBtn) stopBtn.classList.remove('active');
+        var guidesGrp = document.getElementById('guides-group');
+        if (guidesGrp) guidesGrp.innerHTML = '';
+      }
+      renderPieces(game.pieces, game);
+    }
 
-      try {
-        // Récupérer les données du jeu depuis le backend (RTDB)
-        var data = await callSessionApi('get-fanorona-game', {
-          uid:    localUser.uid,
-          gameId: gameId
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 7 — Dessin des spots cliquables
+    // ═══════════════════════════════════════════════════════════════
+
+    function drawBoardSpots() {
+      var spotsGrp = document.getElementById('spots-group');
+      spotsGrp.innerHTML = '';
+      var flip = myColor === 'mena';
+
+      rows.forEach(function(r, ri) {
+        cols.forEach(function(c, ci) {
+          var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', ci * 50);
+          circle.setAttribute('cy', flip ? (4 - ri) * 50 : ri * 50);
+          circle.setAttribute('r', 22);
+          circle.setAttribute('fill', 'transparent');
+          circle.setAttribute('class', 'spot');
+          (function(spotID) {
+            circle.onclick = function() { handleSpotClick(spotID); };
+          })(r + c);
+          spotsGrp.appendChild(circle);
         });
+      });
+    }
 
-        if (!data.success) {
-          showError('Tsy hita ny lalao.');
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 8 — Gestion des clics joueur
+    // ═══════════════════════════════════════════════════════════════
+
+    async function handleSpotClick(spotID) {
+      if (isMakingMove) return;
+      var data = lastKnownState;
+      if (!data || data.turn !== myColor) return;
+      if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
+
+      var pieces = data.pieces;
+
+      // Sélection d'une pièce
+      if (canChangePiece && pieces[spotID] === myColor) {
+        if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
+          selectedSpot    = spotID;
+          lastBlockedSpot = null;
+        } else {
+          selectedSpot    = null;
+          lastBlockedSpot = spotID;
+        }
+        renderGuides(selectedSpot || '', data);
+        renderPieces(pieces, data);
+        return;
+      }
+
+      // Déplacement vers une case vide
+      if (selectedSpot && (allowedMoves[selectedSpot] || []).indexOf(spotID) !== -1 && !pieces[spotID]) {
+        if (data.visited && data.visited.indexOf(spotID) !== -1) return;
+
+        var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
+        var isCaptureMove = (caps.approach.length > 0 || caps.withdrawal.length > 0);
+        if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+
+        var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
+        var r2 = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
+        var dir = (r2-r1) + ',' + (c2-c1);
+        if (!canChangePiece && data.lastDir === dir) return;
+
+        // Préparer board intermédiaire pour l'affichage
+        var newPieces = Object.assign({}, pieces);
+        delete newPieces[selectedSpot];
+        newPieces[spotID] = myColor;
+        var newVisited = (data.visited || []).concat([selectedSpot]);
+
+        if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
+          // Deux options : attendre le choix du joueur
+          pendingCaptures = {
+            approach:   caps.approach,
+            withdrawal: caps.withdrawal,
+            moveData:   { origin: selectedSpot, target: spotID, pieces: newPieces, dir: dir },
+            newVisited: newVisited
+          };
+          renderPieces(newPieces, data);
           return;
         }
 
-        // Récupérer username local (fallback)
-        var myUsername  = localUser.username || localUser.uid;
-        var oppUsername = data.opponentUsername || '???';
-
-        // Afficher la barre joueurs
-        renderPlayersBar(myColor, myUsername, oppUsername);
-
-        // Dessiner le plateau avec orientation correcte
-        drawPieces(data.pieces, myColor);
-
-        // Afficher le plateau
-        document.getElementById('game-board').style.display = 'block';
-        document.getElementById('loading-overlay').classList.add('hidden');
-
-      } catch(err) {
-        showError('Nisy olana: ' + err.message);
+        var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
+        await sendMove(selectedSpot, spotID, capturedSpots, dir);
       }
     }
 
+    async function confirmCapture(type) {
+      var md = pendingCaptures.moveData;
+      var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
+      pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
+      await sendMove(md.origin, md.target, capturedSpots, md.dir);
+    }
+
+    async function sendMove(origin, target, capturedSpots, dir) {
+      isMakingMove = true;
+      try {
+        var result = await callApi(GAME_API_URL, 'make-move', {
+          uid: myUid, gameId: gameId,
+          origin: origin, target: target,
+          capturedSpots: capturedSpots, dir: dir
+        });
+        if (result.success) {
+          pendingCaptures = { approach: [], withdrawal: [], moveData: null, newVisited: [] };
+          if (!result.continuing) {
+            selectedSpot    = null;
+            lastBlockedSpot = null;
+            canChangePiece  = true;
+          } else {
+            selectedSpot   = target;
+            canChangePiece = false;
+          }
+          await pollState();
+        }
+      } catch(e) {
+        console.error('sendMove error', e);
+      } finally {
+        isMakingMove = false;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 9 — Rendu des pièces
+    // ═══════════════════════════════════════════════════════════════
+
+    function renderPieces(pieces, gameData) {
+      var grp           = document.getElementById('pieces-group');
+      var isMyTurn      = gameData.turn === myColor;
+      var globalCapture = playerHasAnyCapture(pieces, myColor);
+      var flip          = myColor === 'mena';
+
+      var newPiecesOnBoard = {};
+      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
+      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+
+      vanished.forEach(function(vKey) {
+        var color  = piecesOnBoard[vKey].color;
+        var target = null;
+        for (var i = 0; i < appeared.length; i++) {
+          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
+        }
+        if (target) {
+          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          appeared = appeared.filter(function(a) { return a !== target; });
+        } else {
+          piecesOnBoard[vKey].el.remove();
+        }
+      });
+
+      appeared.forEach(function(aKey) {
+        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'piece-group');
+        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('r', 8);
+        g.appendChild(c);
+        grp.appendChild(g);
+        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+      });
+
+      Object.keys(pieces).forEach(function(k) {
+        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
+      });
+      piecesOnBoard = newPiecesOnBoard;
+
+      var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
+
+      Object.keys(pieces).forEach(function(spot) {
+        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+        if (ri < 0 || ci < 0) return;
+        var entry = piecesOnBoard[spot];
+        if (!entry) return;
+        var g      = entry.el;
+        var circle = g.querySelector('circle');
+
+        var svgX = ci * 50;
+        var svgY = flip ? (4 - ri) * 50 : ri * 50;
+        g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
+        circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
+        circle.removeAttribute('class');
+        circle.style.pointerEvents = 'none';
+        circle.onclick = null;
+
+        if (isMyTurn && pieces[spot] === myColor) {
+          if (selectedSpot === spot)
+            circle.setAttribute('class', 'selected-piece');
+          else if (lastBlockedSpot === spot)
+            circle.setAttribute('class', 'blocked-piece');
+          else if (!gameData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture))
+            circle.setAttribute('class', 'movable-piece');
+        }
+
+        // Afficher les cibles de capture (approach / withdrawal)
+        var isApp  = pendingCaptures.approach.indexOf(spot)   !== -1;
+        var isWith = pendingCaptures.withdrawal.indexOf(spot) !== -1;
+        g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
+
+        if (isApp || isWith) {
+          circle.classList.add('capture-target');
+          circle.style.pointerEvents = 'all';
+          var captureType = isApp ? 'approach' : 'withdrawal';
+          circle.onclick = (function(ct) {
+            return function(e) { e.stopPropagation(); confirmCapture(ct); };
+          })(captureType);
+          g.appendChild(createCross(-5,-5,5,5));
+          g.appendChild(createCross(5,-5,-5,5));
+        }
+      });
+
+      // Lock board si ce n'est pas mon tour ou si choix en attente
+      var board = document.getElementById('game-board');
+      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+      else board.classList.remove('lock-board');
+    }
+
+    function createCross(x1,y1,x2,y2) {
+      var l = document.createElementNS('http://www.w3.org/2000/svg','line');
+      l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+      l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+      l.setAttribute('class','cross-line');
+      return l;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 10 — Rendu des guides (points jaunes)
+    // ═══════════════════════════════════════════════════════════════
+
+    function renderGuides(startSpot, gameData) {
+      var grp = document.getElementById('guides-group');
+      if (!grp) return;
+      grp.innerHTML = '';
+      if (!startSpot) return;
+
+      var pieces  = gameData.pieces;
+      var visited = gameData.visited;
+      var lastDir = gameData.lastDir;
+      var flip    = myColor === 'mena';
+      var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
+      var moves = allowedMoves[startSpot] || [];
+
+      moves.forEach(function(target) {
+        if (pieces[target] || (visited && visited.indexOf(target) !== -1)) return;
+        var caps = getCaptures(pieces, startSpot, target, myColor);
+        var isCaptureMove = (caps.approach.length > 0 || caps.withdrawal.length > 0);
+        if (globalCapturePossible && !isCaptureMove) return;
+
+        var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
+        var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
+        var dir = (r2-r1) + ',' + (c2-c1);
+        if (!canChangePiece && lastDir === dir) return;
+
+        var svgX = cols.indexOf(target[1]) * 50;
+        var svgY = flip ? (4 - rows.indexOf(target[0])) * 50 : rows.indexOf(target[0]) * 50;
+
+        var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', svgX);
+        dot.setAttribute('cy', svgY);
+        dot.setAttribute('r', 6);
+        dot.setAttribute('class', 'guide-dot');
+        grp.appendChild(dot);
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 11 — Logique du jeu (règles)
+    // ═══════════════════════════════════════════════════════════════
+
+    function getCaptures(pieces, s, e, color) {
+      var r1=rows.indexOf(s[0]), c1=cols.indexOf(s[1]);
+      var r2=rows.indexOf(e[0]), c2=cols.indexOf(e[1]);
+      var enemy = color==='maintso' ? 'mena' : 'maintso';
+      var dr=r2-r1, dc=c2-c1;
+      function scan(row,col,sr,sc) {
+        var res=[],cr=row+sr,cc=col+sc;
+        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy) {
+          res.push(rows[cr]+cols[cc]); cr+=sr; cc+=sc;
+        }
+        return res;
+      }
+      return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+    }
+
+    function playerHasAnyCapture(pieces, color) {
+      var spotList = Object.keys(pieces);
+      for (var i=0; i<spotList.length; i++) {
+        var s = spotList[i];
+        if (pieces[s] !== color) continue;
+        var moves = allowedMoves[s] || [];
+        for (var j=0; j<moves.length; j++) {
+          var t = moves[j];
+          if (!pieces[t]) {
+            var c = getCaptures(pieces, s, t, color);
+            if (c.approach.length > 0 || c.withdrawal.length > 0) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function canPieceMove(spot, pieces, color, globalCapture) {
+      var moves = allowedMoves[spot] || [];
+      for (var i=0; i<moves.length; i++) {
+        var target = moves[i];
+        if (pieces[target]) continue;
+        var caps = getCaptures(pieces, spot, target, color);
+        var isCap = (caps.approach.length > 0 || caps.withdrawal.length > 0);
+        if (globalCapture ? isCap : true) return true;
+      }
+      return false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  SECTION 12 — Lancement
+    // ═══════════════════════════════════════════════════════════════
+
     init();
+
   })();
   </script>
 </body>
