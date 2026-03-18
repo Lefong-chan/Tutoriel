@@ -1,4 +1,7 @@
-// session.js
+// api/game.js
+// Fitantanana ny état ny lalao Fanorona ao amin'ny Firebase RTDB
+// Tsy misy Firebase config eto – ampiasaina ny admin SDK avy amin'ny env vars (tahaka session.js)
+
 import admin from "firebase-admin";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
@@ -11,21 +14,18 @@ if (!admin.apps.length) {
   }
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: process.env.FIREBASE_DATABASE_URL  // ← RTDB URL required
+    databaseURL: process.env.FIREBASE_DATABASE_URL
   });
 }
 
-const db = admin.firestore();
-const usersCollection = db.collection("users");
+const rtdb        = admin.database();
+const gamesRef    = rtdb.ref("games");
+const invitesRef  = rtdb.ref("gameInvites");
 
-// ── RTDB refs ──────────────────────────────────────────────────────────────
-const rtdb = admin.database();
-const gameInvitesRef = rtdb.ref("gameInvites"); // gameInvites moved from Firestore → RTDB
-const presenceRef    = rtdb.ref("presence");    // lastSeen moved from Firestore → RTDB
-
-const FRIEND_LIMIT      = 100;
-const ONLINE_THRESHOLD  = 12 * 1000; // ping toutes les 10s + 2s marge
-const GAME_INVITE_TTL   = 12 * 1000; // 12s (10s display + 2s margin)
+async function rtdbGet(ref) {
+  const snap = await ref.once("value");
+  return snap.exists() ? snap.val() : null;
+}
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
@@ -34,906 +34,406 @@ export default async function handler(req, res) {
 
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed." });
-  if (allowedOrigin && req.headers.origin !== allowedOrigin) return res.status(403).json({ error: "Forbidden." });
+  if (allowedOrigin && req.headers.origin !== allowedOrigin)
+    return res.status(403).json({ error: "Forbidden." });
 
   const { action, ...payload } = req.body;
   if (!action) return res.status(400).json({ error: "Action required." });
 
   try {
     switch (action) {
-      case "get-session":              return await handleGetSession(payload, res);
-      case "set-username":             return await handleSetUsername(payload, res);
-      case "check-username":           return await handleCheckUsername(payload, res);
-      case "ping":                     return await handlePing(payload, res);
-      case "search-users":             return await handleSearchUsers(payload, res);
-      case "send-friend-request":      return await handleSendFriendRequest(payload, res);
-      case "accept-friend-request":    return await handleAcceptFriendRequest(payload, res);
-      case "reject-friend-request":    return await handleRejectFriendRequest(payload, res);
-      case "cancel-friend-request":    return await handleCancelFriendRequest(payload, res);
-      case "remove-friend":            return await handleRemoveFriend(payload, res);
-      case "get-friends":              return await handleGetFriends(payload, res);
-      case "get-friend-requests":      return await handleGetFriendRequests(payload, res);
-      case "get-sent-requests":        return await handleGetSentRequests(payload, res);
-      // ── Game Invites (RTDB) ──
-      case "send-game-invite":         return await handleSendGameInvite(payload, res);
-      case "check-game-invite":        return await handleCheckGameInvite(payload, res);
-      case "accept-game-invite":       return await handleAcceptGameInvite(payload, res);
-      case "decline-game-invite":      return await handleDeclineGameInvite(payload, res);
-      case "cancel-game-invite":       return await handleCancelGameInvite(payload, res);
-      case "check-game-invite-status": return await handleCheckGameInviteStatus(payload, res);
-      case "update-room-ready":        return await handleUpdateRoomReady(payload, res);
-      case "update-room-settings":     return await handleUpdateRoomSettings(payload, res);
-      // ── Room Chat (RTDB) ──
-      case "send-chat-message":        return await handleSendChatMessage(payload, res);
-      case "get-chat-messages":        return await handleGetChatMessages(payload, res);
-      // ── Fanorona Game ──
-      case "start-fanorona-game":      return await handleStartFanoronaGame(payload, res);
-      case "get-fanorona-game":        return await handleGetFanoronaGame(payload, res);
+      case "get-state":         return await handleGetState(payload, res);
+      case "make-move":         return await handleMakeMove(payload, res);
+      case "stop-move":         return await handleStopMove(payload, res);
+      case "restart-game":      return await handleRestartGame(payload, res);
+      case "request-restart":   return await handleRequestRestart(payload, res);
+      case "get-restart-request": return await handleGetRestartRequest(payload, res);
+      case "confirm-restart":   return await handleConfirmRestart(payload, res);
+      case "cancel-restart":    return await handleCancelRestart(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
-    console.error(`SESSION ERROR [${action}]:`, err);
+    console.error(`GAME API ERROR [${action}]:`, err);
     return res.status(500).json({ error: "An unexpected server error occurred." });
   }
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-/** Lire un nœud RTDB une fois → retourne null si inexistant */
-async function rtdbGet(ref) {
-  const snap = await ref.once("value");
-  return snap.exists() ? snap.val() : null;
-}
-
-/**
- * Lire le lastSeen de plusieurs UIDs depuis RTDB en parallèle.
- * Retourne un Map uid → lastSeen (number, 0 si absent).
- */
-async function getLastSeenBatch(uids) {
-  const entries = await Promise.all(
-    uids.map(async uid => {
-      const val = await rtdbGet(presenceRef.child(uid).child("lastSeen"));
-      return [uid, val || 0];
-    })
-  );
-  return new Map(entries);
-}
-
-// ── Existing handlers ──────────────────────────────────────────────────────
-
-async function handleGetSession(body, res) {
-  const { uid } = body;
-  if (!uid) return res.status(400).json({ error: "UID is required." });
-  const userDoc = await usersCollection.doc(uid).get();
-  if (!userDoc.exists) return res.status(404).json({ error: "User not found." });
-
-  // lastSeen → RTDB (plus de write Firestore ici)
-  await presenceRef.child(uid).update({ lastSeen: Date.now() });
-
-  const userData = userDoc.data();
-  return res.status(200).json({
-    success: true,
-    user: {
-      uid:       userData.uid,
-      email:     userData.email,
-      username:  userData.username || "",
-      createdAt: userData.createdAt
-    }
-  });
-}
-
-async function handlePing(body, res) {
-  const { uid } = body;
-  if (!uid) return res.status(400).json({ error: "UID is required." });
-
-  // lastSeen → RTDB uniquement (économise 1 write Firestore par ping)
-  await presenceRef.child(uid).update({ lastSeen: Date.now() });
-  return res.status(200).json({ success: true });
-}
-
-async function handleSetUsername(body, res) {
-  const { uid, username } = body;
-  if (!uid) return res.status(400).json({ error: "UID is required." });
-  if (!username || username.length < 3 || username.length > 20)
-    return res.status(400).json({ error: "Username must be between 3 and 20 characters." });
-  if (!/^[a-zA-Z0-9_]+$/.test(username))
-    return res.status(400).json({ error: "Username can only contain letters, numbers, and underscores." });
-  const existing = await usersCollection.where("username", "==", username).limit(1).get();
-  if (!existing.empty && existing.docs[0].id !== uid)
-    return res.status(400).json({ error: "This username is already taken." });
-  await usersCollection.doc(uid).update({ username, usernameLower: username.toLowerCase(), updatedAt: Date.now() });
-  const updated = await usersCollection.doc(uid).get();
-  const userData = updated.data();
-  return res.status(200).json({
-    success: true,
-    user: { uid: userData.uid, email: userData.email, username: userData.username }
-  });
-}
-
-async function handleCheckUsername(body, res) {
-  const { username } = body;
-  if (!username || username.length < 3 || username.length > 20)
-    return res.status(400).json({ error: "Invalid username length." });
-  const existing = await usersCollection.where("username", "==", username).limit(1).get();
-  return res.status(200).json({ success: true, available: existing.empty });
-}
-
-async function handleSearchUsers(body, res) {
-  const { uid, query } = body;
-  if (!uid) return res.status(400).json({ error: "UID is required." });
-  if (!query || query.trim().length < 3)
-    return res.status(400).json({ error: "Search query must be at least 3 characters." });
-  const q      = query.trim();
-  const qLower = q.toLowerCase();
-  const currentDoc = await usersCollection.doc(uid).get();
-  if (!currentDoc.exists) return res.status(404).json({ error: "User not found." });
-  const currentData    = currentDoc.data();
-  const friends        = currentData.friends || [];
-  const sentRequests   = currentData.sentRequests || [];
-  const receivedRequests = currentData.friendRequests || [];
-  const currentTotal   = friends.length + sentRequests.length;
-  const seenIds = new Set();
-  const users   = [];
-
-  // Lire lastSeen depuis RTDB en batch pour les résultats de recherche
-  function addDoc(doc) {
-    if (!doc || !doc.exists) return;
-    if (doc.id === uid) return;
-    if (seenIds.has(doc.id)) return;
-    const data = doc.data();
-    if (!data.username) return;
-    seenIds.add(doc.id);
-    let relation = "none";
-    if (friends.includes(doc.id))          relation = "friend";
-    else if (sentRequests.includes(doc.id)) relation = "pending_sent";
-    else if (receivedRequests.includes(doc.id)) relation = "pending_received";
-    const targetFriends = data.friends || [];
-    const targetTotal   = targetFriends.length + (data.friendRequests || []).length;
-    const targetFull    = targetTotal >= FRIEND_LIMIT;
-    users.push({ uid: doc.id, username: data.username, relation, targetFull });
+// ── Helper: mahazo ny color marina arakaraka senderColor/receiverColor ──────
+// Fallback: sender=maintso, receiver=mena (raha game taloha tsy misy senderColor)
+function getMyColor(game, uid) {
+  if (game.senderUid === uid) {
+    return game.senderColor   || "maintso";
+  } else {
+    return game.receiverColor || "mena";
   }
-
-  const searches = [
-    usersCollection
-      .where("usernameLower", ">=", qLower)
-      .where("usernameLower", "<=", qLower + "\uf8ff")
-      .limit(20)
-      .get()
-  ];
-  const isUid = /^\d{9}$/.test(q);
-  if (isUid) searches.push(usersCollection.doc(q).get());
-  const results = await Promise.all(searches);
-  results[0].docs.forEach(addDoc);
-  if (isUid && results[1]) addDoc(results[1]);
-  return res.status(200).json({ success: true, users, currentTotal, friendLimit: FRIEND_LIMIT });
 }
 
-async function handleSendFriendRequest(body, res) {
-  const { uid, toUid } = body;
-  if (!uid || !toUid) return res.status(400).json({ error: "Both UIDs are required." });
-  if (uid === toUid) return res.status(400).json({ error: "You cannot send a friend request to yourself." });
-  const [senderDoc, receiverDoc] = await Promise.all([
-    usersCollection.doc(uid).get(),
-    usersCollection.doc(toUid).get()
-  ]);
-  if (!senderDoc.exists)   return res.status(404).json({ error: "Sender not found." });
-  if (!receiverDoc.exists) return res.status(404).json({ error: "User not found." });
-  const senderData   = senderDoc.data();
-  const receiverData = receiverDoc.data();
-  const senderFriends  = senderData.friends || [];
-  const senderSent     = senderData.sentRequests || [];
-  if (senderFriends.length + senderSent.length >= FRIEND_LIMIT)
-    return res.status(400).json({ error: `You have reached the maximum of ${FRIEND_LIMIT} friends and pending requests.` });
-  const receiverFriends   = receiverData.friends || [];
-  const receiverReceived  = receiverData.friendRequests || [];
-  if (receiverFriends.length + receiverReceived.length >= FRIEND_LIMIT)
-    return res.status(400).json({ error: "This player's friend list is full." });
-  if (senderFriends.includes(toUid))
-    return res.status(400).json({ error: "You are already friends with this user." });
-  if (senderSent.includes(toUid))
-    return res.status(400).json({ error: "A friend request has already been sent to this user." });
-  if ((senderData.friendRequests || []).includes(toUid))
-    return res.status(400).json({ error: "This user has already sent you a friend request. Accept it instead." });
-  const batch = db.batch();
-  batch.update(senderDoc.ref, { sentRequests: admin.firestore.FieldValue.arrayUnion(toUid) });
-  batch.update(receiverDoc.ref, {
-    friendRequests: admin.firestore.FieldValue.arrayUnion(uid),
-    [`friendRequestTimes.${uid}`]: Date.now()
-  });
-  await batch.commit();
-  const updatedSender = await usersCollection.doc(uid).get();
-  const sd = updatedSender.data();
-  return res.status(200).json({
-    success: true,
-    friendCount:  (sd.friends || []).length,
-    currentTotal: (sd.friends || []).length + (sd.sentRequests || []).length
-  });
-}
-
-async function handleAcceptFriendRequest(body, res) {
-  const { uid, fromUid } = body;
-  if (!uid || !fromUid) return res.status(400).json({ error: "Both UIDs are required." });
-  const [accepterDoc, senderDoc] = await Promise.all([
-    usersCollection.doc(uid).get(),
-    usersCollection.doc(fromUid).get()
-  ]);
-  if (!accepterDoc.exists) return res.status(404).json({ error: "User not found." });
-  if (!senderDoc.exists)   return res.status(404).json({ error: "Requesting user not found." });
-  const accepterData = accepterDoc.data();
-  if (!(accepterData.friendRequests || []).includes(fromUid))
-    return res.status(400).json({ error: "No pending friend request from this user." });
-  const batch = db.batch();
-  batch.update(accepterDoc.ref, {
-    friends: admin.firestore.FieldValue.arrayUnion(fromUid),
-    friendRequests: admin.firestore.FieldValue.arrayRemove(fromUid),
-    [`friendRequestTimes.${fromUid}`]: admin.firestore.FieldValue.delete()
-  });
-  batch.update(senderDoc.ref, {
-    friends: admin.firestore.FieldValue.arrayUnion(uid),
-    sentRequests: admin.firestore.FieldValue.arrayRemove(uid)
-  });
-  await batch.commit();
-  const updatedAccepter = await usersCollection.doc(uid).get();
-  const ad = updatedAccepter.data();
-  return res.status(200).json({
-    success: true,
-    friendCount:  (ad.friends || []).length,
-    currentTotal: (ad.friends || []).length + (ad.sentRequests || []).length
-  });
-}
-
-async function handleRejectFriendRequest(body, res) {
-  const { uid, fromUid } = body;
-  if (!uid || !fromUid) return res.status(400).json({ error: "Both UIDs are required." });
-  const [rejecterDoc, senderDoc] = await Promise.all([
-    usersCollection.doc(uid).get(),
-    usersCollection.doc(fromUid).get()
-  ]);
-  if (!rejecterDoc.exists) return res.status(404).json({ error: "User not found." });
-  if (!senderDoc.exists)   return res.status(404).json({ error: "Requesting user not found." });
-  const batch = db.batch();
-  batch.update(rejecterDoc.ref, {
-    friendRequests: admin.firestore.FieldValue.arrayRemove(fromUid),
-    [`friendRequestTimes.${fromUid}`]: admin.firestore.FieldValue.delete()
-  });
-  batch.update(senderDoc.ref, { sentRequests: admin.firestore.FieldValue.arrayRemove(uid) });
-  await batch.commit();
-  return res.status(200).json({ success: true });
-}
-
-async function handleCancelFriendRequest(body, res) {
-  const { uid, toUid } = body;
-  if (!uid || !toUid) return res.status(400).json({ error: "Both UIDs are required." });
-  const [senderDoc, receiverDoc] = await Promise.all([
-    usersCollection.doc(uid).get(),
-    usersCollection.doc(toUid).get()
-  ]);
-  if (!senderDoc.exists)   return res.status(404).json({ error: "User not found." });
-  if (!receiverDoc.exists) return res.status(404).json({ error: "Target user not found." });
-  const batch = db.batch();
-  batch.update(senderDoc.ref,   { sentRequests: admin.firestore.FieldValue.arrayRemove(toUid) });
-  batch.update(receiverDoc.ref, {
-    friendRequests: admin.firestore.FieldValue.arrayRemove(uid),
-    [`friendRequestTimes.${uid}`]: admin.firestore.FieldValue.delete()
-  });
-  await batch.commit();
-  const updatedSender = await usersCollection.doc(uid).get();
-  const sd = updatedSender.data();
-  return res.status(200).json({
-    success: true,
-    friendCount:  (sd.friends || []).length,
-    currentTotal: (sd.friends || []).length + (sd.sentRequests || []).length
-  });
-}
-
-async function handleRemoveFriend(body, res) {
-  const { uid, friendUid } = body;
-  if (!uid || !friendUid) return res.status(400).json({ error: "Both UIDs are required." });
-  const [userDoc, friendDoc] = await Promise.all([
-    usersCollection.doc(uid).get(),
-    usersCollection.doc(friendUid).get()
-  ]);
-  if (!userDoc.exists)   return res.status(404).json({ error: "User not found." });
-  if (!friendDoc.exists) return res.status(404).json({ error: "Friend not found." });
-  const batch = db.batch();
-  batch.update(userDoc.ref,   { friends: admin.firestore.FieldValue.arrayRemove(friendUid) });
-  batch.update(friendDoc.ref, { friends: admin.firestore.FieldValue.arrayRemove(uid) });
-  await batch.commit();
-  const updatedUser = await usersCollection.doc(uid).get();
-  const ud = updatedUser.data();
-  return res.status(200).json({
-    success: true,
-    friendCount:  (ud.friends || []).length,
-    currentTotal: (ud.friends || []).length + (ud.sentRequests || []).length
-  });
-}
-
-async function handleGetFriends(body, res) {
-  const { uid } = body;
-  if (!uid) return res.status(400).json({ error: "UID is required." });
-  const userDoc = await usersCollection.doc(uid).get();
-  if (!userDoc.exists) return res.status(404).json({ error: "User not found." });
-  const userData    = userDoc.data();
-  const friendUids  = userData.friends || [];
-  const currentTotal = friendUids.length + (userData.sentRequests || []).length;
-
-  if (friendUids.length === 0)
-    return res.status(200).json({ success: true, friends: [], friendCount: 0, currentTotal, friendLimit: FRIEND_LIMIT });
-
-  // 1) Lire les profils Firestore (username)
-  const chunks = [];
-  for (let i = 0; i < friendUids.length; i += 10) chunks.push(friendUids.slice(i, i + 10));
-  const profiles = new Map();
-  for (const chunk of chunks) {
-    const snap = await usersCollection
-      .where(admin.firestore.FieldPath.documentId(), "in", chunk)
-      .get();
-    snap.docs.forEach(doc => profiles.set(doc.id, doc.data()));
-  }
-
-  // 2) Lire lastSeen depuis RTDB en parallèle
-  const lastSeenMap = await getLastSeenBatch(friendUids);
-
-  const now     = Date.now();
-  const friends = friendUids
-    .filter(fuid => profiles.has(fuid))
-    .map(fuid => {
-      const d        = profiles.get(fuid);
-      const lastSeen = lastSeenMap.get(fuid) || 0;
-      const online   = (now - lastSeen) < ONLINE_THRESHOLD;
-      return { uid: fuid, username: d.username || fuid, online, lastSeen };
-    });
-
-  friends.sort((a, b) => {
-    if (a.online && !b.online) return -1;
-    if (!a.online && b.online)  return  1;
-    return (b.lastSeen || 0) - (a.lastSeen || 0);
-  });
-
-  return res.status(200).json({
-    success: true,
-    friends,
-    friendCount:  friendUids.length,
-    currentTotal,
-    friendLimit: FRIEND_LIMIT
-  });
-}
-
-async function handleGetFriendRequests(body, res) {
-  const { uid } = body;
-  if (!uid) return res.status(400).json({ error: "UID is required." });
-  const userDoc = await usersCollection.doc(uid).get();
-  if (!userDoc.exists) return res.status(404).json({ error: "User not found." });
-  const userData    = userDoc.data();
-  const requestUids = userData.friendRequests || [];
-  const requestTimes = userData.friendRequestTimes || {};
-  if (requestUids.length === 0) return res.status(200).json({ success: true, requests: [] });
-  const chunks = [];
-  for (let i = 0; i < requestUids.length; i += 10) chunks.push(requestUids.slice(i, i + 10));
-  const requests = [];
-  for (const chunk of chunks) {
-    const snap = await usersCollection
-      .where(admin.firestore.FieldPath.documentId(), "in", chunk)
-      .get();
-    snap.docs.forEach(doc => {
-      requests.push({
-        uid:         doc.id,
-        username:    doc.data().username || doc.id,
-        requestedAt: requestTimes[doc.id] || 0
-      });
-    });
-  }
-  requests.sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0));
-  return res.status(200).json({ success: true, requests });
-}
-
-async function handleGetSentRequests(body, res) {
-  const { uid } = body;
-  if (!uid) return res.status(400).json({ error: "UID is required." });
-  const userDoc = await usersCollection.doc(uid).get();
-  if (!userDoc.exists) return res.status(404).json({ error: "User not found." });
-  const sentUids = userDoc.data().sentRequests || [];
-  if (sentUids.length === 0)
-    return res.status(200).json({ success: true, sent: [], sentCount: 0 });
-  const chunks = [];
-  for (let i = 0; i < sentUids.length; i += 10) chunks.push(sentUids.slice(i, i + 10));
-  const sent = [];
-  for (const chunk of chunks) {
-    const snap = await usersCollection
-      .where(admin.firestore.FieldPath.documentId(), "in", chunk)
-      .get();
-    snap.docs.forEach(doc => {
-      sent.push({ uid: doc.id, username: doc.data().username || doc.id });
-    });
-  }
-  return res.status(200).json({ success: true, sent, sentCount: sentUids.length });
-}
-
-// ── Game Invite handlers (Realtime Database) ───────────────────────────────
-
-/**
- * send-game-invite
- * Body: { uid, toUid, game, color, minutes }
- * Crée gameInvites/{inviteId} dans RTDB avec statut "pending"
- */
-async function handleSendGameInvite(body, res) {
-  const { uid, toUid, game, color, minutes } = body;
-  if (!uid || !toUid) return res.status(400).json({ error: "Both UIDs are required." });
-  if (!game)          return res.status(400).json({ error: "Game type is required." });
-
-  const [senderDoc, receiverDoc] = await Promise.all([
-    usersCollection.doc(uid).get(),
-    usersCollection.doc(toUid).get()
-  ]);
-  if (!senderDoc.exists)   return res.status(404).json({ error: "Sender not found." });
-  if (!receiverDoc.exists) return res.status(404).json({ error: "Receiver not found." });
-
-  const senderUsername   = senderDoc.data().username   || uid;
-  const receiverUsername = receiverDoc.data().username || toUid;
-
-  // Annuler toute invitation pending existante du même sender vers le même receiver
-  const existingSnap = await gameInvitesRef
-    .orderByChild("fromUid")
-    .equalTo(uid)
-    .once("value");
-
-  if (existingSnap.exists()) {
-    const updates = {};
-    existingSnap.forEach(child => {
-      const data = child.val();
-      if (data.toUid === toUid && data.status === "pending") {
-        updates[`${child.key}/status`] = "cancelled";
-      }
-    });
-    if (Object.keys(updates).length > 0) await gameInvitesRef.update(updates);
-  }
-
-  const newInviteRef = gameInvitesRef.push();
-  const inviteId     = newInviteRef.key;
-  const now          = Date.now();
-
-  await newInviteRef.set({
-    inviteId,
-    fromUid:          uid,
-    fromUsername:     senderUsername,
-    toUid,
-    toUsername:       receiverUsername,
-    game,
-    color:            color   || "green",
-    minutes:          minutes || 5,
-    status:           "pending",  // pending | accepted | declined | cancelled | expired
-    receiverReady:    false,      // ← false à la création; le receiver met true immédiatement à l'entrée
-    createdAt:        now,
-    expiresAt:        now + GAME_INVITE_TTL
-  });
-
-  return res.status(200).json({ success: true, inviteId });
-}
-
-/**
- * check-game-invite
- * Body: { uid }
- * Retourne la dernière invitation "pending" non expirée destinée à cet utilisateur
- */
-async function handleCheckGameInvite(body, res) {
-  const { uid } = body;
-  if (!uid) return res.status(400).json({ error: "UID is required." });
-
-  const now  = Date.now();
-  const snap = await gameInvitesRef
-    .orderByChild("toUid")
-    .equalTo(uid)
-    .once("value");
-
-  if (!snap.exists()) return res.status(200).json({ success: true, invite: null });
-
-  const docs = [];
-  snap.forEach(child => {
-    const data = child.val();
-    if (data.status === "pending") {
-      docs.push({ key: child.key, data: { ...data, inviteId: child.key } });
-    }
-  });
-
-  if (docs.length === 0) return res.status(200).json({ success: true, invite: null });
-
-  // Trier par createdAt desc
-  docs.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
-
-  let validInvite = null;
-  const expiredUpdates = {};
-  for (const { key, data } of docs) {
-    if (data.expiresAt < now) {
-      expiredUpdates[`${key}/status`] = "expired";
-    } else {
-      if (!validInvite) validInvite = data;
-    }
-  }
-
-  if (Object.keys(expiredUpdates).length > 0) {
-    gameInvitesRef.update(expiredUpdates).catch(() => {});
-  }
-
-  return res.status(200).json({ success: true, invite: validInvite });
-}
-
-/**
- * accept-game-invite
- * Body: { uid, inviteId }
- * Met le statut à "accepted" ET receiverReady à true immédiatement
- * → corrige le bug "Opponent not ready" affiché côté sender au premier polling
- */
-async function handleAcceptGameInvite(body, res) {
-  const { uid, inviteId } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-
-  if (!invite) return res.status(404).json({ error: "Invitation not found." });
-  if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
-  if (invite.status !== "pending") return res.status(400).json({ error: "Invitation is no longer valid." });
-  if (invite.expiresAt < Date.now()) {
-    await inviteRef.update({ status: "expired" });
-    return res.status(400).json({ error: "Invitation has expired." });
-  }
-
-  // FIX BUG "Opponent not ready":
-  // On met receiverReady: true en même temps qu'accepted
-  // → le sender verra toujours ready=true dès le 1er polling après l'acceptation
-  await inviteRef.update({
-    status:        "accepted",
-    acceptedAt:    Date.now(),
-    receiverReady: true   // ← clé du fix: évite le flash "Opponent not ready"
-  });
-
-  return res.status(200).json({
-    success:          true,
-    game:             invite.game,
-    color:            invite.color,
-    minutes:          invite.minutes,
-    senderUid:        invite.fromUid,
-    senderUsername:   invite.fromUsername,
-    receiverUid:      invite.toUid,
-    receiverUsername: invite.toUsername
-  });
-}
-
-/**
- * decline-game-invite
- * Body: { uid, inviteId }
- */
-async function handleDeclineGameInvite(body, res) {
-  const { uid, inviteId } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-
-  if (!invite) return res.status(404).json({ error: "Invitation not found." });
-  if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
-
-  await inviteRef.update({ status: "declined", declinedAt: Date.now() });
-  return res.status(200).json({ success: true });
-}
-
-/**
- * cancel-game-invite
- * Body: { uid, inviteId }
- * Utilisé par l'expéditeur pour annuler (countdown écoulé ou retour)
- */
-async function handleCancelGameInvite(body, res) {
-  const { uid, inviteId } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-
-  if (!invite) return res.status(200).json({ success: true }); // déjà supprimé
-  if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
-
-  await inviteRef.update({ status: "cancelled" });
-  return res.status(200).json({ success: true });
-}
-
-/**
- * check-game-invite-status
- * Body: { uid, inviteId }
- * Utilisé par l'expéditeur pour savoir si son invitation a été acceptée/refusée
- * + utilisé par la room sync polling (sender & receiver)
- */
-// Cache simple en mémoire (TTL 2s) — évite les lectures RTDB répétées
-const _inviteStatusCache = new Map();
-const _INVITE_STATUS_TTL = 2000;
-
-async function handleCheckGameInviteStatus(body, res) {
-  const { uid, inviteId } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  // Vérifier le cache
-  const cached = _inviteStatusCache.get(inviteId);
-  if (cached && (Date.now() - cached.ts) < _INVITE_STATUS_TTL) {
-    const inv = cached.data;
-    if (inv.senderUid !== uid && inv.receiverUid !== uid)
-      return res.status(403).json({ error: "Not authorized." });
-    return res.status(200).json({ success: true, ...inv });
-  }
-
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-
-  if (!invite) return res.status(200).json({ success: true, status: "not_found" });
-  if (invite.fromUid !== uid && invite.toUid !== uid)
-    return res.status(403).json({ error: "Not authorized." });
-
-  const responseData = {
-    status:           invite.status,
-    game:             invite.game,
-    color:            invite.color,
-    minutes:          invite.minutes,
-    receiverReady:    invite.receiverReady !== false,
-    senderUid:        invite.fromUid,
-    senderUsername:   invite.fromUsername,
-    receiverUid:      invite.toUid,
-    receiverUsername: invite.toUsername
-  };
-
-  _inviteStatusCache.set(inviteId, { data: responseData, ts: Date.now() });
-  setTimeout(() => _inviteStatusCache.delete(inviteId), _INVITE_STATUS_TTL + 100);
-
-  return res.status(200).json({ success: true, ...responseData });
-}
-
-/**
- * update-room-ready
- * Body: { uid, inviteId, ready }
- * Receiver met à jour son état prêt (true/false)
- */
-async function handleUpdateRoomReady(body, res) {
-  const { uid, inviteId, ready } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-
-  if (!invite) return res.status(404).json({ error: "Invitation not found." });
-  if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
-  if (invite.status !== "accepted") return res.status(400).json({ error: "Invitation is not active." });
-
-  await inviteRef.update({ receiverReady: ready === true || ready === "true" });
-  return res.status(200).json({ success: true });
-}
-
-/**
- * update-room-settings
- * Body: { uid, inviteId, color, minutes, game }
- * Sender met à jour color/minutes/game dans RTDB pour que le receiver les voie
- */
-async function handleUpdateRoomSettings(body, res) {
-  const { uid, inviteId, color, minutes, game } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-
-  if (!invite) return res.status(404).json({ error: "Invitation not found." });
-  if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
-  if (invite.status !== "accepted") return res.status(400).json({ error: "Invitation is not active." });
-
-  const update = {};
-  if (color)   update.color   = color;
-  if (minutes) update.minutes = parseInt(minutes);
-  if (game)    update.game    = game;
-  await inviteRef.update(update);
-  return res.status(200).json({ success: true });
-}
-
-// ── Room Chat handlers (RTDB) ──────────────────────────────────────────────
-
-const CHAT_MAX_CHARS   = 30;
-const CHAT_MAX_MSGS    = 20;
-
-/**
- * send-chat-message
- * Body: { uid, inviteId, text }
- * Vérifie que uid est bien sender ou receiver de l'invite,
- * puis écrit le message dans RTDB: roomChats/{inviteId}/messages/{pushId}
- * et supprime automatiquement les messages > 20
- */
-async function handleSendChatMessage(body, res) {
-  const { uid, inviteId, text } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-  if (!text || !text.trim()) return res.status(400).json({ error: "Message cannot be empty." });
-
-  // Vérifier que l'utilisateur appartient bien à cette room
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-  if (!invite) return res.status(404).json({ error: "Room not found." });
-  if (invite.fromUid !== uid && invite.toUid !== uid)
-    return res.status(403).json({ error: "Not authorized." });
-  if (invite.status !== "accepted")
-    return res.status(400).json({ error: "Room is not active." });
-
-  // Limiter à CHAT_MAX_CHARS (compté en Array.from pour les emojis)
-  const chars = Array.from(text.trim());
-  const safeText = chars.slice(0, CHAT_MAX_CHARS).join('');
-
-  // Récupérer username depuis Firestore
-  const userDoc = await usersCollection.doc(uid).get();
-  const username = userDoc.exists ? (userDoc.data().username || uid) : uid;
-
-  const msgsRef = rtdb.ref(`roomChats/${inviteId}/messages`);
-  const newMsgRef = msgsRef.push();
-  await newMsgRef.set({
-    senderUid:      uid,
-    senderUsername: username,
-    text:           safeText,
-    ts:             Date.now()
-  });
-
-  // Supprimer automatiquement les messages dépassant CHAT_MAX_MSGS
-  const allSnap = await msgsRef.once("value");
-  if (allSnap.exists()) {
-    const allMsgs = [];
-    allSnap.forEach(child => {
-      allMsgs.push({ key: child.key, ts: child.val().ts || 0 });
-    });
-    if (allMsgs.length > CHAT_MAX_MSGS) {
-      allMsgs.sort((a, b) => a.ts - b.ts);
-      const toDelete = allMsgs.slice(0, allMsgs.length - CHAT_MAX_MSGS);
-      const delUpdates = {};
-      toDelete.forEach(m => { delUpdates[m.key] = null; });
-      await msgsRef.update(delUpdates);
-    }
-  }
-
-  return res.status(200).json({ success: true });
-}
-
-/**
- * get-chat-messages
- * Body: { uid, inviteId }
- * Retourne les messages triés par ts (max CHAT_MAX_MSGS derniers)
- */
-async function handleGetChatMessages(body, res) {
-  const { uid, inviteId } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  // Vérifier appartenance à la room
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-  if (!invite) return res.status(404).json({ error: "Room not found." });
-  if (invite.fromUid !== uid && invite.toUid !== uid)
-    return res.status(403).json({ error: "Not authorized." });
-
-  const msgsRef = rtdb.ref(`roomChats/${inviteId}/messages`);
-  const snap    = await msgsRef.once("value");
-
-  if (!snap.exists()) return res.status(200).json({ success: true, messages: [] });
-
-  const msgs = [];
-  snap.forEach(child => {
-    const d = child.val();
-    msgs.push({
-      key:            child.key,
-      senderUid:      d.senderUid,
-      senderUsername: d.senderUsername,
-      text:           d.text,
-      ts:             d.ts || 0
-    });
-  });
-
-  msgs.sort((a, b) => a.ts - b.ts);
-  const last = msgs.slice(-CHAT_MAX_MSGS);
-
-  return res.status(200).json({ success: true, messages: last });
-}
-
-
-// ── Fanorona Game handlers ─────────────────────────────────────────────────
-
-const ROWS = ['A','B','C','D','E'];
-const COLS = ['1','2','3','4','5','6','7','8','9'];
-
-/**
- * start-fanorona-game
- * Body: { uid, inviteId }
- * Seul le sender (host) peut démarrer.
- * Crée games/{inviteId} dans RTDB avec plateau initial + infos joueurs.
- * Met invite.status = "started".
- */
-async function handleStartFanoronaGame(body, res) {
-  const { uid, inviteId } = body;
-  if (!uid || !inviteId) return res.status(400).json({ error: "UID and inviteId are required." });
-
-  const inviteRef = gameInvitesRef.child(inviteId);
-  const invite    = await rtdbGet(inviteRef);
-
-  if (!invite) return res.status(404).json({ error: "Room not found." });
-  if (invite.fromUid !== uid) return res.status(403).json({ error: "Only the room host can start the game." });
-  if (invite.status !== "accepted") return res.status(400).json({ error: "Room is not active." });
-
-  const gameRef   = rtdb.ref(`games/${inviteId}`);
-  const existing  = await rtdbGet(gameRef);
-
-  if (!existing) {
-    const initialPieces = {};
-    ROWS.forEach((r, ri) => {
-      COLS.forEach((c, ci) => {
-        const key = r + c;
-        if (ri < 2)       initialPieces[key] = "mena";
-        else if (ri > 2)  initialPieces[key] = "maintso";
-        else {
-          if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
-          else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
-          // ci=4 (C5) = vide
-        }
-      });
-    });
-
-    // Récupérer usernames
-    const senderDoc   = await usersCollection.doc(invite.fromUid).get();
-    const receiverDoc = await usersCollection.doc(invite.toUid).get();
-    const senderUsername   = senderDoc.exists   ? (senderDoc.data().username   || invite.fromUid) : invite.fromUid;
-    const receiverUsername = receiverDoc.exists ? (receiverDoc.data().username || invite.toUid)   : invite.toUid;
-
-    // Sender mahazo ny color nofidiny; Receiver mahazo ny mifanohitra
-    // invite.color = 'green' na 'red' (ny color nofidiny an'ilay sender)
-    const senderColorRaw   = invite.color || 'green';
-    const senderColorGame  = senderColorRaw  === 'red' ? 'mena' : 'maintso';
-    const receiverColorGame = senderColorGame === 'mena' ? 'maintso' : 'mena';
-    // Ny turn voalohany dia maintso foana (araka ny fitsipika fanorona)
-    await gameRef.set({
-      pieces:            initialPieces,
-      turn:              "maintso",
-      prevFirstTurn:     "maintso",   // voatahiry ho an'ny restart
-      senderUid:         invite.fromUid,
-      senderUsername,
-      senderColor:       senderColorGame,
-      receiverUid:       invite.toUid,
-      receiverUsername,
-      receiverColor:     receiverColorGame,
-      startedAt:         Date.now()
-    });
-  }
-
-  await inviteRef.update({ status: "started", gameId: inviteId });
-
-  return res.status(200).json({ success: true, gameId: inviteId });
-}
-
-/**
- * get-fanorona-game
- * Body: { uid, gameId }
- * Retourne l'état du jeu + couleur du joueur appelant.
- */
-async function handleGetFanoronaGame(body, res) {
+// ── Mamerina ny état rehetra ny lalao ──────────────────────────────────────
+// Body: { uid, gameId }
+async function handleGetState(body, res) {
   const { uid, gameId } = body;
-  if (!uid || !gameId) return res.status(400).json({ error: "UID and gameId are required." });
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
 
-  const gameRef = rtdb.ref(`games/${gameId}`);
-  const game    = await rtdbGet(gameRef);
-
+  const game = await rtdbGet(gamesRef.child(gameId));
   if (!game) return res.status(404).json({ error: "Game not found." });
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
 
-  // Jerena senderColor/receiverColor voatahiry (arakaraka ny nofidian'ilay sender)
-  // Fallback: sender=maintso, receiver=mena (raha game taloha tsy misy senderColor)
-  const myColor = game.senderUid === uid
-    ? (game.senderColor   || "maintso")
-    : (game.receiverColor || "mena");
-  const opponentColor = myColor === "maintso" ? "mena" : "maintso";
-  const opponentUsername = game.senderUid === uid ? game.receiverUsername : game.senderUsername;
+  return res.status(200).json({ success: true, game });
+}
+
+// ── Manao dingana (miampy capture) ─────────────────────────────────────────
+// Body: { uid, gameId, origin, target, capturedSpots, captureType }
+//   origin        : toerana nialan'ny pio (ex: "C5")
+//   target        : toerana nialanana (ex: "C6")
+//   capturedSpots : ["D6","E6"] – pio nabo nanalana
+//   captureType   : "approach" | "withdrawal" | null
+async function handleMakeMove(body, res) {
+  const { uid, gameId, origin, target, capturedSpots = [], dir } = body;
+  if (!uid || !gameId || !origin || !target)
+    return res.status(400).json({ error: "uid, gameId, origin, target required." });
+
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game)                         return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+                                     return res.status(403).json({ error: "Not authorized." });
+
+  const myColor = getMyColor(game, uid);
+  if (game.turn !== myColor)         return res.status(400).json({ error: "Tsy anjaranao." });
+
+  // Raha misy movingPiece, ny origin dia tsy maintsy izany movingPiece izany
+  if (game.movingPiece && game.movingPiece !== origin)
+    return res.status(400).json({ error: "Pio hafa tsy azo hetsehina izao." });
+
+  const pieces  = { ...(game.pieces || {}) };
+  const visited = [...(game.visited || [])];
+
+  // Manetsika pio
+  delete pieces[origin];
+  pieces[target] = myColor;
+
+  // Manala pio nabo
+  if (Array.isArray(capturedSpots)) {
+    capturedSpots.forEach(s => delete pieces[s]);
+  }
+
+  const newVisited = [...visited, origin];
+  const wasCapture = capturedSpots.length > 0;
+
+  // Jerena raha mbola azo hihazoana mihetsika (multi-capture)
+  const canContinue = wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
+
+  const prevHistory    = Array.isArray(game.moveHistory)   ? game.moveHistory   : [];
+  const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
+  if (canContinue) {
+    await gameRef.update({
+      pieces,
+      movingPiece: target,
+      visited:     newVisited,
+      lastDir:     dir || "",
+      moveHistory: [...prevHistory, newHistoryEntry],
+    });
+    return res.status(200).json({ success: true, continuing: true });
+  } else {
+    const nextColor = myColor === "maintso" ? "mena" : "maintso";
+    const fullHistory = [...prevHistory, newHistoryEntry];
+    await gameRef.update({
+      pieces,
+      turn:            nextColor,
+      movingPiece:     "",
+      visited:         [],
+      lastDir:         "",
+      moveHistory:     [],
+      lastTurnHistory: fullHistory,
+      lastTurnColor:   myColor
+    });
+    return res.status(200).json({ success: true, continuing: false });
+  }
+}
+
+// ── Mijanona an-tsaina (bouton OK) ─────────────────────────────────────────
+// Body: { uid, gameId, pieces }
+async function handleStopMove(body, res) {
+  const { uid, gameId, pieces } = body;
+  if (!uid || !gameId || !pieces)
+    return res.status(400).json({ error: "uid, gameId, pieces required." });
+
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+
+  const myColor = getMyColor(game, uid);
+  if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
+  if (!game.movingPiece)     return res.status(400).json({ error: "Tsy misy movingPiece." });
+
+  const nextColor = myColor === "maintso" ? "mena" : "maintso";
+  const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
+  await gameRef.update({
+    pieces,
+    turn:            nextColor,
+    movingPiece:     "",
+    visited:         [],
+    lastDir:         "",
+    moveHistory:     [],
+    lastTurnHistory: stopHistory,
+    lastTurnColor:   myColor
+  });
+  return res.status(200).json({ success: true });
+}
+
+// ── Request restart (iray mangataka, iray manaiky na mandà) ───────────────
+// Body: { uid, gameId }
+async function handleRequestRestart(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  // Voatahiry ny uid nangataka sy ny username
+  const myColor = getMyColor(game, uid);
+  const myUsername = game.senderUid === uid ? game.senderUsername : game.receiverUsername;
+  await gameRef.update({
+    restartRequest:         uid,
+    restartRequestUsername: myUsername,
+    restartConfirmed:       false,
+  });
+  return res.status(200).json({ success: true });
+}
+
+// ── Jerena ny restart request ──────────────────────────────────────────────
+// Body: { uid, gameId }
+async function handleGetRestartRequest(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const game = await rtdbGet(gamesRef.child(gameId));
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  const requested  = !!(game.restartRequest);
+  const requestedBy = game.restartRequest || null;
+  const confirmed  = !!(game.restartConfirmed);
+
+  if (confirmed) {
+    // Mamerina ny myColor — TSY MIOVA (color an'ilay mpilalao tsy ovaina)
+    const myColor = getMyColor(game, uid);
+    return res.status(200).json({
+      success:       true,
+      requested:     false,
+      confirmed:     true,
+      myColor,
+      senderColor:   game.senderColor   || "maintso",
+      receiverColor: game.receiverColor || "mena",
+    });
+  }
 
   return res.status(200).json({
     success: true,
+    requested,
+    requestedBy,
+    requestedByUsername: game.restartRequestUsername || null,
+    confirmed: false,
+  });
+}
+
+// ── Manaiky restart ────────────────────────────────────────────────────────
+// Body: { uid, gameId }
+async function handleConfirmRestart(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  if (game.restartRequest === uid)
+    return res.status(400).json({ error: "Tsy azonao ekena ny fangatahana nataonao." });
+
+  // TSY OVAINA ny senderColor/receiverColor — mitovy amin'ny teo aloha
+  const senderColor   = game.senderColor   || "maintso";
+  const receiverColor = game.receiverColor || "mena";
+
+  // Ny turn voalohany no mifamadika:
+  // Raha maintso nanomboka teo aloha → mena izao, ary ny mifanohitra
+  const prevFirstTurn = game.prevFirstTurn || "maintso";
+  const newFirstTurn  = prevFirstTurn === "maintso" ? "mena" : "maintso";
+
+  // initialPieces: mena foana rows A,B (ambony); maintso rows D,E (ambany)
+  // Tsy ovaina arakaraka ny color — pieces mitovy foana
+  const initialPieces = {};
+  const R = ["A","B","C","D","E"];
+  const C = ["1","2","3","4","5","6","7","8","9"];
+  R.forEach((r, ri) => {
+    C.forEach((c, ci) => {
+      const key = r + c;
+      if (ri < 2)       initialPieces[key] = "mena";
+      else if (ri > 2)  initialPieces[key] = "maintso";
+      else {
+        if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
+        else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
+      }
+    });
+  });
+
+  await gameRef.set({
+    pieces:                initialPieces,
+    turn:                  newFirstTurn,   // mifamadika: maintso↔mena
+    prevFirstTurn:         newFirstTurn,   // voatahiry ho an'ny restart manaraka
+    senderUid:             game.senderUid,
+    senderUsername:        game.senderUsername,
+    senderColor:           senderColor,    // TSY MIOVA
+    receiverUid:           game.receiverUid,
+    receiverUsername:      game.receiverUsername,
+    receiverColor:         receiverColor,  // TSY MIOVA
+    startedAt:             Date.now(),
+    movingPiece:           "",
+    visited:               [],
+    lastDir:               "",
+    moveHistory:           [],
+    lastTurnHistory:       [],
+    lastTurnColor:         "",
+    restartRequest:        null,
+    restartRequestUsername: null,
+    restartConfirmed:      true,
+  });
+
+  // myColor = color an'ilay mpilalao — TSY MIOVA
+  const myColor = game.senderUid === uid ? senderColor : receiverColor;
+  return res.status(200).json({
+    success:       true,
+    confirmed:     true,
     myColor,
-    opponentColor,
-    opponentUsername,
-    senderUsername:   game.senderUsername,
+    senderColor,
+    receiverColor,
+  });
+}
+
+// ── Mandà restart ──────────────────────────────────────────────────────────
+// Body: { uid, gameId }
+async function handleCancelRestart(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+
+  await gameRef.update({
+    restartRequest:         null,
+    restartRequestUsername: null,
+    restartConfirmed:       false,
+  });
+  return res.status(200).json({ success: true });
+}
+
+// ── Restart game ───────────────────────────────────────────────────────────
+// Body: { uid, gameId }
+// Mamerina ny lalao: mifamadika ny turn voalohany sy ny senderColor/receiverColor
+// Ilay tsy nanomboka voalohany no hanomboka amin'ny lalao vaovao
+async function handleRestartGame(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  // Mifamadika ny senderColor sy receiverColor
+  const prevSenderColor   = game.senderColor   || "maintso";
+  const prevReceiverColor = game.receiverColor || "mena";
+  const newSenderColor    = prevSenderColor   === "maintso" ? "mena"    : "maintso";
+  const newReceiverColor  = prevReceiverColor === "maintso" ? "mena"    : "maintso";
+
+  // Ny turn voalohany = maintso foana (araka ny fitsipika)
+  // Nefa ny mpilalao izay nanana maintso dia mifamadika koa
+  // → ilay tsy maintso teo dia maintso izao → izy no manomboka
+  const initialPieces = {};
+  const R = ["A","B","C","D","E"];
+  const C = ["1","2","3","4","5","6","7","8","9"];
+  R.forEach((r, ri) => {
+    C.forEach((c, ci) => {
+      const key = r + c;
+      if (ri < 2)       initialPieces[key] = "mena";
+      else if (ri > 2)  initialPieces[key] = "maintso";
+      else {
+        if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
+        else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
+      }
+    });
+  });
+
+  await gameRef.set({
+    pieces:          initialPieces,
+    turn:            "maintso",
+    senderUid:       game.senderUid,
+    senderUsername:  game.senderUsername,
+    senderColor:     newSenderColor,
+    receiverUid:     game.receiverUid,
     receiverUsername: game.receiverUsername,
-    pieces:           game.pieces,
-    turn:             game.turn
+    receiverColor:   newReceiverColor,
+    startedAt:       Date.now(),
+    movingPiece:     "",
+    visited:         [],
+    lastDir:         "",
+    moveHistory:     [],
+    lastTurnHistory: [],
+    lastTurnColor:   "",
+  });
+
+  return res.status(200).json({
+    success:       true,
+    senderColor:   newSenderColor,
+    receiverColor: newReceiverColor,
+    myColor:       game.senderUid === uid ? newSenderColor : newReceiverColor,
+  });
+}
+
+// ── Helper: jerena raha misy capture mbola azo atao ────────────────────────
+const ROWS = ['A','B','C','D','E'];
+const COLS = ['1','2','3','4','5','6','7','8','9'];
+
+const ALLOWED_MOVES = {
+  'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],
+  'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
+  'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
+  'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],
+  'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
+  'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
+  'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
+  'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],'C6':['B6','C5','C7','D6'],
+  'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],'C9':['B8','B9','C8','D8','D9'],
+  'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
+  'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
+  'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
+  'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],
+  'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
+  'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
+};
+
+function getCaptures(pieces, s, e, color) {
+  const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(e[0]),c2=COLS.indexOf(e[1]);
+  const enemy = color==="maintso"?"mena":"maintso", dr=r2-r1, dc=c2-c1;
+  const scan=(row,col,sr,sc)=>{
+    let res=[],cr=row+sr,cc=col+sc;
+    while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[ROWS[cr]+COLS[cc]]===enemy){res.push(ROWS[cr]+COLS[cc]);cr+=sr;cc+=sc;}
+    return res;
+  };
+  return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+}
+
+function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
+  const moves = ALLOWED_MOVES[s] || [];
+  return moves.some(t => {
+    if (pieces[t] || (visited && visited.includes(t))) return false;
+    const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(t[0]),c2=COLS.indexOf(t[1]);
+    const dir=`${r2-r1},${c2-c1}`;
+    if (lastDir && lastDir === dir) return false;
+    const caps = getCaptures(pieces, s, t, color);
+    return (caps.approach.length > 0 || caps.withdrawal.length > 0);
   });
 }
