@@ -42,9 +42,10 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
-      case "get-state":    return await handleGetState(payload, res);
-      case "make-move":    return await handleMakeMove(payload, res);
-      case "stop-move":    return await handleStopMove(payload, res);
+      case "get-state":     return await handleGetState(payload, res);
+      case "make-move":     return await handleMakeMove(payload, res);
+      case "stop-move":     return await handleStopMove(payload, res);
+      case "restart-game":  return await handleRestartGame(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -175,6 +176,70 @@ async function handleStopMove(body, res) {
     lastTurnColor:   myColor
   });
   return res.status(200).json({ success: true });
+}
+
+// ── Restart game ───────────────────────────────────────────────────────────
+// Body: { uid, gameId }
+// Mamerina ny lalao: mifamadika ny turn voalohany sy ny senderColor/receiverColor
+// Ilay tsy nanomboka voalohany no hanomboka amin'ny lalao vaovao
+async function handleRestartGame(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  // Mifamadika ny senderColor sy receiverColor
+  const prevSenderColor   = game.senderColor   || "maintso";
+  const prevReceiverColor = game.receiverColor || "mena";
+  const newSenderColor    = prevSenderColor   === "maintso" ? "mena"    : "maintso";
+  const newReceiverColor  = prevReceiverColor === "maintso" ? "mena"    : "maintso";
+
+  // Ny turn voalohany = maintso foana (araka ny fitsipika)
+  // Nefa ny mpilalao izay nanana maintso dia mifamadika koa
+  // → ilay tsy maintso teo dia maintso izao → izy no manomboka
+  const initialPieces = {};
+  const R = ["A","B","C","D","E"];
+  const C = ["1","2","3","4","5","6","7","8","9"];
+  R.forEach((r, ri) => {
+    C.forEach((c, ci) => {
+      const key = r + c;
+      if (ri < 2)       initialPieces[key] = "mena";
+      else if (ri > 2)  initialPieces[key] = "maintso";
+      else {
+        if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
+        else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
+      }
+    });
+  });
+
+  await gameRef.set({
+    pieces:          initialPieces,
+    turn:            "maintso",
+    senderUid:       game.senderUid,
+    senderUsername:  game.senderUsername,
+    senderColor:     newSenderColor,
+    receiverUid:     game.receiverUid,
+    receiverUsername: game.receiverUsername,
+    receiverColor:   newReceiverColor,
+    startedAt:       Date.now(),
+    movingPiece:     "",
+    visited:         [],
+    lastDir:         "",
+    moveHistory:     [],
+    lastTurnHistory: [],
+    lastTurnColor:   "",
+  });
+
+  return res.status(200).json({
+    success:       true,
+    senderColor:   newSenderColor,
+    receiverColor: newReceiverColor,
+    myColor:       game.senderUid === uid ? newSenderColor : newReceiverColor,
+  });
 }
 
 // ── Helper: jerena raha misy capture mbola azo atao ────────────────────────
