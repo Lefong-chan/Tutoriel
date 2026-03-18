@@ -301,6 +301,10 @@
     //   OU si aucun mouvement n'est en cours côté joueur)
     // ═══════════════════════════════════════════════════════════════
 
+    // Queue ny hetsika avy amin'ny adversaire mbola tsy nampiseho
+    var oppQueueBuffer   = [];
+    var oppQueuePlaying  = false;
+
     async function pollAdversaire() {
       try {
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
@@ -311,31 +315,37 @@
         if (movingInProgress) return;
 
         // Raha mbola tsy tour anao → adversaire manao hetsika
-        // Havaozina ny pieces mba hita ny pio nalehany (tsy replay, tsy trail)
+        // Mandray ny oppMoveQueue ka mampiseho tsirairay
         if (serverTurn !== myColor) {
-          if (localState) {
-            localState.pieces = Object.assign({}, d.game.pieces);
-            localState.turn   = d.game.turn;
-            renderPieces(localState.pieces, localState);
+          var queue = Array.isArray(d.game.oppMoveQueue) ? d.game.oppMoveQueue : [];
+          if (queue.length > 0 && !oppQueuePlaying) {
+            // Ampiana ao amin'ny buffer ny hetsika tsy mbola nampiseho
+            // (misoroka ny duplicate amin'ny fampiasana lastSeenHistKey)
+            var newMoves = queue.slice(oppQueueBuffer.length);
+            if (newMoves.length > 0) {
+              oppQueueBuffer = oppQueueBuffer.concat(newMoves);
+              playOppQueue(d.game);
+            }
           }
           return;
         }
 
-        // Tour anao — raha efa manao hetsika ianao (misy selectedSpot na movingPiece),
+        // Tour anao — afoano ny buffer
+        oppQueueBuffer  = [];
+        oppQueuePlaying = false;
+
+        // Raha efa manao hetsika ianao (misy selectedSpot na movingPiece),
         // tsy ovaina ny state mba tsy hanafoana ny selection nataonao
         if (selectedSpot || (localState && localState.movingPiece)) return;
 
-        // Tonga eto fotsiny raha tour anao SY tsy mbola nanao selection ianao
         var histColor = d.game.lastTurnColor || '';
         var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
         var histKey   = histColor + '|' + history.length + '|' +
                         (history.length > 0 ? history[history.length - 1].target : '');
-
         if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
           lastSeenHistKey = histKey;
         }
 
-        // Havaozina ny localState fotsiny raha tena nisy fanovana
         var serverPiecesStr = JSON.stringify(d.game.pieces);
         var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
         if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
@@ -351,6 +361,53 @@
 
       } catch(e) { console.warn('poll error', e); }
     }
+
+    // Mampiseho tsirairay ny hetsika avy amin'ny adversaire (tsy voadingana)
+    function playOppQueue(serverGame) {
+      if (oppQueuePlaying || oppQueueBuffer.length === 0) return;
+      oppQueuePlaying = true;
+
+      // Ataovy tsy maintsy misy localState voaomana
+      if (!localState) {
+        localState = copyState(serverGame);
+        localState.turn = myOppColor;
+      }
+
+      var idx = 0;
+
+      function applyNext() {
+        if (idx >= oppQueueBuffer.length) {
+          // Vita ny queue — ack any amin'ny server
+          var count = oppQueueBuffer.length;
+          oppQueueBuffer  = [];
+          oppQueuePlaying = false;
+          callApi(GAME_API_URL, 'ack-moves', { uid: myUid, gameId: gameId, count: count })
+            .catch(function(e) { console.warn('ack-moves error', e); });
+          return;
+        }
+
+        var move = oppQueueBuffer[idx];
+        idx++;
+
+        // Ampiharo ny hetsika amin'ny localState
+        var newPieces = Object.assign({}, localState.pieces);
+        delete newPieces[move.origin];
+        newPieces[move.target] = myOppColor;
+        if (Array.isArray(move.capturedSpots)) {
+          move.capturedSpots.forEach(function(s) { delete newPieces[s]; });
+        }
+        localState.pieces = newPieces;
+        localState.turn   = myOppColor;
+
+        renderPieces(localState.pieces, localState);
+
+        // 80ms isaky ny hetsika — haingana fa hita avokoa
+        setTimeout(applyNext, 80);
+      }
+
+      applyNext();
+    }
+
 
     function copyState(game) {
       return {
