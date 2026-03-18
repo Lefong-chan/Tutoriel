@@ -83,6 +83,32 @@
 
     /* ── Erreur ── */
     #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
+
+    /* ── Restart Request Notification (mitovy amin'ny gin dashboard) ── */
+    .rr-notif {
+      position: fixed; top: 14px; right: 14px; width: 272px;
+      background: white; border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(91,33,182,0.2), 0 2px 8px rgba(0,0,0,0.08);
+      border: 1.5px solid #ede9f8; z-index: 99990; overflow: hidden;
+      opacity: 0; transform: translateX(110%);
+      transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    .rr-notif.rr-visible { opacity: 1; transform: translateX(0); pointer-events: auto; }
+    .rr-body { padding: 10px 12px 10px; }
+    .rr-row-top { display: flex; align-items: flex-start; gap: 9px; }
+    .rr-icon { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #5b21b6, #7c3aed); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+    .rr-icon i { color: white; font-size: 0.82em; }
+    .rr-text-wrap { flex: 1; min-width: 0; }
+    .rr-label { font-size: 0.65em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px; }
+    .rr-msg { font-size: 0.82em; font-weight: 600; color: #1e293b; line-height: 1.35; }
+    .rr-username { color: #7c3aed; font-weight: 800; }
+    .rr-actions { display: flex; gap: 7px; max-height: 0; overflow: hidden; opacity: 0; transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease; margin-top: 0; }
+    .rr-notif.rr-expanded .rr-actions { max-height: 50px; opacity: 1; margin-top: 9px; }
+    .rr-btn-accept { flex: 1; padding: 7px 8px; border: none; border-radius: 9px; background: linear-gradient(to right, #5b21b6, #7c3aed); color: white; font-size: 0.8em; font-weight: 700; cursor: pointer; transition: opacity 0.18s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+    .rr-btn-accept:hover { opacity: 0.85; }
+    .rr-btn-decline { width: 34px; height: 34px; border: none; border-radius: 9px; background: #f1f5f9; color: #64748b; font-size: 0.95em; cursor: pointer; transition: background 0.18s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .rr-btn-decline:hover { background: #fee2e2; color: #ef4444; }
   </style>
 </head>
 <body>
@@ -114,6 +140,23 @@
 
   <button id="stop-move-btn" style="display:none;">OK</button>
   <div id="error-msg"></div>
+
+  <!-- Restart Request Notification -->
+  <div class="rr-notif" id="rrNotif">
+    <div class="rr-body">
+      <div class="rr-row-top">
+        <div class="rr-icon"><i class="fas fa-redo-alt"></i></div>
+        <div class="rr-text-wrap">
+          <div class="rr-label">Fangatahana Famerenana</div>
+          <div class="rr-msg">Nangataka ny hamerenanana ny lalao i <span class="rr-username" id="rrUsername">—</span></div>
+        </div>
+      </div>
+      <div class="rr-actions" id="rrActions">
+        <button class="rr-btn-accept" id="rrAcceptBtn"><i class="fas fa-check"></i></button>
+        <button class="rr-btn-decline" id="rrDeclineBtn"><i class="fas fa-times"></i></button>
+      </div>
+    </div>
+  </div>
 
   <script>
   (function () {
@@ -216,55 +259,36 @@
           ].join(';');
 
           btnReplay.onclick = function() {
+            if (rrPending) return; // efa nangataka, miandry
             btnReplay.disabled = true;
-            btnOk.disabled     = true;
-            // Restart avy amin'ny server: mifamadika ny color sy firstTurn
-            callApi(GAME_API_URL, 'restart-game', { uid: myUid, gameId: gameId })
+            // Mangataka restart — adversaire no hanaiky na handà
+            callApi(GAME_API_URL, 'request-restart', { uid: myUid, gameId: gameId })
               .then(function(r) {
                 if (r.success) {
-                  // Ovaina ny myColor sy myOppColor arakaraka ny valiny avy amin'ny server
-                  myColor    = r.myColor;
-                  myOppColor = myColor === 'maintso' ? 'mena' : 'maintso';
-
-                  // Averina ny state
-                  gameOverTriggered = false;
-                  selectedSpot      = null;
-                  lastBlockedSpot   = null;
-                  canChangePiece    = true;
-                  pendingCaptures   = { approach: [], withdrawal: [], moveData: null };
-                  piecesOnBoard     = {};
-                  movingInProgress  = false;
-                  if (reconcileTimer) { clearTimeout(reconcileTimer); reconcileTimer = null; }
-
-                  // Re-enable board
-                  var board = document.getElementById('game-board');
-                  if (board) {
-                    board.classList.remove('lock-board');
-                    // Mamerina ny flip arakaraka ny color vaovao
-                    if (myColor === 'mena') board.classList.add('flipped');
-                    else board.classList.remove('flipped');
-                  }
-                  var stopBtn = document.getElementById('stop-move-btn');
-                  if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = ''; }
-
-                  // Esory ny overlay
-                  if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-
-                  // Recharge ny state avy amin'ny server
-                  callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId })
-                    .then(function(d) {
-                      if (d.success) {
-                        localState = copyState(d.game);
-                        applyLocalState();
-                      }
-                    }).catch(function(){});
+                  rrPending = true;
+                  btnReplay.textContent = 'Miandry…';
+                  // Miandry ny valim-pangataham-bita — polling
+                  var waitTimer = setInterval(function() {
+                    callApi(GAME_API_URL, 'get-restart-request', { uid: myUid, gameId: gameId })
+                      .then(function(rr) {
+                        if (rr.confirmed) {
+                          clearInterval(waitTimer);
+                          doRestartBoard(rr);
+                          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                        } else if (!rr.requested) {
+                          // Nandà ilay adversaire
+                          clearInterval(waitTimer);
+                          rrPending = false;
+                          btnReplay.disabled  = false;
+                          btnReplay.textContent = 'Hamerina';
+                        }
+                      }).catch(function(){});
+                  }, 1500);
                 } else {
                   btnReplay.disabled = false;
-                  btnOk.disabled     = false;
                 }
               }).catch(function() {
                 btnReplay.disabled = false;
-                btnOk.disabled     = false;
               });
           };
 
@@ -275,9 +299,106 @@
         }
 
         box.appendChild(btnRow);
+        overlay.setAttribute('data-gameover-overlay', '1');
         overlay.appendChild(box);
         document.body.appendChild(overlay);
       }, delay);
+    }
+
+    // ── Restart notification functions ───────────────────────
+    function showRrNotif(username) {
+      var notif = document.getElementById('rrNotif');
+      var rrUser = document.getElementById('rrUsername');
+      if (!notif || !rrUser) return;
+      rrUser.textContent = username;
+      notif.classList.remove('rr-expanded');
+      notif.classList.add('rr-visible');
+      setTimeout(function() { notif.classList.add('rr-expanded'); }, 80);
+    }
+
+    function hideRrNotif() {
+      var notif = document.getElementById('rrNotif');
+      if (notif) notif.classList.remove('rr-visible', 'rr-expanded');
+    }
+
+    function startRrPolling() {
+      if (rrPollingTimer) return;
+      rrPollingTimer = setInterval(function() {
+        if (!myUid || !gameId) return;
+        callApi(GAME_API_URL, 'get-restart-request', { uid: myUid, gameId: gameId })
+          .then(function(r) {
+            if (r.requested && r.requestedBy !== myUid) {
+              // Adversaire nangataka restart — asehoy notification
+              showRrNotif(r.requestedByUsername || oppUsername);
+            } else {
+              hideRrNotif();
+            }
+          }).catch(function(){});
+      }, 2000);
+    }
+
+    function stopRrPolling() {
+      if (rrPollingTimer) { clearInterval(rrPollingTimer); rrPollingTimer = null; }
+    }
+
+    // ── Manaiky restart (rrAcceptBtn) ─────────────────────────
+    document.addEventListener('DOMContentLoaded', function() {
+      var rrAccept  = document.getElementById('rrAcceptBtn');
+      var rrDecline = document.getElementById('rrDeclineBtn');
+      if (rrAccept) {
+        rrAccept.addEventListener('click', function() {
+          hideRrNotif();
+          callApi(GAME_API_URL, 'confirm-restart', { uid: myUid, gameId: gameId })
+            .then(function(r) {
+              if (r.success) doRestartBoard(r);
+            }).catch(function(){});
+        });
+      }
+      if (rrDecline) {
+        rrDecline.addEventListener('click', function() {
+          hideRrNotif();
+          callApi(GAME_API_URL, 'cancel-restart', { uid: myUid, gameId: gameId }).catch(function(){});
+        });
+      }
+    });
+
+    // ── Mamerina ny board rehefa manaiky restart ───────────────
+    function doRestartBoard(r) {
+      myColor    = r.myColor;
+      myOppColor = myColor === 'maintso' ? 'mena' : 'maintso';
+      rrPending  = false;
+      stopRrPolling();
+
+      gameOverTriggered = false;
+      selectedSpot      = null;
+      lastBlockedSpot   = null;
+      canChangePiece    = true;
+      pendingCaptures   = { approach: [], withdrawal: [], moveData: null };
+      piecesOnBoard     = {};
+      movingInProgress  = false;
+      if (reconcileTimer) { clearTimeout(reconcileTimer); reconcileTimer = null; }
+
+      var board = document.getElementById('game-board');
+      if (board) {
+        board.classList.remove('lock-board');
+        if (myColor === 'mena') board.classList.add('flipped');
+        else board.classList.remove('flipped');
+      }
+      var stopBtn = document.getElementById('stop-move-btn');
+      if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = ''; }
+
+      // Esory ny overlay resy/nandresy raha mbola misy
+      document.querySelectorAll('[data-gameover-overlay]').forEach(function(el) { el.remove(); });
+
+      // Reload state
+      callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId })
+        .then(function(d) {
+          if (d.success) {
+            localState = copyState(d.game);
+            applyLocalState();
+            startRrPolling();
+          }
+        }).catch(function(){});
     }
 
     async function callApi(url, action, payload) {
@@ -354,6 +475,11 @@
     var myDotEl  = null;
     var oppDotEl = null;
 
+    // ── Restart request state ─────────────────────────────────
+    var rrPollingTimer  = null;
+    var rrPending       = false; // efa nangataka restart aho, miandry adversaire
+    var oppUsername     = '???'; // voatahiry rehefa render players bar
+
     // ═══════════════════════════════════════════════════════════════
     //  SECTION 4 — Init
     // ═══════════════════════════════════════════════════════════════
@@ -385,7 +511,8 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
-        renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
+        oppUsername = data.opponentUsername || '???';
+        renderPlayersBar(myColor, localUser.username || localUser.uid, oppUsername);
 
         if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
 
@@ -406,6 +533,9 @@
 
         // Polling adversaire
         setInterval(pollAdversaire, POLL_INTERVAL);
+
+        // Raha fanorona ihany (tsy both): manomboka restart-request polling
+        if (gameSource === 'fanorona') startRrPolling();
 
       } catch(err) { showError('Nisy olana: ' + err.message); }
     }
