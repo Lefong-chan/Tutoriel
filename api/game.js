@@ -53,6 +53,16 @@ export default async function handler(req, res) {
   }
 }
 
+// ── Helper: mahazo ny color marina arakaraka senderColor/receiverColor ──────
+// Fallback: sender=maintso, receiver=mena (raha game taloha tsy misy senderColor)
+function getMyColor(game, uid) {
+  if (game.senderUid === uid) {
+    return game.senderColor   || "maintso";
+  } else {
+    return game.receiverColor || "mena";
+  }
+}
+
 // ── Mamerina ny état rehetra ny lalao ──────────────────────────────────────
 // Body: { uid, gameId }
 async function handleGetState(body, res) {
@@ -84,7 +94,7 @@ async function handleMakeMove(body, res) {
   if (game.senderUid !== uid && game.receiverUid !== uid)
                                      return res.status(403).json({ error: "Not authorized." });
 
-  const myColor = game.senderUid === uid ? "maintso" : "mena";
+  const myColor = getMyColor(game, uid);
   if (game.turn !== myColor)         return res.status(400).json({ error: "Tsy anjaranao." });
 
   // Raha misy movingPiece, ny origin dia tsy maintsy izany movingPiece izany
@@ -148,7 +158,7 @@ async function handleStopMove(body, res) {
   const game    = await rtdbGet(gameRef);
   if (!game) return res.status(404).json({ error: "Game not found." });
 
-  const myColor = game.senderUid === uid ? "maintso" : "mena";
+  const myColor = getMyColor(game, uid);
   if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (!game.movingPiece)     return res.status(400).json({ error: "Tsy misy movingPiece." });
 
