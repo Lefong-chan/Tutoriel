@@ -301,8 +301,12 @@
     //   OU si aucun mouvement n'est en cours côté joueur)
     // ═══════════════════════════════════════════════════════════════
 
-    // Fanamarihana: ny pieces server farany noraisina (mba tsy hanaovana renderPieces raha tsy misy fanovana)
-    var lastReceivedPiecesStr = '';
+    // ── Queue ny hetsika avy amin'ny adversaire ──────────────────────────────
+    // oppQueue    : hetsika noraisina avy amin'ny server mbola tsy nampiseho
+    // oppQueueRunning : misy animation mandeha (0.22s) — miandry aloha
+    var oppQueue        = [];   // hetsika mbola tsy nampiseho
+    var oppQueueRunning = false;
+    var oppTotalSeen    = 0;    // isan'ny hetsika efa noraisina avy amin'ny server (global counter)
 
     async function pollAdversaire() {
       try {
@@ -313,23 +317,38 @@
         // Ne rien écraser pendant un mouvement local
         if (movingInProgress) return;
 
-        // Raha mbola tsy tour anao → adversaire manao hetsika
-        // Mampiseho avy hatrany ny pieces vaovao — ny CSS transition 0.22s no mampandeha ny animation
         if (serverTurn !== myColor) {
-          var newPiecesStr = JSON.stringify(d.game.pieces);
-          if (newPiecesStr !== lastReceivedPiecesStr) {
-            lastReceivedPiecesStr = newPiecesStr;
-            if (localState) {
-              localState.pieces = Object.assign({}, d.game.pieces);
-              localState.turn   = myOppColor;
-              renderPieces(localState.pieces, localState);
+          // Adversaire manao hetsika — mandray ny oppMoveQueue avy amin'ny server
+          var serverQueue = Array.isArray(d.game.oppMoveQueue) ? d.game.oppMoveQueue : [];
+
+          // Hetsika vaovao = ireo tsy mbola ao amin'ny oppQueue
+          if (serverQueue.length > oppTotalSeen) {
+            // Ampiana ny hetsika vaovao (tsy mbola noraisina) ao amin'ny queue
+            // Raha voalohany mihetsika: rebuild pieces state mialoha ny hetsika voalohany
+            if (oppQueue.length === 0 && oppTotalSeen === 0) {
+              // Rebuild pieces talohan'ny hetsika rehetra ao amin'ny serverQueue
+              var basePieces = rebuildPiecesBeforeQueue(d.game.pieces, serverQueue);
+              if (localState) localState.pieces = basePieces;
+            }
+
+            // Ampiana ny hetsika tsy mbola noraisina
+            for (var i = oppTotalSeen; i < serverQueue.length; i++) {
+              oppQueue.push(serverQueue[i]);
+              oppTotalSeen++;
+            }
+
+            // Manomboka ny queue raha tsy mandeha
+            if (!oppQueueRunning) {
+              runOppQueue();
             }
           }
           return;
         }
 
-        // Tour anao — reset
-        lastReceivedPiecesStr = '';
+        // Tour anao — reset queue
+        oppQueue        = [];
+        oppQueueRunning = false;
+        oppTotalSeen    = 0;
 
         // Raha efa manao hetsika ianao, tsy ovaina ny state
         if (selectedSpot || (localState && localState.movingPiece)) return;
@@ -356,6 +375,59 @@
         applyLocalState();
 
       } catch(e) { console.warn('poll error', e); }
+    }
+
+    // Rebuild pieces state BEFORE all queued moves (avy amin'ny final state + queue)
+    function rebuildPiecesBeforeQueue(finalPieces, queue) {
+      var pieces = Object.assign({}, finalPieces);
+      // Averina atrany amboalohany (noverina miamboha)
+      for (var i = queue.length - 1; i >= 0; i--) {
+        var m = queue[i];
+        delete pieces[m.target];
+        pieces[m.origin] = myOppColor;
+        if (Array.isArray(m.capturedSpots)) {
+          m.capturedSpots.forEach(function(s) { pieces[s] = myColor; });
+        }
+      }
+      return pieces;
+    }
+
+    // Mampiseho hetsika iray amin'ny 0.22s — miandry vao mampiseho manaraka
+    function runOppQueue() {
+      if (oppQueue.length === 0) {
+        // Vita ny hetsika rehetra hita ankehitriny — miandry hetsika vaovao
+        oppQueueRunning = false;
+        // Ack any amin'ny server: lazaina fa noraisina avokoa ny hetsika hita
+        // oppTotalSeen : averina 0 rehefa nanamarina ny server (mba tsy hamerina hetsika efa nampiseho)
+        var ackCount = oppTotalSeen;
+        oppTotalSeen = 0; // reset aloha mba hisy hetsika vaovao azo noraisina avy hatrany
+        callApi(GAME_API_URL, 'ack-moves', { uid: myUid, gameId: gameId, count: ackCount })
+          .catch(function(e) {
+            // Raha tsy nahomby ny ack: averina ilay oppTotalSeen mba tsy hamerina hetsika
+            oppTotalSeen = ackCount;
+            console.warn('ack-moves error', e);
+          });
+        return;
+      }
+
+      oppQueueRunning = true;
+      var move = oppQueue.shift(); // mandray ny voalohany, esorina avy amin'ny queue
+
+      // Ampiharo ny hetsika amin'ny localState
+      if (!localState) return;
+
+      var newPieces = Object.assign({}, localState.pieces);
+      delete newPieces[move.origin];
+      newPieces[move.target] = myOppColor;
+      if (Array.isArray(move.capturedSpots)) {
+        move.capturedSpots.forEach(function(s) { delete newPieces[s]; });
+      }
+      localState.pieces = newPieces;
+      localState.turn   = myOppColor;
+      renderPieces(localState.pieces, localState);
+
+      // Miandry 0.22s (CSS transition vita) vao mampiseho ny manaraka
+      setTimeout(runOppQueue, 220);
     }
 
 
