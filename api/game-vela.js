@@ -124,24 +124,27 @@ async function handleMakeMove(body, res) {
   const wasCapture = effectiveCaptured.length > 0;
 
   // ── AUTO-OK / MULTI-CAPTURE ───────────────────────────────────────────────
-  // Jerena ny fisa pieces an'ilay tsy firstMover AORIAN'NY capture (pieces).
-  //
   // FITSIPIKA :
-  //   - firstMover    → canContinue ALWAYS false (AUTO-OK foana, na 5 na tsy 5)
-  //     satria ny tsy firstMover no tsy maintsy afaka manao continue mouve voalohany
-  //   - tsy firstMover → canContinue active raha nonFirstMoverCount <= 5
-  //     (nonFirstMoverCount = pieces an'ny firstMover, satria tsy firstMover = izy)
+  //   - tsy firstMover → canContinue raha pieces AN'NY firstMover <= 5
+  //   - firstMover     → canContinue DISABLED raha tsy efa nanao continue ilay tsy firstMover
+  //                      (nonFirstMoverHasContinued = false → AUTO-OK foana)
+  //                      raha nonFirstMoverHasContinued = true → afaka canContinue foana
   //
-  // Ny lojika taloha (multiCaptureActive ho player roa) dia voasoratra
-  // fa OVAINA eto — firstMover dia AUTO-OK foana.
+  // Ny lojika taloha (firstMover AUTO-OK foana) dia voasoratra fa OVAINA eto.
   const nonFirstMoverColor = firstMover === "maintso" ? "mena" : "maintso";
   const nonFirstMoverCount = Object.values(pieces).filter(v => v === nonFirstMoverColor).length;
 
   const amIFirstMoverM = (firstMover === myColor);
+  const nfmHasContinued = game.nonFirstMoverHasContinued || false;
 
-  // firstMover → AUTO-OK foana (tsy afaka canContinue)
-  // tsy firstMover → canContinue raha pieces an'ny firstMover <= 5
-  const multiCaptureActive = !amIFirstMoverM && (nonFirstMoverCount <= 5);
+  let multiCaptureActive;
+  if (!amIFirstMoverM) {
+    // tsy firstMover : canContinue raha pieces AN'NY firstMover <= 5
+    multiCaptureActive = (nonFirstMoverCount <= 5);
+  } else {
+    // firstMover : canContinue ONLY raha efa nanao continue ilay tsy firstMover
+    multiCaptureActive = nfmHasContinued;
+  }
 
   const canContinue = multiCaptureActive
     && wasCapture
@@ -151,14 +154,16 @@ async function handleMakeMove(body, res) {
   const newHistoryEntry = { origin, target, capturedSpots: effectiveCaptured };
 
   if (canContinue) {
-    // ── Multi-capture (disabled ankehitriny) ────────────────────────────────
+    // Raha tsy firstMover no manao canContinue voalohany → set flag
+    const newNFMHasContinued = nfmHasContinued || (!amIFirstMoverM);
     await gameRef.update({
       pieces,
-      movingPiece: target,
-      visited:     newVisited,
-      lastDir:     dir || "",
-      moveHistory: [...prevHistory, newHistoryEntry],
-      firstMover:  firstMover  // voasoratra iray mandeha
+      movingPiece:              target,
+      visited:                  newVisited,
+      lastDir:                  dir || "",
+      moveHistory:              [...prevHistory, newHistoryEntry],
+      firstMover:               firstMover,            // voasoratra iray mandeha
+      nonFirstMoverHasContinued: newNFMHasContinued,   // set rehefa tsy firstMover manao continue
     });
     return res.status(200).json({ success: true, continuing: true });
 
@@ -168,14 +173,15 @@ async function handleMakeMove(body, res) {
     const fullHistory = [...prevHistory, newHistoryEntry];
     await gameRef.update({
       pieces,
-      turn:            nextColor,
-      movingPiece:     "",
-      visited:         [],
-      lastDir:         "",
-      moveHistory:     [],
-      lastTurnHistory: fullHistory,
-      lastTurnColor:   myColor,
-      firstMover:      firstMover  // voasoratra iray mandeha, tsy ovaina
+      turn:                     nextColor,
+      movingPiece:              "",
+      visited:                  [],
+      lastDir:                  "",
+      moveHistory:              [],
+      lastTurnHistory:          fullHistory,
+      lastTurnColor:            myColor,
+      firstMover:               firstMover,          // voasoratra iray mandeha, tsy ovaina
+      nonFirstMoverHasContinued: nfmHasContinued,    // mitahiry ny sanda taloha
     });
     return res.status(200).json({ success: true, continuing: false });
   }
