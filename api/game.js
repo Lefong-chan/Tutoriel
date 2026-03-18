@@ -109,7 +109,6 @@ async function handleMakeMove(body, res) {
   // Jerena raha mbola azo hihazoana mihetsika (multi-capture)
   const canContinue = wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
-  // Mitahiry ny dingana ao amin'ny moveHistory
   const prevHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
   const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
 
