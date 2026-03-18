@@ -124,7 +124,7 @@
 
     var SESSION_API_URL = '/api/session';
     var GAME_API_URL    = '/api/game';
-    var POLL_INTERVAL   = 1500;
+    var POLL_INTERVAL   = 200;
     // Délai après dernier mouvement avant de vérifier la cohérence backend
     var RECONCILE_DELAY = 5000;
 
@@ -301,9 +301,8 @@
     //   OU si aucun mouvement n'est en cours côté joueur)
     // ═══════════════════════════════════════════════════════════════
 
-    // Queue ny hetsika avy amin'ny adversaire mbola tsy nampiseho
-    var oppQueueBuffer   = [];
-    var oppQueuePlaying  = false;
+    // Fanamarihana: ny pieces server farany noraisina (mba tsy hanaovana renderPieces raha tsy misy fanovana)
+    var lastReceivedPiecesStr = '';
 
     async function pollAdversaire() {
       try {
@@ -315,27 +314,24 @@
         if (movingInProgress) return;
 
         // Raha mbola tsy tour anao → adversaire manao hetsika
-        // Mandray ny oppMoveQueue ka mampiseho tsirairay
+        // Mampiseho avy hatrany ny pieces vaovao — ny CSS transition 0.22s no mampandeha ny animation
         if (serverTurn !== myColor) {
-          var queue = Array.isArray(d.game.oppMoveQueue) ? d.game.oppMoveQueue : [];
-          if (queue.length > 0 && !oppQueuePlaying) {
-            // Ampiana ao amin'ny buffer ny hetsika tsy mbola nampiseho
-            // (misoroka ny duplicate amin'ny fampiasana lastSeenHistKey)
-            var newMoves = queue.slice(oppQueueBuffer.length);
-            if (newMoves.length > 0) {
-              oppQueueBuffer = oppQueueBuffer.concat(newMoves);
-              playOppQueue(d.game);
+          var newPiecesStr = JSON.stringify(d.game.pieces);
+          if (newPiecesStr !== lastReceivedPiecesStr) {
+            lastReceivedPiecesStr = newPiecesStr;
+            if (localState) {
+              localState.pieces = Object.assign({}, d.game.pieces);
+              localState.turn   = myOppColor;
+              renderPieces(localState.pieces, localState);
             }
           }
           return;
         }
 
-        // Tour anao — afoano ny buffer
-        oppQueueBuffer  = [];
-        oppQueuePlaying = false;
+        // Tour anao — reset
+        lastReceivedPiecesStr = '';
 
-        // Raha efa manao hetsika ianao (misy selectedSpot na movingPiece),
-        // tsy ovaina ny state mba tsy hanafoana ny selection nataonao
+        // Raha efa manao hetsika ianao, tsy ovaina ny state
         if (selectedSpot || (localState && localState.movingPiece)) return;
 
         var histColor = d.game.lastTurnColor || '';
@@ -360,52 +356,6 @@
         applyLocalState();
 
       } catch(e) { console.warn('poll error', e); }
-    }
-
-    // Mampiseho tsirairay ny hetsika avy amin'ny adversaire (tsy voadingana)
-    function playOppQueue(serverGame) {
-      if (oppQueuePlaying || oppQueueBuffer.length === 0) return;
-      oppQueuePlaying = true;
-
-      // Ataovy tsy maintsy misy localState voaomana
-      if (!localState) {
-        localState = copyState(serverGame);
-        localState.turn = myOppColor;
-      }
-
-      var idx = 0;
-
-      function applyNext() {
-        if (idx >= oppQueueBuffer.length) {
-          // Vita ny queue — ack any amin'ny server
-          var count = oppQueueBuffer.length;
-          oppQueueBuffer  = [];
-          oppQueuePlaying = false;
-          callApi(GAME_API_URL, 'ack-moves', { uid: myUid, gameId: gameId, count: count })
-            .catch(function(e) { console.warn('ack-moves error', e); });
-          return;
-        }
-
-        var move = oppQueueBuffer[idx];
-        idx++;
-
-        // Ampiharo ny hetsika amin'ny localState
-        var newPieces = Object.assign({}, localState.pieces);
-        delete newPieces[move.origin];
-        newPieces[move.target] = myOppColor;
-        if (Array.isArray(move.capturedSpots)) {
-          move.capturedSpots.forEach(function(s) { delete newPieces[s]; });
-        }
-        localState.pieces = newPieces;
-        localState.turn   = myOppColor;
-
-        renderPieces(localState.pieces, localState);
-
-        // 80ms isaky ny hetsika — haingana fa hita avokoa
-        setTimeout(applyNext, 80);
-      }
-
-      applyNext();
     }
 
 
