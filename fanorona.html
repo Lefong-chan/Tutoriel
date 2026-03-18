@@ -207,6 +207,15 @@
     // Timer de réconciliation post-mouvement
     var reconcileTimer = null;
 
+    // ── Replay adversaire ──────────────────────────────────────────
+    // replayQueue   : lisitry ny moves mbola tsy naseho (avy amin'ny server)
+    // replayTimer   : timer mamerina ilay moves tsirairay
+    // replayBaseState : pieces talohan'ny replay (state initial)
+    var replayQueue     = [];
+    var replayTimer     = null;
+    var replayBaseState = null;
+    var REPLAY_DELAY    = 600; // ms eo amin'ny hetsika tsirairay
+
     var myDotEl  = null;
     var oppDotEl = null;
 
@@ -310,8 +319,8 @@
         // Ne rien écraser pendant un mouvement local
         if (movingInProgress) return;
 
-        // Raha mbola tsy tour anao → adversaire manao hetsika
-        // Havaozina ny pieces mba hita ny pio nalehany (tsy replay, tsy trail)
+        // Raha mbola tsy tour anao → adversaire mbola manao hetsika (tsy vita turn)
+        // Asehoy ny pieces ankehitriny fotsiny (tsy replay)
         if (serverTurn !== myColor) {
           if (localState) {
             localState.pieces = Object.assign({}, d.game.pieces);
@@ -331,9 +340,40 @@
         var histKey   = histColor + '|' + history.length + '|' +
                         (history.length > 0 ? history[history.length - 1].target : '');
 
+        // Raha misy history vaovao avy amin'ny adversaire → manomboka replay
         if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
           lastSeenHistKey = histKey;
+
+          // Raha mbola misy replay aloha, atao stop aloha
+          if (replayTimer) { clearTimeout(replayTimer); replayTimer = null; }
+
+          // Averina ny board ho amin'ny state talohan'ny moves rehetra ny adversaire
+          // Izany hoe: rebuild pieces avy amin'ny farany → miverina any amin'ny voalohany
+          var finalPieces  = Object.assign({}, d.game.pieces);
+          var startPieces  = rebuildStartPieces(finalPieces, history);
+
+          replayBaseState = copyState(d.game);
+          replayBaseState.pieces = startPieces;
+          replayQueue = history.slice(); // copy ny moves rehetra
+
+          // Asehoy ny state voalohany (talohan'ny moves ny adversaire)
+          localState = copyState(replayBaseState);
+          canChangePiece  = false; // tsy azon'ny joueur2 natao mandritra ny replay
+          selectedSpot    = null;
+          lastBlockedSpot = null;
+          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+          document.getElementById('guides-group').innerHTML = '';
+          document.getElementById('stop-move-btn').classList.remove('active');
+          document.getElementById('game-board').classList.add('lock-board');
+          renderPieces(localState.pieces, localState);
+
+          // Manomboka ny replay
+          scheduleNextReplayStep(d.game);
+          return;
         }
+
+        // Raha misy replay mbola mandeha, tsy ovaina ny state
+        if (replayTimer || replayQueue.length > 0) return;
 
         // Havaozina ny localState fotsiny raha tena nisy fanovana
         var serverPiecesStr = JSON.stringify(d.game.pieces);
@@ -350,6 +390,67 @@
         applyLocalState();
 
       } catch(e) { console.warn('poll error', e); }
+    }
+
+    // ── Rebuild: averina ny pieces ho amin'ny state talohan'ny history ──────
+    // Averina avy amin'ny farany ka omanina ny voalohany
+    function rebuildStartPieces(finalPieces, history) {
+      var pieces = Object.assign({}, finalPieces);
+      // Mandeha avy amin'ny farany ka mamerina ny changes
+      for (var i = history.length - 1; i >= 0; i--) {
+        var mv = history[i];
+        var color = pieces[mv.target];
+        // Mamerina ny pio nety tany amin'ny origin
+        if (color) {
+          delete pieces[mv.target];
+          pieces[mv.origin] = color;
+        }
+        // Mamerina ny pio nalaina (captured)
+        if (Array.isArray(mv.capturedSpots)) {
+          // Ny loko ny adversaire (pio nalaina)
+          var oppColor = color === 'maintso' ? 'mena' : 'maintso';
+          mv.capturedSpots.forEach(function(s) {
+            pieces[s] = oppColor;
+          });
+        }
+      }
+      return pieces;
+    }
+
+    // ── Replay: mampiseho moves tsirairay avy amin'ny voalohany ─────────────
+    function scheduleNextReplayStep(finalServerGame) {
+      if (replayQueue.length === 0) {
+        // Vita ny replay → omena ny joueur2 ny turn
+        replayTimer = null;
+        localState      = copyState(finalServerGame);
+        canChangePiece  = true;
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+        document.getElementById('guides-group').innerHTML = '';
+        document.getElementById('stop-move-btn').classList.remove('active');
+        document.getElementById('game-board').classList.remove('lock-board');
+        applyLocalState();
+        return;
+      }
+
+      replayTimer = setTimeout(function() {
+        replayTimer = null;
+        var mv = replayQueue.shift(); // Alao ny move voalohany
+
+        // Ampiharo ilay move amin'ny localState
+        var newPieces = Object.assign({}, localState.pieces);
+        delete newPieces[mv.origin];
+        newPieces[mv.target] = myOppColor;
+        if (Array.isArray(mv.capturedSpots)) {
+          mv.capturedSpots.forEach(function(s) { delete newPieces[s]; });
+        }
+        localState.pieces = newPieces;
+        renderPieces(localState.pieces, localState);
+
+        // Mitohy ny replay
+        scheduleNextReplayStep(finalServerGame);
+      }, REPLAY_DELAY);
     }
 
     function copyState(game) {
