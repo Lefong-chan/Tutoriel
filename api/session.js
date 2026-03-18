@@ -877,14 +877,21 @@ async function handleStartFanoronaGame(body, res) {
     const senderUsername   = senderDoc.exists   ? (senderDoc.data().username   || invite.fromUid) : invite.fromUid;
     const receiverUsername = receiverDoc.exists ? (receiverDoc.data().username || invite.toUid)   : invite.toUid;
 
-    // sender = maintso (Green), receiver = mena (Red)
+    // Sender mahazo ny color nofidiny; Receiver mahazo ny mifanohitra
+    // invite.color = 'green' na 'red' (ny color nofidiny an'ilay sender)
+    const senderColorRaw   = invite.color || 'green';
+    const senderColorGame  = senderColorRaw  === 'red' ? 'mena' : 'maintso';
+    const receiverColorGame = senderColorGame === 'mena' ? 'maintso' : 'mena';
+    // Ny turn voalohany dia maintso foana (araka ny fitsipika fanorona)
     await gameRef.set({
       pieces:            initialPieces,
       turn:              "maintso",
       senderUid:         invite.fromUid,
       senderUsername,
+      senderColor:       senderColorGame,
       receiverUid:       invite.toUid,
       receiverUsername,
+      receiverColor:     receiverColorGame,
       startedAt:         Date.now()
     });
   }
@@ -910,8 +917,11 @@ async function handleGetFanoronaGame(body, res) {
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
 
-  // sender = maintso (Green), receiver = mena (Red)
-  const myColor       = game.senderUid === uid ? "maintso" : "mena";
+  // Jerena senderColor/receiverColor voatahiry (arakaraka ny nofidian'ilay sender)
+  // Fallback: sender=maintso, receiver=mena (raha game taloha tsy misy senderColor)
+  const myColor = game.senderUid === uid
+    ? (game.senderColor   || "maintso")
+    : (game.receiverColor || "mena");
   const opponentColor = myColor === "maintso" ? "mena" : "maintso";
   const opponentUsername = game.senderUid === uid ? game.receiverUsername : game.senderUsername;
 
