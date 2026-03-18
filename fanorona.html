@@ -136,6 +136,74 @@
     function escapeHtml(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
+
+    // ── Disable board tanteraka rehefa vita ny lalao ───────────────
+    var gameOverTriggered = false;
+    function disableBoardCompletely() {
+      var board = document.getElementById('game-board');
+      if (board) board.classList.add('lock-board');
+      var stopBtn = document.getElementById('stop-move-btn');
+      if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = 'none'; }
+      document.getElementById('guides-group').innerHTML = '';
+      document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el) {
+        el.removeAttribute('class');
+      });
+      document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
+    }
+
+    // ── Alert fandresy/resy ───────────────────────────────────────
+    // winnerColor = color ilay nandresy
+    // delayMs     = fotoana andrasana (default 2000)
+    function showGameOverAlert(winnerColor, delayMs) {
+      if (gameOverTriggered) return;
+      gameOverTriggered = true;
+
+      // Disable board avy hatrany — tsy afaka mihisaka intsony
+      disableBoardCompletely();
+
+      var delay = (typeof delayMs === 'number') ? delayMs : 2000;
+
+      setTimeout(function() {
+        var overlay = document.createElement('div');
+        overlay.style.cssText = [
+          'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
+          'display:flex','justify-content:center','align-items:center',
+          'z-index:9999','flex-direction:column','gap:0'
+        ].join(';');
+
+        var box = document.createElement('div');
+        box.style.cssText = [
+          'background:#1a3a5c','border-radius:18px','padding:36px 40px',
+          'text-align:center','color:white','font-family:sans-serif',
+          'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
+        ].join(';');
+
+        var iWon  = (winnerColor === myColor);
+        var myMsg = iWon ? '🏆 Nandresy ianao!' : '😔 Resy ianao!';
+
+        var title = document.createElement('div');
+        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
+        title.textContent = myMsg;
+
+        var btn = document.createElement('button');
+        btn.textContent = 'OK';
+        btn.style.cssText = [
+          'background:#0092FF','color:white','border:none',
+          'border-radius:10px','padding:12px 48px',
+          'font-size:1.1em','font-weight:700','cursor:pointer',
+          'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
+        ].join(';');
+        btn.onclick = function() {
+          window.location.href = 'dashboard.html';
+        };
+
+        box.appendChild(title);
+        box.appendChild(btn);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+      }, delay);
+    }
+
     async function callApi(url, action, payload) {
       var r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -349,6 +417,16 @@
         document.getElementById('stop-move-btn').classList.remove('active');
         applyLocalState();
 
+        // ── Fanamarinana lany piece (poll) ────────────────────────
+        // Rehefa tonga ny turn anao, jereo raha lany piece ny adversaire
+        var myPieceCountPoll  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPieceCountPoll = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        if (myPieceCountPoll === 0) {
+          showGameOverAlert(myOppColor, 2000);
+        } else if (oppPieceCountPoll === 0) {
+          showGameOverAlert(myColor, 2000);
+        }
+
       } catch(e) { console.warn('poll error', e); }
     }
 
@@ -521,6 +599,20 @@
       if (!canContinue) {
         scheduleReconcile();
       }
+
+      // ── Fanamarinana lany piece ───────────────────────────────────
+      // Rehefa vita ny dingana iray (tsy misy mitohy), jereo raha lany piece
+      if (!canContinue) {
+        var myPieceCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPieceCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        if (oppPieceCount === 0) {
+          // Lany ny piece adversaire → myColor nandresy
+          showGameOverAlert(myColor, 2000);
+        } else if (myPieceCount === 0) {
+          // Lany ny piece ahy → myOppColor nandresy
+          showGameOverAlert(myOppColor, 2000);
+        }
+      }
     }
 
     function handleStopBtn() {
@@ -545,6 +637,15 @@
         .catch(function(e) { console.warn('stop-move error', e); });
 
       scheduleReconcile();
+
+      // ── Fanamarinana lany piece rehefa mijanona ───────────────────
+      var myPieceCountS  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+      var oppPieceCountS = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+      if (oppPieceCountS === 0) {
+        showGameOverAlert(myColor, 2000);
+      } else if (myPieceCountS === 0) {
+        showGameOverAlert(myOppColor, 2000);
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════
