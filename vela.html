@@ -118,6 +118,53 @@
     function escapeHtml(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
+
+    // ── Alert fandresy/resy (lojika 1 ihany) ──────────────────────
+    function showGameOverAlert(winnerColor) {
+      // Mamorona overlay custom alert
+      var overlay = document.createElement('div');
+      overlay.style.cssText = [
+        'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
+        'display:flex','justify-content:center','align-items:center',
+        'z-index:9999','flex-direction:column','gap:0'
+      ].join(';');
+
+      var box = document.createElement('div');
+      box.style.cssText = [
+        'background:#1a3a5c','border-radius:18px','padding:36px 40px',
+        'text-align:center','color:white','font-family:sans-serif',
+        'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
+      ].join(';');
+
+      var myMsg   = winnerColor === myColor ? '🏆 Nandresy ianao!' : '😔 Resy ianao!';
+      var oppMsg  = winnerColor === myColor ? '😔 Resy ilay mifanandrina!' : '🏆 Nandresy ilay mifanandrina!';
+
+      var title = document.createElement('div');
+      title.style.cssText = 'font-size:1.5em;font-weight:800;margin-bottom:10px;';
+      title.textContent = myMsg;
+
+      var sub = document.createElement('div');
+      sub.style.cssText = 'font-size:1em;opacity:0.75;margin-bottom:28px;';
+      sub.textContent = oppMsg;
+
+      var btn = document.createElement('button');
+      btn.textContent = 'OK';
+      btn.style.cssText = [
+        'background:#0092FF','color:white','border:none',
+        'border-radius:10px','padding:12px 48px',
+        'font-size:1.1em','font-weight:700','cursor:pointer',
+        'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
+      ].join(';');
+      btn.onclick = function() {
+        window.location.href = 'dashboard.html';
+      };
+
+      box.appendChild(title);
+      box.appendChild(sub);
+      box.appendChild(btn);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+    }
     async function callApi(url, action, payload) {
       var r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -356,33 +403,6 @@
       return firstMover === null || firstMover === myColor;
     }
 
-    // checkPhase1Defeat : jerena raha resy ilay tsy firstMover (lojika 1 ihany).
-    // Antony resy : tsy mahita capture na inona na inona ao amin'ny board.
-    // Alert : amin'ny player roa (resy / mandresy).
-    // Tsy ampiasaina ao amin'ny lojika 2 (isPhase2).
-    var ph1DefeatAlertShown = false;
-    function checkPhase1Defeat(pieces) {
-      if (ph1DefeatAlertShown) return;
-      if (!firstMover) return;
-      if (isPhase2(pieces)) return; // lojika 2 — tsy ampiasaina eto
-      var nonFMColor = firstMover === myColor ? myOppColor : myColor;
-      // Jerena raha tsy misy capture azo atao na ho an'ny iza na ho an'ny iza
-      var nonFMHasCapture    = playerHasAnyCapture(pieces, nonFMColor);
-      var fmHasCapture       = playerHasAnyCapture(pieces, firstMover === myColor ? myColor : myOppColor);
-      // Resy ilay tsy firstMover raha tsy misy capture azo atao na ho an'ny iza na ho an'ny iza
-      // (ny board dia tsy misy capture intsony → ny tsy firstMover dia resy)
-      if (!nonFMHasCapture && !fmHasCapture) {
-        ph1DefeatAlertShown = true;
-        if (myColor === nonFMColor) {
-          // Ianao ilay resy
-          setTimeout(function() { alert('Resy ianao — tsy nisy capture!'); }, 100);
-        } else {
-          // Ianao ilay mandresy
-          setTimeout(function() { alert('Mandresy ianao — ny adversaire tsy nahita capture!'); }, 100);
-        }
-      }
-    }
-
     function ph1Poll(game) {
       if (movingInProgress) return;
       var serverTurn = game.turn;
@@ -411,8 +431,16 @@
       document.getElementById('guides-group').innerHTML = '';
       document.getElementById('stop-move-btn').classList.remove('active');
       applyLocalState();
-      // Jerena raha resy (hahitan'ny firstMover koa ny alert rehefa tonga turn azy)
-      checkPhase1Defeat(localState.pieces);
+
+      // ── Fanamarinana resy/nandresy (lojika 1) — amin'ny poll ─────
+      // Rehefa tonga ny tanin'ny mpilalao (myColor), jereo raha mahita
+      // capture izy. Raha tsy mahita → resy izy (adversaire nandresy).
+      if (!isGameFrozen(localState.pieces)) {
+        var myHasCap = playerHasAnyCapture(localState.pieces, myColor);
+        if (!myHasCap) {
+          showGameOverAlert(myOppColor);
+        }
+      }
     }
 
     function copyState(game) {
@@ -559,14 +587,21 @@
       updateTurnIndicator(localState.turn);
       renderPieces(localState.pieces, localState);
       sendMoveToBackend(origin, target, effectiveCaptured, dir);
-
-      // Jerena raha resy ilay tsy firstMover (lojika 1 ihany)
-      // Atao rehefa niafara ny turn (tsy firstMover nanao hetsika tsy misy capture)
-      if (!canContinue && !amIFirstMover() && effectiveCaptured.length === 0) {
-        checkPhase1Defeat(localState.pieces);
-      }
-
       if (!canContinue) scheduleReconcile();
+
+      // ── Fanamarinana resy/nandresy (lojika 1 ihany) ──────────────
+      // Rehefa vita ny dingana iray (tsy misy mitohy), jereo raha misy
+      // capture azon'ilay adversaire. Raha tsy misy → alert.
+      if (!canContinue) {
+        var piecesAfterMove = localState.pieces;
+        // Ilay adversaire = myOppColor (ilay tsy nanao capture, mifindra fotsiny)
+        var advHasCapture = playerHasAnyCapture(piecesAfterMove, myOppColor);
+        if (!advHasCapture) {
+          // Ilay adversaire (mifindra fotsiny) tsy mahita capture → resy izy
+          // myColor = nandresy
+          showGameOverAlert(myColor);
+        }
+      }
     }
 
     function handleStopBtn() {
@@ -590,6 +625,12 @@
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('stop-move error', e); });
       scheduleReconcile();
+
+      // ── Fanamarinana resy/nandresy rehefa mijanona (lojika 1) ────
+      var advHasCapture2 = playerHasAnyCapture(localState.pieces, myOppColor);
+      if (!advHasCapture2) {
+        showGameOverAlert(myColor);
+      }
     }
 
     function sendMoveToBackend(origin, target, capturedSpots, dir) {
