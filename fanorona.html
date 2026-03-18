@@ -201,8 +201,7 @@
     // Nombre de mouvements dans le turn en cours (pour savoir si on est en plein mouvement)
     var movingInProgress = false;
 
-    // Replay animation adversaire
-    var replayInProgress  = false;
+    // Fanalahidian'ny hetsika farany niseho (mba tsy hiseho indroa)
     var lastSeenHistKey   = null;
 
     // Timer de réconciliation post-mouvement
@@ -308,8 +307,8 @@
         if (!d.success) return;
         var serverTurn = d.game.turn;
 
-        // Ne rien écraser pendant un mouvement local ou un replay
-        if (replayInProgress || movingInProgress) return;
+      // Ne rien écraser pendant un mouvement local
+      if (movingInProgress) return;
 
         if (serverTurn !== myColor) {
           // Tour adversaire en cours → afficher son état courant
@@ -330,9 +329,15 @@
                           (history.length > 0 ? history[history.length - 1].target : '');
 
           if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
+            // Hetsika vaovao avy amin'ny adversaire → tahirizina ny history fa tsy mampiseho replay
             lastSeenHistKey = histKey;
-            var stateBeforeOpp = rebuildStateBeforeReplay(history, d.game);
-            replayOpponentMoves(history, stateBeforeOpp, copyState(d.game));
+            // Ny lastTurnHistory dia tahirizina ao amin'ny server — azo ampiasaina avy eo raha ilaina
+            // Mampiseho mivantana ny état farany (tsy replay)
+            localState     = copyState(d.game);
+            canChangePiece = true;
+            selectedSpot   = d.game.movingPiece || null;
+            if (selectedSpot) canChangePiece = false;
+            applyLocalState();
           } else if (!localState || localState.turn !== myColor) {
             localState     = copyState(d.game);
             canChangePiece = true;
@@ -343,26 +348,6 @@
         }
 
       } catch(e) { console.warn('poll error', e); }
-    }
-
-    // Reconstitue le state AVANT que l'adversaire joue
-    function rebuildStateBeforeReplay(history, serverGame) {
-      var pieces = Object.assign({}, serverGame.pieces);
-      for (var i = history.length - 1; i >= 0; i--) {
-        var m = history[i];
-        delete pieces[m.target];
-        pieces[m.origin] = myOppColor;
-        if (m.capturedSpots) {
-          m.capturedSpots.forEach(function(s) { pieces[s] = myColor; });
-        }
-      }
-      return {
-        pieces:      pieces,
-        turn:        myOppColor,
-        movingPiece: '',
-        visited:     [],
-        lastDir:     ''
-      };
     }
 
     function copyState(game) {
@@ -826,114 +811,6 @@
       }
       return false;
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 13 — Replay animation adversaire
-    // ═══════════════════════════════════════════════════════════════
-
-    // Téléporte toutes les pièces vers leurs positions (sans transition)
-    // puis re-active la transition pour le prochain déplacement.
-    function teleportPiecesToState(piecesMap, stateData) {
-      // Désactiver transitions
-      var grp = document.getElementById('pieces-group');
-      grp.querySelectorAll('.piece-group').forEach(function(g) {
-        g.classList.add('no-transition');
-      });
-      renderPieces(piecesMap, stateData);
-      // Forcer reflow puis réactiver transitions
-      void grp.offsetHeight;
-      grp.querySelectorAll('.piece-group').forEach(function(g) {
-        g.classList.remove('no-transition');
-      });
-    }
-
-    function replayOpponentMoves(history, startState, finalState) {
-      replayInProgress = true;
-      document.getElementById('guides-group').innerHTML = '';
-      document.getElementById('stop-move-btn').classList.remove('active');
-
-      // Téléporter vers l'état AVANT le premier move (sans transition)
-      teleportPiecesToState(startState.pieces, startState);
-
-      var step       = 0;
-      var stepPieces = Object.assign({}, startState.pieces);
-
-      function doStep() {
-        if (step >= history.length) {
-          // Fin replay → téléporter vers état final (sans transition) puis applyLocalState
-          teleportPiecesToState(finalState.pieces, finalState);
-
-          localState      = finalState;
-          selectedSpot    = null;
-          lastBlockedSpot = null;
-          canChangePiece  = true;
-          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('stop-move-btn').classList.remove('active');
-          replayInProgress = false;
-          applyLocalState();
-          return;
-        }
-
-        var move = history[step];
-        step++;
-
-        // Calculer les pièces APRÈS ce move
-        var nextPieces = Object.assign({}, stepPieces);
-        delete nextPieces[move.origin];
-        nextPieces[move.target] = myOppColor;
-        if (move.capturedSpots && move.capturedSpots.length > 0) {
-          move.capturedSpots.forEach(function(s) { delete nextPieces[s]; });
-        }
-
-        // 1) Téléporter TOUTES les pièces sauf celle qui se déplace (no-transition)
-        //    On fait renderPieces avec no-transition puis on anime juste la pièce mobile
-        var interimState = {
-          pieces:      nextPieces,
-          turn:        myOppColor,
-          movingPiece: move.target,
-          visited:     [],
-          lastDir:     ''
-        };
-
-        // Désactiver toutes les transitions
-        var grp = document.getElementById('pieces-group');
-        grp.querySelectorAll('.piece-group').forEach(function(g) {
-          g.classList.add('no-transition');
-        });
-
-        // Rendre l'état intermédiaire (toutes pièces déplacées sans transition)
-        renderPieces(nextPieces, interimState);
-
-        // Forcer reflow
-        void grp.offsetHeight;
-
-        // Ré-activer transition seulement sur la pièce qui vient de bouger
-        if (piecesOnBoard[move.target] && piecesOnBoard[move.target].el) {
-          piecesOnBoard[move.target].el.classList.remove('no-transition');
-          var ri = rows.indexOf(move.target[0]), ci = cols.indexOf(move.target[1]);
-          var svgX = ci * 50, svgY = ri * 50;
-
-          piecesOnBoard[move.target].el.classList.add('no-transition');
-          var oriRi = rows.indexOf(move.origin[0]), oriCi = cols.indexOf(move.origin[1]);
-          piecesOnBoard[move.target].el.setAttribute('transform',
-            'translate(' + (oriCi*50) + ',' + (oriRi*50) + ')');
-          void grp.offsetHeight;
-          // Puis animer vers target
-          piecesOnBoard[move.target].el.classList.remove('no-transition');
-          piecesOnBoard[move.target].el.setAttribute('transform',
-            'translate(' + svgX + ',' + svgY + ')');
-        }
-
-        stepPieces = nextPieces;
-        setTimeout(doStep, 500);
-      }
-
-      setTimeout(doStep, 200);
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  SECTION 14 — Lancement
-    // ═══════════════════════════════════════════════════════════════
 
     init();
 
