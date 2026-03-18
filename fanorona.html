@@ -32,7 +32,10 @@
     #game-board { width: 95vw; max-width: 800px; max-height: 68vh; display: block; }
     .grid-line { stroke: #333; stroke-width: 2; }
 
-    .piece-group { transition: transform 0.22s ease-in-out; }
+    /* Transition UNIQUEMENT pour les pièces adversaires (classe .opp-piece) */
+    .piece-group           { /* pas de transition par défaut */ }
+    .piece-group.opp-piece { transition: transform 0.22s ease-in-out; }
+
     .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
     .movable-piece  { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
     .blocked-piece  { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
@@ -103,12 +106,12 @@
     // ═══════════════════════════════════════════════════════════════
     //  S1 — Config
     // ═══════════════════════════════════════════════════════════════
-    var SESSION_API_URL  = '/api/session';
-    var GAME_API_URL     = '/api/game';
-    var POLL_INTERVAL    = 1500;
-    var RECONCILE_DELAY  = 5000;
-    // Durée d'une étape d'animation adversaire (ms) — doit correspondre à la transition CSS
-    var OPP_ANIM_STEP    = 280;
+    var SESSION_API_URL = '/api/session';
+    var GAME_API_URL    = '/api/game';
+    var POLL_INTERVAL   = 1500;
+    var RECONCILE_DELAY = 5000;
+    // Durée CSS transition pièce adversaire (doit correspondre au CSS .opp-piece)
+    var OPP_ANIM_MS     = 220;
 
     function showError(msg) {
       document.getElementById('error-msg').textContent = msg;
@@ -127,9 +130,10 @@
       if (!r.ok) throw new Error(d.error || 'API error');
       return d;
     }
+    function delay(ms) { return new Promise(function(res) { setTimeout(res, ms); }); }
 
     // ═══════════════════════════════════════════════════════════════
-    //  S2 — Constantes du jeu
+    //  S2 — Constantes
     // ═══════════════════════════════════════════════════════════════
     var rows = ['A','B','C','D','E'];
     var cols = ['1','2','3','4','5','6','7','8','9'];
@@ -165,22 +169,21 @@
     var gameId     = null;
     var myUid      = null;
 
-    // localState : état optimistic (ce que le joueur voit)
-    var localState = null;
+    var localState = null;   // état affiché (optimistic)
 
     var selectedSpot    = null;
     var lastBlockedSpot = null;
     var canChangePiece  = true;
     var pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-    var piecesOnBoard   = {};
+
+    // piecesOnBoard : { spotID: { el: SVGElement, color: string } }
+    // Séparé en deux maps : joueur et adversaire — pour éviter la reconciliation croisée
+    var piecesOnBoard = {};
 
     var movingInProgress = false;
     var reconcileTimer   = null;
-
-    // Dernier moveHistory connu côté serveur (pour détecter nouveaux mouvements adversaire)
     var lastSeenHistoryLen = 0;
-    // Flag : animation adversaire en cours (bloquer le polling d'écraser l'UI)
-    var oppAnimating = false;
+    var oppAnimating       = false;
 
     var myDotEl  = null;
     var oppDotEl = null;
@@ -213,7 +216,6 @@
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
         renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
-
         document.getElementById('game-board').style.display    = 'block';
         document.getElementById('stop-move-btn').style.display = 'block';
         document.getElementById('loading-overlay').classList.add('hidden');
@@ -221,7 +223,6 @@
         drawBoardSpots();
         document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
 
-        // Chargement initial
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
           localState = copyState(d.game);
@@ -234,20 +235,14 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  S5 — Players bar
-    //  Orientation : le joueur est TOUJOURS en bas
-    //  maintso → maintso eo ambany (row E proches), mena eo ambony
-    //  mena    → mena eo ambany, maintso eo ambony
-    //  Implémentation : on NE retourne PAS le SVG entier.
-    //  On inverse les coordonnées Y dans les fonctions spotY/pieceY.
+    //  S5 — Players bar + orientation
+    //  svgY : maintso → row A en haut, row E en bas (maintso eo ambany ✓)
+    //         mena    → row A en bas, row E en haut (mena eo ambany ✓)
     // ═══════════════════════════════════════════════════════════════
     function renderPlayersBar(myCol, myUsername, oppUsername) {
       var bar = document.getElementById('players-bar');
-      // Mon dot = ma couleur, opp dot = sa couleur
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-
-      // Adversaire toujours en haut à gauche, moi en bas à droite
       bar.innerHTML =
         '<div class="player-info">' +
           '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
@@ -272,24 +267,15 @@
       }
     }
 
-    // ── Conversion coordonnées logiques → SVG ─────────────────────
-    // myColor = 'maintso' : row A (ri=0) en HAUT, row E (ri=4) en BAS → maintso (ri>2) en bas ✓
-    // myColor = 'mena'    : on INVERSE ri → row E en haut, row A en bas → mena (ri<2) en bas ✓
-    function svgY(ri) {
-      return myColor === 'mena' ? (4 - ri) * 50 : ri * 50;
-    }
+    // Coordonnées SVG selon la couleur du joueur (orientation correcte)
+    function svgY(ri) { return myColor === 'mena' ? (4 - ri) * 50 : ri * 50; }
     function svgX(ci) { return ci * 50; }
-
-    function spotToXY(spotID) {
-      var ri = rows.indexOf(spotID[0]), ci = cols.indexOf(spotID[1]);
-      return { x: svgX(ci), y: svgY(ri) };
-    }
 
     // ═══════════════════════════════════════════════════════════════
     //  S6 — Polling adversaire
     // ═══════════════════════════════════════════════════════════════
     async function pollAdversaire() {
-      if (oppAnimating) return; // ne pas interrompre une animation en cours
+      if (oppAnimating) return;
       try {
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
@@ -297,18 +283,12 @@
         var serverHistory = d.game.moveHistory || [];
 
         if (serverTurn !== myColor && !movingInProgress) {
-          // Tour adversaire OU adversaire vient de finir son tour
           var newMoves = serverHistory.slice(lastSeenHistoryLen);
-
           if (newMoves.length > 0) {
-            // Il y a des mouvements nouveaux à animer
             lastSeenHistoryLen = serverHistory.length;
-            // Construire le state de DÉPART de l'animation
-            // (on rejoue depuis le state avant ces mouvements)
             var animStartPieces = computeStateBeforeHistory(d.game, newMoves);
             await playOppAnimation(animStartPieces, newMoves, d.game);
           } else if (!localState || localState.turn === myColor) {
-            // Pas de nouveaux moves mais tour passé → sync direct
             localState = copyState(d.game);
             selectedSpot = null; lastBlockedSpot = null; canChangePiece = true;
             pendingCaptures = { approach: [], withdrawal: [], moveData: null };
@@ -316,9 +296,7 @@
             document.getElementById('stop-move-btn').classList.remove('active');
             applyLocalState();
           }
-
         } else if (serverTurn === myColor && !movingInProgress) {
-          // Transition : l'adversaire vient de finir, c'est mon tour
           if (!localState || localState.turn !== myColor) {
             lastSeenHistoryLen = serverHistory.length;
             localState     = copyState(d.game);
@@ -328,78 +306,66 @@
             applyLocalState();
           }
         }
-
       } catch(e) { console.warn('poll error', e); }
     }
 
-    // Reconstruire l'état des pièces AVANT que newMoves aient été joués
-    // En partant de d.game.pieces (état final), on rejoue en sens inverse
+    // Recalculer l'état AVANT que newMoves aient été joués (pour partir du bon point)
     function computeStateBeforeHistory(finalGame, newMoves) {
-      // On part de l'état final et on annule les newMoves en ordre inverse
-      var pieces = Object.assign({}, finalGame.pieces);
-      var oppCol = finalGame.turn === myColor ? myOppColor : finalGame.turn;
-      // Déterminer la couleur de l'adversaire (celui qui a joué ces moves)
-      // C'est la couleur qui N'EST PAS le tour actuel si tour changé, sinon oppColor
-      var playerCol = myOppColor; // l'adversaire a toujours joué ces mouvements
+      var pieces    = Object.assign({}, finalGame.pieces);
+      var playerCol = myOppColor;
 
       for (var i = newMoves.length - 1; i >= 0; i--) {
         var mv = newMoves[i];
-        // Annuler le mouvement : remettre la pièce à origin, enlever de target
-        if (pieces[mv.target] === playerCol) {
-          delete pieces[mv.target];
-        }
+        if (pieces[mv.target]) delete pieces[mv.target];
         pieces[mv.origin] = playerCol;
-        // Remettre les pièces capturées
         var caps = mv.capturedSpots || [];
-        for (var j = 0; j < caps.length; j++) {
-          pieces[caps[j]] = myColor; // les capturées appartenaient au joueur local
-        }
+        for (var j = 0; j < caps.length; j++) pieces[caps[j]] = myColor;
       }
       return pieces;
     }
 
     // Animation séquentielle des mouvements adversaire
+    // Chaque étape :
+    //   1. Placer la pièce au nouveau endroit SANS transition (transform immédiat)
+    //   2. Activer la transition
+    //   3. Mettre à jour le transform → déclenchement CSS transition
+    //   4. Attendre OPP_ANIM_MS (durée transition)
     async function playOppAnimation(startPieces, moves, finalGame) {
       oppAnimating = true;
       document.getElementById('game-board').classList.add('lock-board');
 
-      // Construire un state temporaire pour l'animation
-      var animState = {
-        pieces:      startPieces,
-        turn:        myOppColor,
-        movingPiece: moves[0].origin,
-        visited:     [],
-        lastDir:     ''
-      };
+      // Initialiser le DOM avec le state de départ (sans transition)
+      // renderPiecesStatic place les pièces sans activer .opp-piece
+      var animPieces = Object.assign({}, startPieces);
+      renderPiecesForAnim(animPieces, false); // false = sans transition
 
-      // Initialiser le rendu avec le state de départ
-      localState = animState;
-      renderPieces(animState.pieces, animState);
-      updateTurnIndicator(myOppColor);
+      // Attendre un frame pour que le DOM soit stabilisé
+      await delay(16);
 
-      // Attendre une frame pour que le DOM soit prêt avant d'animer
-      await delay(50);
-
-      // Rejouer chaque mouvement avec animation
       for (var i = 0; i < moves.length; i++) {
-        var mv = moves[i];
-        var newPieces = Object.assign({}, animState.pieces);
-        delete newPieces[mv.origin];
-        newPieces[mv.target] = myOppColor;
-        // Supprimer les captures
-        var caps = mv.capturedSpots || [];
-        for (var j = 0; j < caps.length; j++) {
-          delete newPieces[caps[j]];
-        }
-        animState.pieces = newPieces;
-        animState.movingPiece = mv.target;
+        var mv      = moves[i];
+        var origin  = mv.origin;
+        var target  = mv.target;
+        var caps    = mv.capturedSpots || [];
 
-        renderPieces(newPieces, animState);
-        // Attendre la fin de la transition CSS avant le prochain mouvement
-        await delay(OPP_ANIM_STEP);
+        // 1. Activer la transition sur la pièce qui va bouger
+        enableOppTransition(origin);
+
+        // 2. Déplacer la pièce dans animPieces
+        var newPieces = Object.assign({}, animPieces);
+        delete newPieces[origin];
+        newPieces[target] = myOppColor;
+        for (var j = 0; j < caps.length; j++) delete newPieces[caps[j]];
+
+        // 3. Appliquer le nouveau state → la transition CSS se déclenche
+        renderPiecesForAnim(newPieces, true);
+        animPieces = newPieces;
+
+        // 4. Attendre exactement OPP_ANIM_MS (durée de la transition)
+        await delay(OPP_ANIM_MS);
       }
 
-      // Fin d'animation : appliquer l'état final du serveur
+      // Fin : appliquer l'état final du serveur
       oppAnimating = false;
       localState   = copyState(finalGame);
       lastSeenHistoryLen = (finalGame.moveHistory || []).length;
@@ -412,8 +378,55 @@
       applyLocalState();
     }
 
-    function delay(ms) {
-      return new Promise(function(resolve) { setTimeout(resolve, ms); });
+    // ─── renderPiecesForAnim : render dédié à l'animation adversaire ──────────
+    // Ne touche pas aux pièces du joueur local (pas de reconciliation croisée)
+    // withTransition : active ou non la classe .opp-piece (qui porte la CSS transition)
+    function renderPiecesForAnim(pieces, withTransition) {
+      var grp = document.getElementById('pieces-group');
+
+      // Mettre à jour ou créer chaque pièce adversaire
+      Object.keys(pieces).forEach(function(spot) {
+        if (pieces[spot] !== myOppColor) return; // ne traiter que les pièces adversaires
+        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+        if (ri < 0 || ci < 0) return;
+
+        var entry = piecesOnBoard[spot];
+        if (!entry || entry.color !== myOppColor) {
+          // Créer l'élément SVG si absent
+          var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          g.setAttribute('class', withTransition ? 'piece-group opp-piece' : 'piece-group');
+          var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          c.setAttribute('r', 8);
+          c.setAttribute('fill', 'url(#' + myOppColor + '-pat)');
+          g.appendChild(c);
+          grp.appendChild(g);
+          piecesOnBoard[spot] = { el: g, color: myOppColor };
+          entry = piecesOnBoard[spot];
+        }
+
+        var g = entry.el;
+        if (withTransition) g.setAttribute('class', 'piece-group opp-piece');
+        else                g.setAttribute('class', 'piece-group');
+        g.setAttribute('transform', 'translate(' + svgX(ci) + ',' + svgY(ri) + ')');
+      });
+
+      // Supprimer les pièces adversaires qui ne sont plus dans pieces
+      Object.keys(piecesOnBoard).forEach(function(spot) {
+        var entry = piecesOnBoard[spot];
+        if (!entry || entry.color !== myOppColor) return;
+        if (!pieces[spot] || pieces[spot] !== myOppColor) {
+          entry.el.remove();
+          delete piecesOnBoard[spot];
+        }
+      });
+    }
+
+    // Activer la transition sur la pièce adversaire à origin AVANT de la déplacer
+    function enableOppTransition(originSpot) {
+      var entry = piecesOnBoard[originSpot];
+      if (entry && entry.el) {
+        entry.el.setAttribute('class', 'piece-group opp-piece');
+      }
     }
 
     function copyState(game) {
@@ -434,6 +447,7 @@
       } else if (!movingInProgress) {
         stopBtn.classList.remove('active');
       }
+      // Rendu joueur (sans transition)
       renderPieces(localState.pieces, localState);
       if (selectedSpot && localState.turn === myColor) {
         renderGuides(selectedSpot, localState);
@@ -441,7 +455,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  S7 — Spots cliquables (coordonnées corrigées)
+    //  S7 — Spots cliquables
     // ═══════════════════════════════════════════════════════════════
     function drawBoardSpots() {
       var spotsGrp = document.getElementById('spots-group');
@@ -461,7 +475,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  S8 — Gestion des clics (Optimistic UI)
+    //  S8 — Gestion des clics (Optimistic UI — SANS transition)
     // ═══════════════════════════════════════════════════════════════
     function handleSpotClick(spotID) {
       if (!localState || localState.turn !== myColor) return;
@@ -490,13 +504,13 @@
       var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
       if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
 
-      var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
-      var r2 = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
+      var r1 = rows.indexOf(selectedSpot[0]), r2 = rows.indexOf(spotID[0]);
+      var c1 = cols.indexOf(selectedSpot[1]), c2 = cols.indexOf(spotID[1]);
       var dir = (r2-r1) + ',' + (c2-c1);
       if (!canChangePiece && localState.lastDir === dir) return;
 
-      var origin     = selectedSpot;
-      var newPieces  = Object.assign({}, pieces);
+      var origin    = selectedSpot;
+      var newPieces = Object.assign({}, pieces);
       delete newPieces[origin];
       newPieces[spotID] = myColor;
       var newVisited = (localState.visited || []).concat([origin]);
@@ -522,16 +536,15 @@
       var md = pendingCaptures.moveData;
       var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
       pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      var newPieces  = Object.assign({}, localState.pieces);
-      var newVisited = (localState.visited || []).slice();
-      doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
+      doMove(md.origin, md.target, capturedSpots, md.dir,
+             (localState.visited || []).slice(), Object.assign({}, localState.pieces), true);
     }
 
     function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
       capturedSpots.forEach(function(s) { delete newPieces[s]; });
       var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
 
-      movingInProgress = true;
+      movingInProgress  = true;
       localState.pieces = newPieces;
 
       if (canContinue) {
@@ -540,7 +553,6 @@
         localState.lastDir     = dir;
         selectedSpot   = target; canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
-        // Guides immédiatement après le mouvement
         renderGuides(target, localState);
       } else {
         localState.turn        = myOppColor;
@@ -551,9 +563,9 @@
       }
 
       updateTurnIndicator(localState.turn);
+      // Rendu SANS transition pour le joueur local
       renderPieces(localState.pieces, localState);
 
-      // Fire-and-forget
       callApi(GAME_API_URL, 'make-move', {
         uid: myUid, gameId: gameId,
         origin: origin, target: target,
@@ -581,7 +593,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  S9 — Réconciliation (5s après fin de tour)
+    //  S9 — Réconciliation
     // ═══════════════════════════════════════════════════════════════
     function scheduleReconcile() {
       if (reconcileTimer) clearTimeout(reconcileTimer);
@@ -594,9 +606,8 @@
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
         movingInProgress = false;
-
         if (d.game.turn !== myColor) {
-          if (localState.turn !== myColor) return; // déjà ok
+          if (localState.turn !== myColor) return;
           localState = copyState(d.game);
           selectedSpot = null; lastBlockedSpot = null; canChangePiece = true;
           pendingCaptures = { approach: [], withdrawal: [], moveData: null };
@@ -604,11 +615,10 @@
           document.getElementById('stop-move-btn').classList.remove('active');
           applyLocalState();
         } else {
-          var serverMoving = d.game.movingPiece || '';
-          if (serverMoving) {
-            selectedSpot   = localState.movingPiece || serverMoving;
-            canChangePiece = false;
-            localState.movingPiece = selectedSpot;
+          var sm = d.game.movingPiece || '';
+          if (sm) {
+            selectedSpot = localState.movingPiece || sm;
+            canChangePiece = false; localState.movingPiece = selectedSpot;
             document.getElementById('stop-move-btn').classList.add('active');
           }
           if (selectedSpot) renderGuides(selectedSpot, localState);
@@ -619,45 +629,50 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  S10 — Rendu des pièces
+    //  S10 — renderPieces : rendu joueur (SANS transition CSS)
+    //  Les pièces du joueur local bougent instantanément (optimistic).
+    //  La reconciliation vanished/appeared ne crée PAS de déplacement animé.
     // ═══════════════════════════════════════════════════════════════
     function renderPieces(pieces, stateData) {
       var grp           = document.getElementById('pieces-group');
       var isMyTurn      = stateData.turn === myColor;
       var globalCapture = playerHasAnyCapture(pieces, myColor);
 
-      var newPiecesOnBoard = {};
-      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
-      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+      // ── Synchroniser piecesOnBoard avec le nouveau state ───────
+      // Pour chaque spot dans pieces : créer ou mettre à jour l'élément SVG
+      // Pour les spots disparus : supprimer l'élément
 
-      vanished.forEach(function(vKey) {
-        var color  = piecesOnBoard[vKey].color;
-        var target = null;
-        for (var i = 0; i < appeared.length; i++) {
-          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
+      // Nouveaux spots (pièces apparues)
+      Object.keys(pieces).forEach(function(spot) {
+        if (!piecesOnBoard[spot]) {
+          var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          // Pas de classe opp-piece → pas de transition
+          g.setAttribute('class', 'piece-group');
+          var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          c.setAttribute('r', 8);
+          g.appendChild(c);
+          grp.appendChild(g);
+          piecesOnBoard[spot] = { el: g, color: pieces[spot] };
         }
-        if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
-          appeared = appeared.filter(function(a) { return a !== target; });
-        } else {
-          piecesOnBoard[vKey].el.remove();
+      });
+
+      // Spots disparus (pièces capturées ou déplacées)
+      // Pour le joueur local : on fait une mise à jour positionnelle directe
+      // (la pièce qui s'est déplacée origin→target : on met à jour la position de target)
+      // On supprime simplement les spots qui ne sont plus dans pieces
+      Object.keys(piecesOnBoard).forEach(function(spot) {
+        if (!pieces[spot]) {
+          piecesOnBoard[spot].el.remove();
+          delete piecesOnBoard[spot];
         }
       });
 
-      appeared.forEach(function(aKey) {
-        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
-        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('r', 8);
-        g.appendChild(c);
-        grp.appendChild(g);
-        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+      // Mettre à jour color si nécessaire (capture d'une pièce qui change de couleur : impossible, mais sécurité)
+      Object.keys(pieces).forEach(function(spot) {
+        if (piecesOnBoard[spot] && piecesOnBoard[spot].color !== pieces[spot]) {
+          piecesOnBoard[spot].color = pieces[spot];
+        }
       });
-
-      Object.keys(pieces).forEach(function(k) {
-        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
-      });
-      piecesOnBoard = newPiecesOnBoard;
 
       var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
 
@@ -668,7 +683,9 @@
         if (!entry) return;
         var g = entry.el, circle = g.querySelector('circle');
 
-        // Coordonnées corrigées (orientation joueur)
+        // Toujours sans transition pour le joueur (retirer opp-piece si présente)
+        g.setAttribute('class', 'piece-group');
+        // Position immédiate (pas de transition)
         g.setAttribute('transform', 'translate(' + svgX(ci) + ',' + svgY(ri) + ')');
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
@@ -713,7 +730,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  S11 — Guides (toujours affichés quand pièce sélectionnée)
+    //  S11 — Guides
     // ═══════════════════════════════════════════════════════════════
     function renderGuides(startSpot, stateData) {
       var grp = document.getElementById('guides-group');
@@ -733,23 +750,20 @@
         var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
         if (globalCapturePossible && !isCaptureMove) return;
 
-        var r1 = rows.indexOf(startSpot[0]);
-        var r2 = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-        var c1 = cols.indexOf(startSpot[1]);
+        var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
+        var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
         var dir = (r2-r1) + ',' + (c2-c1);
         if (!canChangePiece && lastDir === dir) return;
 
         var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', svgX(c2));
-        dot.setAttribute('cy', svgY(r2));
-        dot.setAttribute('r', 6);
-        dot.setAttribute('class', 'guide-dot');
+        dot.setAttribute('cx', svgX(c2)); dot.setAttribute('cy', svgY(r2));
+        dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
         grp.appendChild(dot);
       });
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  S12 — Règles du jeu
+    //  S12 — Règles
     // ═══════════════════════════════════════════════════════════════
     function getCaptures(pieces, s, e, color) {
       var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
@@ -768,7 +782,10 @@
         var s=sl[i]; if(pieces[s]!==color)continue;
         var mv=allowedMoves[s]||[];
         for(var j=0;j<mv.length;j++){
-          var t=mv[j]; if(!pieces[t]){var c=getCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
+          var t=mv[j]; if(!pieces[t]){
+            var c=getCaptures(pieces,s,t,color);
+            if(c.approach.length>0||c.withdrawal.length>0)return true;
+          }
         }
       }
       return false;
