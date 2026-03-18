@@ -374,10 +374,10 @@
           var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           circle.setAttribute('cx', ci * 50);
           circle.setAttribute('cy', ri * 50);
-          circle.setAttribute('r', 22);
+          circle.setAttribute('r', 18);
           circle.setAttribute('fill', 'transparent');
           circle.setAttribute('class', 'spot');
-          (function(spotID) { circle.onclick = function() { handleSpotClick(spotID); }; })(r + c);
+          (function(spotID) { circle.onclick = function(e) { e.stopPropagation(); handleSpotClick(spotID); }; })(r + c);
           spotsGrp.appendChild(circle);
         });
       });
@@ -669,8 +669,11 @@
         g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
-        circle.style.pointerEvents = 'none';
-        circle.onclick = null;
+        circle.style.pointerEvents = 'all';
+        // Rehefa manindry pio, alefa any amin'ny spot marina (mba tsy hivaingana ny click)
+        circle.onclick = (function(s) {
+          return function(e) { e.stopPropagation(); handleSpotClick(s); };
+        })(spot);
 
         if (isMyTurn && pieces[spot] === myColor) {
           if (selectedSpot === spot)
@@ -689,6 +692,7 @@
           circle.classList.add('capture-target');
           circle.style.pointerEvents = 'all';
           var ct = isApp ? 'approach' : 'withdrawal';
+          // Override onclick — eto confirmCapture no ilaina fa tsy handleSpotClick
           circle.onclick = (function(type) {
             return function(e) { e.stopPropagation(); confirmCapture(type); };
           })(ct);
