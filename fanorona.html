@@ -54,9 +54,16 @@
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
 
-    /* ── Bouton Stop (caché — auto-stop efa mihetsika) ── */
+    /* ── Bouton Stop ── */
     #stop-move-btn {
-      display: none !important;
+      width: 60px; height: 60px; border-radius: 50%;
+      background: #f44336; color: white; border: 4px solid white;
+      font-size: 30px; font-weight: bold; cursor: pointer;
+      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none;
+    }
+    #stop-move-btn.active {
+      opacity: 1; transform: scale(1.1);
+      box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all;
     }
 
     /* ── Loading ── */
@@ -490,6 +497,8 @@
         canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
       } else {
+        // Miova ho adversaires avy hatrany — tsy mila miandry reconcile
+        movingInProgress       = false;
         localState.turn        = myOppColor;
         localState.movingPiece = '';
         localState.visited     = [];
