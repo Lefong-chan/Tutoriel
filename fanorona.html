@@ -54,16 +54,9 @@
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
 
-    /* ── Bouton Stop ── */
+    /* ── Bouton Stop (caché — auto-stop efa mihetsika) ── */
     #stop-move-btn {
-      width: 60px; height: 60px; border-radius: 50%;
-      background: #f44336; color: white; border: 4px solid white;
-      font-size: 30px; font-weight: bold; cursor: pointer;
-      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none;
-    }
-    #stop-move-btn.active {
-      opacity: 1; transform: scale(1.1);
-      box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all;
+      display: none !important;
     }
 
     /* ── Loading ── */
@@ -184,6 +177,10 @@
     var myOppColor = null;
     var gameId     = null;
     var myUid      = null;
+
+    // ── Mouve continue (disabled — tsy ampiasaina aloa, fa tsy esorina) ──
+    // Asiana true ity mba hanafahana ny lojika mouve continue
+    var ENABLE_CONTINUE_MOVE = false;
 
     // localState : état du board affiché (optimistic)
     var localState = null;
@@ -478,26 +475,37 @@
       // Supprimer captures
       capturedSpots.forEach(function(s) { delete newPieces[s]; });
 
-      // NOTE: canContinue est calculé ici (lojika multi-capture voatahiry) fa tsy ampiasaina amin'ny
-      // fanovana turn amin'izao — hampiasaina aoriana ao rehefa ilaina.
-      var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
-      // (canContinue voatahiry — tsy esorina)
+      // ENABLE_CONTINUE_MOVE = false → auto-stop aorian'ny hetsika iray (miova ho adversaire avy hatrany)
+      var canContinue = ENABLE_CONTINUE_MOVE && wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
 
       // ── Mise à jour locale immédiate ───────────────────────────
-      // Rehefa manetsika indray iany dia miova ho an'ny adversaires ny hetsika
       movingInProgress = true;
       localState.pieces = newPieces;
 
-      // Miova turn ho adversaire foana (na canContinue na tsia)
-      localState.turn        = myOppColor;
-      localState.movingPiece = '';
-      localState.visited     = [];
-      localState.lastDir     = '';
-      selectedSpot    = null;
-      lastBlockedSpot = null;
-      canChangePiece  = true;
-      document.getElementById('stop-move-btn').classList.remove('active');
-      document.getElementById('guides-group').innerHTML = '';
+      if (canContinue) {
+        localState.movingPiece = target;
+        localState.visited     = newVisited;
+        localState.lastDir     = dir;
+        selectedSpot   = target;
+        canChangePiece = false;
+        document.getElementById('stop-move-btn').classList.add('active');
+      } else {
+        localState.turn        = myOppColor;
+        localState.movingPiece = '';
+        localState.visited     = [];
+        localState.lastDir     = '';
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        canChangePiece  = true;
+        document.getElementById('stop-move-btn').classList.remove('active');
+      }
+
+      // Guide affiché immédiatement après le mouvement
+      if (canContinue && selectedSpot) {
+        renderGuides(selectedSpot, localState);
+      } else {
+        document.getElementById('guides-group').innerHTML = '';
+      }
 
       updateTurnIndicator(localState.turn);
       renderPieces(localState.pieces, localState);
@@ -505,14 +513,12 @@
       // ── Envoi au backend (fire-and-forget, sans rollback) ──────
       sendMoveToBackend(origin, target, capturedSpots, dir);
 
-      // ── Stop automatique : rehefa vita hetsika iray dia ok automatic ──────
-      // (mitovy amin'ny handleStopBtn fa atao avy hatrany tsy miandry click)
-      var piecesSnapshot = Object.assign({}, localState.pieces);
-      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
-        .catch(function(e) { console.warn('auto stop-move error (non-blocking):', e); });
-
       // ── Réconciliation différée ────────────────────────────────
-      scheduleReconcile();
+      // On attend RECONCILE_DELAY après le DERNIER mouvement du turn
+      // pour vérifier que tout est cohérent côté backend
+      if (!canContinue) {
+        scheduleReconcile();
+      }
     }
 
     function handleStopBtn() {
