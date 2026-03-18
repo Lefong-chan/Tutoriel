@@ -1,6 +1,6 @@
 // api/game.js
 // Fitantanana ny état ny lalao Fanorona ao amin'ny Firebase RTDB
-// Tsy misy Firebase config eto – ampiasaina ny admin SDK avy amin'ny env vars
+// Tsy misy Firebase config eto – ampiasaina ny admin SDK avy amin'ny env vars (tahaka session.js)
 
 import admin from "firebase-admin";
 
@@ -18,8 +18,9 @@ if (!admin.apps.length) {
   });
 }
 
-const rtdb     = admin.database();
-const gamesRef = rtdb.ref("games");
+const rtdb        = admin.database();
+const gamesRef    = rtdb.ref("games");
+const invitesRef  = rtdb.ref("gameInvites");
 
 async function rtdbGet(ref) {
   const snap = await ref.once("value");
@@ -41,9 +42,9 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
-      case "get-state":  return await handleGetState(payload, res);
-      case "make-move":  return await handleMakeMove(payload, res);
-      case "stop-move":  return await handleStopMove(payload, res);
+      case "get-state":    return await handleGetState(payload, res);
+      case "make-move":    return await handleMakeMove(payload, res);
+      case "stop-move":    return await handleStopMove(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -52,9 +53,8 @@ export default async function handler(req, res) {
   }
 }
 
-// ── get-state ──────────────────────────────────────────────────────────────
+// ── Mamerina ny état rehetra ny lalao ──────────────────────────────────────
 // Body: { uid, gameId }
-// Retourne l'état complet + moveHistory (séquence de mouvements du tour actif)
 async function handleGetState(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
@@ -67,9 +67,12 @@ async function handleGetState(body, res) {
   return res.status(200).json({ success: true, game });
 }
 
-// ── make-move ──────────────────────────────────────────────────────────────
-// Body: { uid, gameId, origin, target, capturedSpots, dir }
-// Stocke également chaque mouvement dans moveHistory pour l'animation adversaire
+// ── Manao dingana (miampy capture) ─────────────────────────────────────────
+// Body: { uid, gameId, origin, target, capturedSpots, captureType }
+//   origin        : toerana nialan'ny pio (ex: "C5")
+//   target        : toerana nialanana (ex: "C6")
+//   capturedSpots : ["D6","E6"] – pio nabo nanalana
+//   captureType   : "approach" | "withdrawal" | null
 async function handleMakeMove(body, res) {
   const { uid, gameId, origin, target, capturedSpots = [], dir } = body;
   if (!uid || !gameId || !origin || !target)
@@ -83,51 +86,62 @@ async function handleMakeMove(body, res) {
 
   const myColor = game.senderUid === uid ? "maintso" : "mena";
   if (game.turn !== myColor)         return res.status(400).json({ error: "Tsy anjaranao." });
+
+  // Raha misy movingPiece, ny origin dia tsy maintsy izany movingPiece izany
   if (game.movingPiece && game.movingPiece !== origin)
     return res.status(400).json({ error: "Pio hafa tsy azo hetsehina izao." });
 
   const pieces  = { ...(game.pieces || {}) };
   const visited = [...(game.visited || [])];
 
+  // Manetsika pio
   delete pieces[origin];
   pieces[target] = myColor;
-  if (Array.isArray(capturedSpots)) capturedSpots.forEach(s => delete pieces[s]);
+
+  // Manala pio nabo
+  if (Array.isArray(capturedSpots)) {
+    capturedSpots.forEach(s => delete pieces[s]);
+  }
 
   const newVisited = [...visited, origin];
   const wasCapture = capturedSpots.length > 0;
+
+  // Jerena raha mbola azo hihazoana mihetsika (multi-capture)
   const canContinue = wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
-  // ── Ajouter ce mouvement à l'historique du tour ────────────────
-  // moveHistory : liste des mouvements du tour en cours
-  // Format par entrée : { origin, target, capturedSpots }
-  // Réinitialisé à chaque nouveau tour (voir stop-move / fin de tour)
+  // Mitahiry ny dingana ao amin'ny moveHistory
   const prevHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  const newHistory  = [...prevHistory, { origin, target, capturedSpots: capturedSpots || [] }];
+  const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
 
   if (canContinue) {
+    // Mbola mitohy ny turn – movingPiece voaray
     await gameRef.update({
       pieces,
       movingPiece: target,
       visited:     newVisited,
       lastDir:     dir || "",
-      moveHistory: newHistory
+      moveHistory: [...prevHistory, newHistoryEntry]
     });
     return res.status(200).json({ success: true, continuing: true });
   } else {
+    // Vita ny turn – manova turn, mitahiry ny lastTurnHistory ho an'ny adversaire
     const nextColor = myColor === "maintso" ? "mena" : "maintso";
+    const fullHistory = [...prevHistory, newHistoryEntry];
     await gameRef.update({
       pieces,
-      turn:        nextColor,
-      movingPiece: "",
-      visited:     [],
-      lastDir:     "",
-      moveHistory: newHistory   // gardé jusqu'à ce que l'adversaire en prenne connaissance
+      turn:            nextColor,
+      movingPiece:     "",
+      visited:         [],
+      lastDir:         "",
+      moveHistory:     [],
+      lastTurnHistory: fullHistory,
+      lastTurnColor:   myColor
     });
     return res.status(200).json({ success: true, continuing: false });
   }
 }
 
-// ── stop-move ──────────────────────────────────────────────────────────────
+// ── Mijanona an-tsaina (bouton OK) ─────────────────────────────────────────
 // Body: { uid, gameId, pieces }
 async function handleStopMove(body, res) {
   const { uid, gameId, pieces } = body;
@@ -142,38 +156,22 @@ async function handleStopMove(body, res) {
   if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (!game.movingPiece)     return res.status(400).json({ error: "Tsy misy movingPiece." });
 
-  const prevHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  const nextColor   = myColor === "maintso" ? "mena" : "maintso";
-
+  const nextColor = myColor === "maintso" ? "mena" : "maintso";
+  const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
   await gameRef.update({
     pieces,
-    turn:        nextColor,
-    movingPiece: "",
-    visited:     [],
-    lastDir:     "",
-    moveHistory: prevHistory   // gardé pour l'adversaire
+    turn:            nextColor,
+    movingPiece:     "",
+    visited:         [],
+    lastDir:         "",
+    moveHistory:     [],
+    lastTurnHistory: stopHistory,
+    lastTurnColor:   myColor
   });
   return res.status(200).json({ success: true });
 }
 
-// ── clear-history ──────────────────────────────────────────────────────────
-// Appelé par le client adversaire une fois qu'il a joué l'animation
-// Body: { uid, gameId }
-async function handleClearHistory(body, res) {
-  const { uid, gameId } = body;
-  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
-
-  const gameRef = gamesRef.child(gameId);
-  const game    = await rtdbGet(gameRef);
-  if (!game) return res.status(404).json({ error: "Game not found." });
-  if (game.senderUid !== uid && game.receiverUid !== uid)
-    return res.status(403).json({ error: "Not authorized." });
-
-  await gameRef.update({ moveHistory: [] });
-  return res.status(200).json({ success: true });
-}
-
-// ── Helpers règles ──────────────────────────────────────────────────────────
+// ── Helper: jerena raha misy capture mbola azo atao ────────────────────────
 const ROWS = ['A','B','C','D','E'];
 const COLS = ['1','2','3','4','5','6','7','8','9'];
 
@@ -182,18 +180,13 @@ const ALLOWED_MOVES = {
   'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
   'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
   'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],
-  'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],
-  'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
+  'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
   'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
-  'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],
-  'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
-  'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],
-  'C6':['B6','C5','C7','D6'],
-  'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],
-  'C9':['B8','B9','C8','D8','D9'],
+  'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
+  'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],'C6':['B6','C5','C7','D6'],
+  'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],'C9':['B8','B9','C8','D8','D9'],
   'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
-  'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],
-  'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
+  'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
   'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
   'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],
   'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
