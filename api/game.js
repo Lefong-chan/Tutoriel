@@ -45,7 +45,6 @@ export default async function handler(req, res) {
       case "get-state":    return await handleGetState(payload, res);
       case "make-move":    return await handleMakeMove(payload, res);
       case "stop-move":    return await handleStopMove(payload, res);
-      case "ack-moves":    return await handleAckMoves(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -111,11 +110,7 @@ async function handleMakeMove(body, res) {
   const canContinue = wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
   const prevHistory    = Array.isArray(game.moveHistory)  ? game.moveHistory  : [];
-  const prevQueue      = Array.isArray(game.oppMoveQueue) ? game.oppMoveQueue : [];
   const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
-  // oppMoveQueue : hetsika rehetra mbola tsy nampitaina amin'ny adversaire
-  const newQueue = [...prevQueue, { origin, target, capturedSpots: capturedSpots || [] }];
-
   if (canContinue) {
     await gameRef.update({
       pieces,
@@ -123,7 +118,6 @@ async function handleMakeMove(body, res) {
       visited:      newVisited,
       lastDir:      dir || "",
       moveHistory:  [...prevHistory, newHistoryEntry],
-      oppMoveQueue: newQueue
     });
     return res.status(200).json({ success: true, continuing: true });
   } else {
@@ -136,7 +130,6 @@ async function handleMakeMove(body, res) {
       visited:         [],
       lastDir:         "",
       moveHistory:     [],
-      oppMoveQueue:    newQueue,
       lastTurnHistory: fullHistory,
       lastTurnColor:   myColor
     });
@@ -161,7 +154,6 @@ async function handleStopMove(body, res) {
 
   const nextColor = myColor === "maintso" ? "mena" : "maintso";
   const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  const prevQueueStop  = Array.isArray(game.oppMoveQueue) ? game.oppMoveQueue : [];
   await gameRef.update({
     pieces,
     turn:            nextColor,
@@ -169,29 +161,9 @@ async function handleStopMove(body, res) {
     visited:         [],
     lastDir:         "",
     moveHistory:     [],
-    oppMoveQueue:    prevQueueStop,
     lastTurnHistory: stopHistory,
     lastTurnColor:   myColor
   });
-  return res.status(200).json({ success: true });
-}
-
-// ── Manafoana ny oppMoveQueue rehefa noraisina ny adversaire ───────────────
-// Body: { uid, gameId, count }  — count: isan'ny hetsika noraisina
-async function handleAckMoves(body, res) {
-  const { uid, gameId, count } = body;
-  if (!uid || !gameId || !count) return res.status(400).json({ error: "uid, gameId, count required." });
-
-  const gameRef = gamesRef.child(gameId);
-  const game    = await rtdbGet(gameRef);
-  if (!game) return res.status(404).json({ error: "Game not found." });
-  if (game.senderUid !== uid && game.receiverUid !== uid)
-    return res.status(403).json({ error: "Not authorized." });
-
-  const queue = Array.isArray(game.oppMoveQueue) ? game.oppMoveQueue : [];
-  // Esorina ny hetsika voalohany `count` — sisa ny tsy mbola noraisina
-  const remaining = queue.slice(count);
-  await gameRef.update({ oppMoveQueue: remaining });
   return res.status(200).json({ success: true });
 }
 
