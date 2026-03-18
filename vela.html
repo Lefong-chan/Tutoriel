@@ -182,6 +182,17 @@
       return firstMover === null || firstMover === myColor;
     }
 
+    // isGameFrozen : rehefa 5 sisa ny pieces an'ilay tsy firstMover,
+    // ny lojika lalao rehetra dia miato — API polling ihany no mbola miasa.
+    function isGameFrozen(pieces) {
+      if (firstMover === null) return false;
+      var nonFMColor = firstMover === myColor ? myOppColor : myColor;
+      var count = Object.keys(pieces || {}).filter(function(s) {
+        return (pieces || {})[s] === nonFMColor;
+      }).length;
+      return count <= 5;
+    }
+
     async function init() {
       if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
       if (color_p !== 'maintso' && color_p !== 'mena') { showError('Diso ny color.'); return; }
@@ -313,8 +324,10 @@
         stopBtn.classList.remove('active');
       }
       renderPieces(localState.pieces, localState);
-      if (selectedSpot && localState.turn === myColor) {
+      if (selectedSpot && localState.turn === myColor && !isGameFrozen(localState.pieces)) {
         renderGuides(selectedSpot, localState);
+      } else if (isGameFrozen(localState.pieces)) {
+        document.getElementById('guides-group').innerHTML = '';
       }
     }
 
@@ -338,6 +351,7 @@
 
     function handleSpotClick(spotID) {
       if (!localState || localState.turn !== myColor) return;
+      if (isGameFrozen(localState.pieces)) return;
       if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
 
       var pieces = localState.pieces;
@@ -466,6 +480,7 @@
 
     function handleStopBtn() {
       if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
+      if (isGameFrozen(localState.pieces)) return;
       var piecesSnapshot = Object.assign({}, localState.pieces);
 
       movingInProgress       = true;
@@ -589,14 +604,12 @@
           return function(e) { e.stopPropagation(); handleSpotClick(s); };
         })(spot);
 
-        if (isMyTurn && pieces[spot] === myColor && !stateData.movingPiece) {
+        if (isMyTurn && pieces[spot] === myColor && !stateData.movingPiece && !isGameFrozen(pieces)) {
           if (selectedSpot === spot) {
             circle.setAttribute('class', 'selected-piece');
           } else if (lastBlockedSpot === spot) {
             circle.setAttribute('class', 'blocked-piece');
           } else {
-            // firstMover : stroke maintso raha mahita capture (voatery raha misy)
-            // tsy firstMover : stroke maintso raha afaka mihetsika (na aiza na aiza)
             var globalCap = amIFirstMover() ? playerHasAnyCapture(pieces, myColor) : false;
             if (canPieceMove(spot, pieces, myColor, globalCap))
               circle.setAttribute('class', 'movable-piece');
@@ -620,7 +633,7 @@
       });
 
       var board = document.getElementById('game-board');
-      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+      if (!isMyTurn || hasPending || isGameFrozen(pieces)) board.classList.add('lock-board');
       else board.classList.remove('lock-board');
     }
 
@@ -637,6 +650,7 @@
       if (!grp) return;
       grp.innerHTML = '';
       if (!startSpot) return;
+      if (isGameFrozen(stateData.pieces)) return;
 
       var pieces  = stateData.pieces;
       var visited = stateData.visited || [];
