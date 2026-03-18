@@ -103,9 +103,13 @@ async function handleMakeMove(body, res) {
   delete pieces[origin];
   pieces[target] = myColor;
 
-  // Manala pio nabo (captures)
-  if (Array.isArray(capturedSpots)) {
-    capturedSpots.forEach(s => delete pieces[s]);
+  // ── PIÈCE IRAY MONJA no esorina (voalohany ao amin'ny capturedSpots) ──
+  // Ny lojika manala pièce maro dia voasoratra fa MBOLA TSY AMPIASAINA.
+  // Rehefa hampiana → soloina ity block ity:
+  //   if (Array.isArray(capturedSpots)) { capturedSpots.forEach(s => delete pieces[s]); }
+  if (Array.isArray(capturedSpots) && capturedSpots.length > 0) {
+    delete pieces[capturedSpots[0]]; // pièce voalohany ihany
+    // (capturedSpots[1..n] dia tsy esorina ankehitriny)
   }
 
   const newVisited = [...visited, origin];
