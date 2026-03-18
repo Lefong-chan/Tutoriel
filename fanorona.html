@@ -207,18 +207,6 @@
     // Timer de réconciliation post-mouvement
     var reconcileTimer = null;
 
-    // ── Séquence hetsika adversaire ───────────────────────────────
-    // moveSeqIndex  : index ny move manaraka ho ampiseho ao amin'ny history
-    // moveSeqHistory: history feno nataon'ny adversaire tamin'ny turn farany
-    // moveSeqFinal  : game state farany (ampiharina rehefa vita ny séquence)
-    // lastSeenMoveSeqKey: mba tsy hamoaka séquence indroa ho an'ny turn iray
-    var moveSeqIndex       = -1;   // -1 = tsy misy séquence mandeha
-    var moveSeqHistory     = [];
-    var moveSeqFinal       = null;
-    var moveSeqTimer       = null;
-    var lastSeenMoveSeqKey = null;
-    var MOVE_SEQ_DELAY     = 220;  // ms eo amin'ny hetsika tsirairay
-
     var myDotEl  = null;
     var oppDotEl = null;
 
@@ -322,87 +310,32 @@
         // Ne rien écraser pendant un mouvement local
         if (movingInProgress) return;
 
-        // ── CAS 1: Tour adversaire — mampiseho avy hatrany ny hetsika ──
-        // Tsy misy séquence, tsy miverina — aseho mivantana ny pieces vaovao
+        // Raha mbola tsy tour anao → adversaire manao hetsika
+        // Havaozina ny pieces mba hita ny pio nalehany (tsy replay, tsy trail)
         if (serverTurn !== myColor) {
-          // Raha misy séquence mbola mandeha, ataovy stop (tsy ilaina intsony)
-          if (moveSeqTimer) { clearTimeout(moveSeqTimer); moveSeqTimer = null; }
-          moveSeqIndex   = -1;
-          moveSeqHistory = [];
-          moveSeqFinal   = null;
-
           if (localState) {
-            var newStr = JSON.stringify(d.game.pieces);
-            var curStr = JSON.stringify(localState.pieces);
-            if (newStr !== curStr) {
-              localState.pieces = Object.assign({}, d.game.pieces);
-              localState.turn   = d.game.turn;
-              renderPieces(localState.pieces, localState);
-            }
+            localState.pieces = Object.assign({}, d.game.pieces);
+            localState.turn   = d.game.turn;
+            renderPieces(localState.pieces, localState);
           }
           return;
         }
 
-        // ── CAS 2: Tour anao ──
+        // Tour anao — raha efa manao hetsika ianao (misy selectedSpot na movingPiece),
+        // tsy ovaina ny state mba tsy hanafoana ny selection nataonao
         if (selectedSpot || (localState && localState.movingPiece)) return;
 
+        // Tonga eto fotsiny raha tour anao SY tsy mbola nanao selection ianao
         var histColor = d.game.lastTurnColor || '';
         var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
-        var seqKey    = histColor + '|' + history.length + '|' +
+        var histKey   = histColor + '|' + history.length + '|' +
                         (history.length > 0 ? history[history.length - 1].target : '');
 
-        // ── CAS 2a: History vaovao avy amin'ny adversaire ──
-        // Manomboka séquence AVY AMIN'NY BOARD ANKEHITRINY mankany amin'ny farany
-        // (tsy miverina, tsy rebuild — mitohy fotsiny avy amin'ilay toerana ankehitriny)
-        if (histColor === myOppColor && history.length > 0 && seqKey !== lastSeenMoveSeqKey) {
-          lastSeenMoveSeqKey = seqKey;
-
-          // Raha misy séquence taloha mbola tsy vita, ataovy stop
-          if (moveSeqTimer) { clearTimeout(moveSeqTimer); moveSeqTimer = null; }
-
-          // Jerena hoe efa nampiseho firy amin'ny moves ny live update
-          // Ny pieces ankehitriny ao amin'ny localState dia mifanitsy amin'ny
-          // toerana nisy ny pio rehefa nisy polling farany (tsy miverina)
-          // Koa: jerena hoe aiza amin'ny history no mifanitsy amin'ny pieces ankehitriny
-          var curPieces = localState ? Object.assign({}, localState.pieces) : Object.assign({}, d.game.pieces);
-          var startIdx  = findHistoryStartIndex(curPieces, history, d.game.pieces);
-
-          if (startIdx >= history.length) {
-            // Efa nampiseho avokoa ny moves rehetra (live updates efa nahavita)
-            // Mampiseho ny state farany mivantana
-            localState      = copyState(d.game);
-            canChangePiece  = true;
-            selectedSpot    = null;
-            lastBlockedSpot = null;
-            pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-            document.getElementById('guides-group').innerHTML = '';
-            document.getElementById('stop-move-btn').classList.remove('active');
-            applyLocalState();
-            return;
-          }
-
-          // Misy moves mbola tsy nampiseho → séquence mitohy
-          moveSeqHistory = history;
-          moveSeqIndex   = startIdx;
-          moveSeqFinal   = d.game;
-
-          localState.turn = myOppColor; // lock
-          canChangePiece  = false;
-          selectedSpot    = null;
-          lastBlockedSpot = null;
-          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('guides-group').innerHTML = '';
-          document.getElementById('stop-move-btn').classList.remove('active');
-          document.getElementById('game-board').classList.add('lock-board');
-          renderPieces(localState.pieces, localState);
-          scheduleNextMoveStep();
-          return;
+        if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
+          lastSeenHistKey = histKey;
         }
 
-        // Raha mbola misy séquence mandeha, tsy ovaina
-        if (moveSeqIndex >= 0) return;
-
-        // ── CAS 2b: Update normal ──
+        // Havaozina ny localState fotsiny raha tena nisy fanovana
         var serverPiecesStr = JSON.stringify(d.game.pieces);
         var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
         if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
@@ -417,79 +350,6 @@
         applyLocalState();
 
       } catch(e) { console.warn('poll error', e); }
-    }
-
-    // ── Jerena hoe aiza amin'ny history no tsy mbola nampiseho ───────────────
-    // Maka ny pieces ankehitriny ary apetraka misesy ny moves (avy amin'ny voalohany)
-    // mandra-pahitana ny toerana mifanitsy amin'ny pieces ankehitriny.
-    // Mamerina ny index voalohany mbola tsy nampiseho.
-    function findHistoryStartIndex(curPieces, history, finalPieces) {
-      // Averina avy amin'ny farany amin'ny pieces farany mandra-pahitana
-      // ny toerana mifanitsy amin'ny curPieces
-      // Raha tsy hita, manomboka avy amin'ny 0
-      var cur = JSON.stringify(curPieces);
-      var fin = JSON.stringify(finalPieces);
-
-      // Raha efa mitovy amin'ny farany ny pieces ankehitriny → vita avokoa
-      if (cur === fin) return history.length;
-
-      // Rebuild misesy avy amin'ny voalohany mandra-pahitana toerana mitovy
-      var pieces = {};
-      // Hamoriana: averina avy amin'ny state farany miverina
-      pieces = Object.assign({}, finalPieces);
-      for (var i = history.length - 1; i >= 0; i--) {
-        var mv = history[i];
-        var color = pieces[mv.target];
-        if (color) { delete pieces[mv.target]; pieces[mv.origin] = color; }
-        if (Array.isArray(mv.capturedSpots)) {
-          var opp = color === 'maintso' ? 'mena' : 'maintso';
-          mv.capturedSpots.forEach(function(s) { pieces[s] = opp; });
-        }
-        if (JSON.stringify(pieces) === cur) return i; // Hita ny départ → manomboka amin'ny i
-      }
-      // Tsy hita → manomboka avy amin'ny voalohany
-      return 0;
-    }
-
-    // ── Séquence: mampiseho moves tsirairay MANKANY ALOHA (tsy miverina) ─────
-    function scheduleNextMoveStep() {
-      if (moveSeqIndex >= moveSeqHistory.length) {
-        // Vita ny séquence → omena ny joueur2 ny turn
-        moveSeqTimer   = null;
-        moveSeqIndex   = -1;
-        moveSeqHistory = [];
-        var finalGame  = moveSeqFinal;
-        moveSeqFinal   = null;
-        localState      = copyState(finalGame);
-        canChangePiece  = true;
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-        document.getElementById('guides-group').innerHTML = '';
-        document.getElementById('stop-move-btn').classList.remove('active');
-        document.getElementById('game-board').classList.remove('lock-board');
-        applyLocalState();
-        return;
-      }
-
-      moveSeqTimer = setTimeout(function() {
-        moveSeqTimer = null;
-        var mv    = moveSeqHistory[moveSeqIndex];
-        moveSeqIndex++;
-
-        // Ampiharo ilay move MANKANY ALOHA (tsy miverina)
-        var color     = localState.pieces[mv.origin] || myOppColor;
-        var newPieces = Object.assign({}, localState.pieces);
-        delete newPieces[mv.origin];
-        newPieces[mv.target] = color;
-        if (Array.isArray(mv.capturedSpots)) {
-          mv.capturedSpots.forEach(function(s) { delete newPieces[s]; });
-        }
-        localState.pieces = newPieces;
-        renderPieces(localState.pieces, localState);
-
-        scheduleNextMoveStep();
-      }, MOVE_SEQ_DELAY);
     }
 
     function copyState(game) {
@@ -618,36 +478,26 @@
       // Supprimer captures
       capturedSpots.forEach(function(s) { delete newPieces[s]; });
 
+      // NOTE: canContinue est calculé ici (lojika multi-capture voatahiry) fa tsy ampiasaina amin'ny
+      // fanovana turn amin'izao — hampiasaina aoriana ao rehefa ilaina.
       var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
+      // (canContinue voatahiry — tsy esorina)
 
       // ── Mise à jour locale immédiate ───────────────────────────
+      // Rehefa manetsika indray iany dia miova ho an'ny adversaires ny hetsika
       movingInProgress = true;
       localState.pieces = newPieces;
 
-      if (canContinue) {
-        localState.movingPiece = target;
-        localState.visited     = newVisited;
-        localState.lastDir     = dir;
-        selectedSpot   = target;
-        canChangePiece = false;
-        document.getElementById('stop-move-btn').classList.add('active');
-      } else {
-        localState.turn        = myOppColor;
-        localState.movingPiece = '';
-        localState.visited     = [];
-        localState.lastDir     = '';
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        canChangePiece  = true;
-        document.getElementById('stop-move-btn').classList.remove('active');
-      }
-
-      // Guide affiché immédiatement après le mouvement
-      if (canContinue && selectedSpot) {
-        renderGuides(selectedSpot, localState);
-      } else {
-        document.getElementById('guides-group').innerHTML = '';
-      }
+      // Miova turn ho adversaire foana (na canContinue na tsia)
+      localState.turn        = myOppColor;
+      localState.movingPiece = '';
+      localState.visited     = [];
+      localState.lastDir     = '';
+      selectedSpot    = null;
+      lastBlockedSpot = null;
+      canChangePiece  = true;
+      document.getElementById('stop-move-btn').classList.remove('active');
+      document.getElementById('guides-group').innerHTML = '';
 
       updateTurnIndicator(localState.turn);
       renderPieces(localState.pieces, localState);
@@ -656,11 +506,7 @@
       sendMoveToBackend(origin, target, capturedSpots, dir);
 
       // ── Réconciliation différée ────────────────────────────────
-      // On attend RECONCILE_DELAY après le DERNIER mouvement du turn
-      // pour vérifier que tout est cohérent côté backend
-      if (!canContinue) {
-        scheduleReconcile();
-      }
+      scheduleReconcile();
     }
 
     function handleStopBtn() {
@@ -960,16 +806,16 @@
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  SECTION 13 — Lojika hetsika adversaire
+    //  SECTION 13 — Historique hetsika adversaire (tahiry fotsiny)
     // ═══════════════════════════════════════════════════════════════
-    // DINGANA 1 (mandritra ny turn adversaire):
-    //   Ny polling dia mampiseho AVY HATRANY ny pieces vaovao
-    //   isaky ny hetsika (live update, tsy delay, tsy miverina).
+    // Ny lastTurnHistory ao amin'ny server dia mitahiry ny lalana
+    // rehetra nalehan'ny adversaire tamin'ny turn farany.
+    // Azo ampiasaina avy eo raha ilaina (résumé, fanamarihana, sns.)
     //
-    // DINGANA 2 (rehefa vita ny turn adversaire):
-    //   Jerena hoe efa nampiseho firy ny moves tamin'ny live update.
-    //   Ny moves mbola tsy nampiseho dia aseho MISESY (→ farany),
-    //   amin'ny 220ms ny elanelana. TSY MIVERINA na oviana na oviana.
+    // Naferina ny replay animation:
+    //   - Rehefa mahita hetsika vaovao avy amin'ny adversaire ny polling,
+    //     dia mampiseho mivantana ny état farany (tsy mamerina dingana).
+    //   - Ny lastTurnHistory dia voatahiry ao amin'ny server ihany.
 
     // ═══════════════════════════════════════════════════════════════
     //  SECTION 14 — Lancement
