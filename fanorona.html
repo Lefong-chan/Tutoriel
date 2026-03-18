@@ -471,8 +471,14 @@
       newPieces[spotID] = myColor;
       var newVisited = (localState.visited || []).concat([origin]);
 
-      if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
-        // Choix approach / withdrawal
+      // ── FIRST MOVER CHECK — choix approach/withdrawal ────────────────────
+      // firstMover    → misafidy approach na withdrawal (lojika normal)
+      // tsy firstMover → tsy misafidy, mandeha avy hatrany tsy misy capture
+      //   (Ny lojika pendingCaptures dia voasoratra fa DISABLED ho an'ilay tsy firstMover)
+      var amIFirstMoverC = (firstMover === null || firstMover === myColor);
+
+      if (amIFirstMoverC && isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
+        // firstMover + approach sy withdrawal roa → misafidy
         pendingCaptures = {
           approach:   caps.approach,
           withdrawal: caps.withdrawal,
@@ -487,7 +493,11 @@
         return;
       }
 
-      var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
+      // tsy firstMover → capturedSpots = [] foana (tsy misy capture)
+      // firstMover + iray monja (approach na withdrawal) → normal
+      var capturedSpots = (amIFirstMoverC && isCaptureMove)
+        ? caps.approach.concat(caps.withdrawal)
+        : [];
       doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
     }
 
