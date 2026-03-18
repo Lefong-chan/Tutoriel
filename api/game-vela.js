@@ -1,8 +1,4 @@
 // api/game-vela.js
-// Fitantanana ny état ny lalao Fanorona ao amin'ny Firebase RTDB
-// AUTO-OK : rehefa manao hetsika iray ny player dia nalefa avy hatrany ny OK (stop-move na make-move tsy misy continuation)
-// Ny hetsika maromaro (multi-capture) dia voasoratra eto fa mbola tsy ampiasaina
-
 import admin from "firebase-admin";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
@@ -19,9 +15,8 @@ if (!admin.apps.length) {
   });
 }
 
-const rtdb       = admin.database();
-const gamesRef   = rtdb.ref("games");
-const invitesRef = rtdb.ref("gameInvites");
+const rtdb      = admin.database();
+const gamesRef  = rtdb.ref("games");
 
 async function rtdbGet(ref) {
   const snap = await ref.once("value");
@@ -43,9 +38,9 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
-      case "get-state":  return await handleGetState(payload, res);
-      case "make-move":  return await handleMakeMove(payload, res);
-      case "stop-move":  return await handleStopMove(payload, res);
+      case "get-state": return await handleGetState(payload, res);
+      case "make-move": return await handleMakeMove(payload, res);
+      case "stop-move": return await handleStopMove(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -54,30 +49,27 @@ export default async function handler(req, res) {
   }
 }
 
-// ── Mamerina ny état rehetra ny lalao ──────────────────────────────────────
-// Body: { uid, gameId }
 async function handleGetState(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
-
   const game = await rtdbGet(gamesRef.child(gameId));
   if (!game) return res.status(404).json({ error: "Game not found." });
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
-
   return res.status(200).json({ success: true, game });
 }
 
-// ── Manao dingana (AUTO-OK) ─────────────────────────────────────────────────
-// Body: { uid, gameId, origin, target, capturedSpots, dir }
-//
-// AUTO-OK: Rehefa manao hetsika iray ny player dia :
-//   - Raha tsy misy continuation azo (tsy misy capture hafa) → mifindra tour avy hatrany
-//   - Raha misy continuation (multi-capture) → mbola tsy ampiasaina izany (voasoratra fa tsy active)
-//     → ny server dia mihevitra fa AUTO-OK foana (mifindra tour)
-//
-// Ny lojika multi-capture (canContinue) dia voasoratra eto fa DISABLED mba ho AUTO-OK foana.
-// Rehefa hampiana ilay feature multi-capture dia ovana fotsiny ny "AUTO_OK_ALWAYS = false".
+// ── PHASE CHECK ──────────────────────────────────────────────────────────────
+// isPhase2: rehefa pieces an'ilay tsy firstMover dia <= 5 → lojika fanorona.html
+function isPhase2(game) {
+  const firstMover = game.firstMover;
+  if (!firstMover) return false;
+  const nonFMColor = firstMover === "maintso" ? "mena" : "maintso";
+  const pieces = game.pieces || {};
+  const count = Object.values(pieces).filter(v => v === nonFMColor).length;
+  return count <= 5;
+}
+
 async function handleMakeMove(body, res) {
   const { uid, gameId, origin, target, capturedSpots = [], dir } = body;
   if (!uid || !gameId || !origin || !target)
@@ -85,112 +77,115 @@ async function handleMakeMove(body, res) {
 
   const gameRef = gamesRef.child(gameId);
   const game    = await rtdbGet(gameRef);
-  if (!game)                        return res.status(404).json({ error: "Game not found." });
+  if (!game) return res.status(404).json({ error: "Game not found." });
   if (game.senderUid !== uid && game.receiverUid !== uid)
-                                    return res.status(403).json({ error: "Not authorized." });
+    return res.status(403).json({ error: "Not authorized." });
 
   const myColor = game.senderUid === uid ? "maintso" : "mena";
-  if (game.turn !== myColor)        return res.status(400).json({ error: "Tsy anjaranao." });
-
-  // Raha misy movingPiece, ny origin dia tsy maintsy izany movingPiece izany
+  if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (game.movingPiece && game.movingPiece !== origin)
     return res.status(400).json({ error: "Pio hafa tsy azo hetsehina izao." });
 
   const pieces  = { ...(game.pieces || {}) };
   const visited = [...(game.visited || [])];
+  const firstMover = game.firstMover || myColor;
 
-  // ── FIRST MOVER : set iray mandeha, rehefa hetsika voalohany indrindra ──
-  // Raha game.firstMover mbola tsy nisy → ity hetsika ity no voalohany → set.
-  // Io color io ihany no afaka manala pièce (capture) mandavan'ny lalao.
-  const firstMover = game.firstMover || myColor; // set raha vao voalohany
-  const canCapture = (firstMover === myColor);   // true raha firstMover ianao
-
-  // Manetsika pio
   delete pieces[origin];
   pieces[target] = myColor;
 
-  // ── PIÈCE IRAY MONJA no esorina — FIRSTMOVER IHANY ───────────────────────
-  // Raha tsy firstMover → capturedSpots nalefa ho [] avy amin'ny client koa,
-  // fa double-check eto ihany.
-  // Ny lojika manala pièce maro dia voasoratra fa MBOLA TSY AMPIASAINA.
-  // Rehefa hampiana "piece faharoa afaka manala" → soloina ity fepetra ity.
-  const effectiveCaptured = canCapture && Array.isArray(capturedSpots) ? capturedSpots : [];
-  if (effectiveCaptured.length > 0) {
-    delete pieces[effectiveCaptured[0]]; // pièce voalohany ihany
-    // (effectiveCaptured[1..n] dia tsy esorina ankehitriny)
-  }
+  const phase2 = isPhase2(game);
 
-  const newVisited = [...visited, origin];
-  const wasCapture = effectiveCaptured.length > 0;
+  if (phase2) {
+    // ── PHASE 2 : lojika fanorona.html — captures rehetra miala ──────────────
+    if (Array.isArray(capturedSpots)) {
+      capturedSpots.forEach(s => delete pieces[s]);
+    }
+    const newVisited  = [...visited, origin];
+    const wasCapture  = capturedSpots.length > 0;
+    const canContinue = wasCapture && ph2CheckAvailableCaptures(pieces, target, newVisited, dir, myColor);
+    const prevHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
+    const histEntry   = { origin, target, capturedSpots: capturedSpots || [] };
 
-  // ── AUTO-OK / MULTI-CAPTURE ───────────────────────────────────────────────
-  // FITSIPIKA :
-  //   - tsy firstMover → canContinue raha pieces AN'NY firstMover <= 5
-  //   - firstMover     → canContinue DISABLED raha tsy efa nanao continue ilay tsy firstMover
-  //                      (nonFirstMoverHasContinued = false → AUTO-OK foana)
-  //                      raha nonFirstMoverHasContinued = true → afaka canContinue foana
-  //
-  // Ny lojika taloha (firstMover AUTO-OK foana) dia voasoratra fa OVAINA eto.
-  const amIFirstMoverM  = (firstMover === myColor);
-  const nfmHasContinued = game.nonFirstMoverHasContinued || false;
-
-  // pieces an'ny adversaire : firstMover raha tsy firstMover ianao, sy mifamadika
-  const advColor = amIFirstMoverM ? (firstMover === "maintso" ? "mena" : "maintso") : firstMover;
-  const advCount = Object.values(pieces).filter(v => v === advColor).length;
-
-  let multiCaptureActive;
-  if (!amIFirstMoverM) {
-    // tsy firstMover : canContinue raha pieces firstMover (adversaire) <= 5
-    multiCaptureActive = (advCount <= 5);
-  } else {
-    // firstMover : canContinue raha efa nanao continue ilay tsy firstMover
-    // (flag avy amin'ny Firebase → hitan'ny player roa)
-    multiCaptureActive = nfmHasContinued;
-  }
-
-  const canContinue = multiCaptureActive
-    && wasCapture
-    && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
-
-  const prevHistory     = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  const newHistoryEntry = { origin, target, capturedSpots: effectiveCaptured };
-
-  if (canContinue) {
-    // Raha tsy firstMover no manao canContinue voalohany → set flag
-    const newNFMHasContinued = nfmHasContinued || (!amIFirstMoverM);
-    await gameRef.update({
-      pieces,
-      movingPiece:              target,
-      visited:                  newVisited,
-      lastDir:                  dir || "",
-      moveHistory:              [...prevHistory, newHistoryEntry],
-      firstMover:               firstMover,            // voasoratra iray mandeha
-      nonFirstMoverHasContinued: newNFMHasContinued,   // set rehefa tsy firstMover manao continue
-    });
-    return res.status(200).json({ success: true, continuing: true });
+    if (canContinue) {
+      await gameRef.update({
+        pieces,
+        movingPiece: target,
+        visited:     newVisited,
+        lastDir:     dir || "",
+        moveHistory: [...prevHistory, histEntry],
+        firstMover,
+      });
+      return res.status(200).json({ success: true, continuing: true });
+    } else {
+      const nextColor = myColor === "maintso" ? "mena" : "maintso";
+      await gameRef.update({
+        pieces,
+        turn:            nextColor,
+        movingPiece:     "",
+        visited:         [],
+        lastDir:         "",
+        moveHistory:     [],
+        lastTurnHistory: [...prevHistory, histEntry],
+        lastTurnColor:   myColor,
+        firstMover,
+      });
+      return res.status(200).json({ success: true, continuing: false });
+    }
 
   } else {
-    // ── AUTO-OK : mifindra tour avy hatrany ─────────────────────────────────
-    const nextColor  = myColor === "maintso" ? "mena" : "maintso";
-    const fullHistory = [...prevHistory, newHistoryEntry];
-    await gameRef.update({
-      pieces,
-      turn:                     nextColor,
-      movingPiece:              "",
-      visited:                  [],
-      lastDir:                  "",
-      moveHistory:              [],
-      lastTurnHistory:          fullHistory,
-      lastTurnColor:            myColor,
-      firstMover:               firstMover,          // voasoratra iray mandeha, tsy ovaina
-      nonFirstMoverHasContinued: nfmHasContinued,    // mitahiry ny sanda taloha
-    });
-    return res.status(200).json({ success: true, continuing: false });
+    // ── PHASE 1 : lojika fanorona-vela.html — firstMover ihany manala, AUTO-OK ──
+    const canCapture       = firstMover === myColor;
+    const effectiveCaptured = canCapture && Array.isArray(capturedSpots) ? capturedSpots : [];
+
+    if (effectiveCaptured.length > 0) {
+      delete pieces[effectiveCaptured[0]];
+    }
+
+    const newVisited  = [...visited, origin];
+    const wasCapture  = effectiveCaptured.length > 0;
+    const nfmHasCont  = game.nonFirstMoverHasContinued || false;
+    const amIFirstMov = firstMover === myColor;
+    const nonFMColor  = firstMover === "maintso" ? "mena" : "maintso";
+    const advColor    = amIFirstMov ? nonFMColor : firstMover;
+    const advCount    = Object.values(pieces).filter(v => v === advColor).length;
+    const multiActive = amIFirstMov ? nfmHasCont : (advCount <= 5);
+    const canContinue = multiActive && wasCapture
+      && ph2CheckAvailableCaptures(pieces, target, newVisited, dir, myColor);
+
+    const prevHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
+    const histEntry   = { origin, target, capturedSpots: effectiveCaptured };
+
+    if (canContinue) {
+      const newNFM = nfmHasCont || (!amIFirstMov);
+      await gameRef.update({
+        pieces,
+        movingPiece:               target,
+        visited:                   newVisited,
+        lastDir:                   dir || "",
+        moveHistory:               [...prevHistory, histEntry],
+        firstMover,
+        nonFirstMoverHasContinued: newNFM,
+      });
+      return res.status(200).json({ success: true, continuing: true });
+    } else {
+      const nextColor = myColor === "maintso" ? "mena" : "maintso";
+      await gameRef.update({
+        pieces,
+        turn:                      nextColor,
+        movingPiece:               "",
+        visited:                   [],
+        lastDir:                   "",
+        moveHistory:               [],
+        lastTurnHistory:           [...prevHistory, histEntry],
+        lastTurnColor:             myColor,
+        firstMover,
+        nonFirstMoverHasContinued: nfmHasCont,
+      });
+      return res.status(200).json({ success: true, continuing: false });
+    }
   }
 }
 
-// ── Mijanona an-tsaina (bouton OK — mbola ampiasaina raha multi-capture) ────
-// Body: { uid, gameId, pieces }
 async function handleStopMove(body, res) {
   const { uid, gameId, pieces } = body;
   if (!uid || !gameId || !pieces)
@@ -214,17 +209,18 @@ async function handleStopMove(body, res) {
     lastDir:         "",
     moveHistory:     [],
     lastTurnHistory: stopHistory,
-    lastTurnColor:   myColor
+    lastTurnColor:   myColor,
+    firstMover:      game.firstMover || null,
+    nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
   });
   return res.status(200).json({ success: true });
 }
 
-// ── Helper: jerena raha misy capture mbola azo atao (multi-capture) ─────────
-// (Mbola tsy ampiasaina fa voasoratra ho avy)
-const ROWS = ['A','B','C','D','E'];
-const COLS = ['1','2','3','4','5','6','7','8','9'];
+// ── Helpers partagés ─────────────────────────────────────────────────────────
+const PH2_ROWS = ['A','B','C','D','E'];
+const PH2_COLS = ['1','2','3','4','5','6','7','8','9'];
 
-const ALLOWED_MOVES = {
+const PH2_ALLOWED_MOVES = {
   'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],
   'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
   'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
@@ -234,7 +230,8 @@ const ALLOWED_MOVES = {
   'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
   'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],
   'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
-  'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],'C6':['B6','C5','C7','D6'],
+  'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],
+  'C6':['B6','C5','C7','D6'],
   'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],
   'C9':['B8','B9','C8','D8','D9'],
   'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
@@ -246,25 +243,25 @@ const ALLOWED_MOVES = {
   'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
 };
 
-function getCaptures(pieces, s, e, color) {
-  const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(e[0]),c2=COLS.indexOf(e[1]);
+function ph2GetCaptures(pieces, s, e, color) {
+  const r1=PH2_ROWS.indexOf(s[0]),c1=PH2_COLS.indexOf(s[1]),r2=PH2_ROWS.indexOf(e[0]),c2=PH2_COLS.indexOf(e[1]);
   const enemy = color==="maintso"?"mena":"maintso", dr=r2-r1, dc=c2-c1;
   const scan=(row,col,sr,sc)=>{
     let res=[],cr=row+sr,cc=col+sc;
-    while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[ROWS[cr]+COLS[cc]]===enemy){res.push(ROWS[cr]+COLS[cc]);cr+=sr;cc+=sc;}
+    while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[PH2_ROWS[cr]+PH2_COLS[cc]]===enemy){res.push(PH2_ROWS[cr]+PH2_COLS[cc]);cr+=sr;cc+=sc;}
     return res;
   };
   return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
 }
 
-function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
-  const moves = ALLOWED_MOVES[s] || [];
+function ph2CheckAvailableCaptures(pieces, s, visited, lastDir, color) {
+  const moves = PH2_ALLOWED_MOVES[s] || [];
   return moves.some(t => {
     if (pieces[t] || (visited && visited.includes(t))) return false;
-    const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(t[0]),c2=COLS.indexOf(t[1]);
+    const r1=PH2_ROWS.indexOf(s[0]),c1=PH2_COLS.indexOf(s[1]),r2=PH2_ROWS.indexOf(t[0]),c2=PH2_COLS.indexOf(t[1]);
     const dir=`${r2-r1},${c2-c1}`;
     if (lastDir && lastDir === dir) return false;
-    const caps = getCaptures(pieces, s, t, color);
+    const caps = ph2GetCaptures(pieces, s, t, color);
     return (caps.approach.length > 0 || caps.withdrawal.length > 0);
   });
 }
