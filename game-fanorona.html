@@ -19,13 +19,13 @@
       --red: #ef4444;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
-    body { font-family: 'Exo 2', sans-serif; background: var(--bg1); overflow: hidden; height: 100vh; width: 100vw; color: var(--text); }
+    body { font-family: 'Exo 2', sans-serif; background: linear-gradient(135deg, #6e8efb, #a777e3); overflow: hidden; height: 100vh; width: 100vw; color: var(--text); }
 
     /* ═══ PORTRAIT ═══ */
     @media (orientation: portrait) {
       body {
         display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
-        background: radial-gradient(ellipse at 50% 0%, #1e1b6e 0%, #0f0c29 60%);
+        background: linear-gradient(135deg, #6e8efb, #a777e3);
       }
       #ui-top {
         display: flex; justify-content: space-between; align-items: stretch;
@@ -68,31 +68,129 @@
 
     /* ═══ LANDSCAPE ═══ */
     @media (orientation: landscape) {
-      body { display: grid; grid-template-columns: 1fr auto 1fr; grid-template-rows: 1fr; align-items: center; justify-items: center; height: 100vh; padding: 0 6px; background: radial-gradient(ellipse at 50% 50%, #1e1b6e 0%, #0f0c29 70%); }
+      body {
+        background: linear-gradient(135deg, #6e8efb, #a777e3);
+        overflow: hidden; height: 100vh; width: 100vw; position: relative;
+      }
       #ui-top, #ui-bottom { display: none !important; }
-      #center-col { display: flex; align-items: center; justify-content: center; height: 100vh; }
-      #game-board { background-image: url('img/table-game.jpg'); background-size: cover; border-radius: 18px; height: 82vh; width: auto; aspect-ratio: 440 / 240; display: block; touch-action: none; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
-      #side-left, #side-right { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 100vh; width: 100%; padding: 10px 4px; }
-      .player-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; backdrop-filter: blur(10px); transition: border-color 0.3s, box-shadow 0.3s; width: 100%; max-width: 150px; }
-      .player-card.active-card { border-color: var(--accent); box-shadow: 0 0 16px rgba(245,166,35,0.3); animation: cardPulse 2s ease-in-out infinite; }
-      .player-dot { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.3); transition: box-shadow 0.3s; }
+      #center-col { display: none !important; }
+      #side-left, #side-right { display: block; }
+
+      /* Board: fixed, perfectly centered */
+      #game-board {
+        position: fixed !important;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        height: 82vh; width: auto;
+        aspect-ratio: 440 / 240;
+        background-image: url('img/table-game.jpg');
+        background-size: cover;
+        border-radius: 18px;
+        display: block; touch-action: none;
+        box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+        z-index: 1;
+      }
+
+      /* ── LEFT side: fixed ── */
+      /* Player opp: top-left */
+      #opp-card-ls {
+        position: fixed; top: 10px; left: 10px;
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.25);
+        border-radius: 14px; padding: 8px 12px;
+        display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+        backdrop-filter: blur(10px);
+        transition: border-color 0.3s, box-shadow 0.3s;
+        min-width: 120px; max-width: 160px;
+        z-index: 10;
+      }
+      #opp-card-ls.active-card { border-color: var(--accent); box-shadow: 0 0 16px rgba(245,166,35,0.4); animation: cardPulse 2s ease-in-out infinite; }
+
+      /* Ping: center-left */
+      #ping-ls {
+        position: fixed; left: 16px; top: 50%; transform: translateY(-50%);
+        display: flex; align-items: center; gap: 6px;
+        z-index: 10;
+      }
+
+      /* Chat btn: bottom-left */
+      #btn-chat-ls {
+        position: fixed; bottom: 14px; left: 14px;
+        z-index: 10;
+      }
+
+      /* ── RIGHT side: fixed ── */
+      /* Player me: top-right */
+      #my-card-ls {
+        position: fixed; top: 10px; right: 10px;
+        background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.25);
+        border-radius: 14px; padding: 8px 12px;
+        display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+        backdrop-filter: blur(10px);
+        transition: border-color 0.3s, box-shadow 0.3s;
+        min-width: 120px; max-width: 160px;
+        z-index: 10;
+      }
+      #my-card-ls.active-card { border-color: var(--accent); box-shadow: 0 0 16px rgba(245,166,35,0.4); animation: cardPulse 2s ease-in-out infinite; }
+
+      /* Stop btn: center-right */
+      #stop-move-btn-ls {
+        position: fixed; right: 14px; top: 50%; transform: translateY(-50%);
+        width: 46px; height: 46px;
+        border-radius: 50%; border: 2px solid rgba(255,255,255,0.25);
+        background: rgba(239,68,68,0.15); color: rgba(255,255,255,0.3);
+        font-size: 20px; cursor: pointer; transition: all 0.3s;
+        pointer-events: none;
+        display: flex; align-items: center; justify-content: center;
+        z-index: 10;
+      }
+      #stop-move-btn-ls.active {
+        color: white; border-color: #ef4444;
+        background: rgba(239,68,68,0.45);
+        box-shadow: 0 0 22px rgba(239,68,68,0.6);
+        pointer-events: all; transform: translateY(-50%) scale(1.08);
+      }
+
+      /* Settings btn: bottom-right */
+      #btn-settings-ls {
+        position: fixed; bottom: 14px; right: 14px;
+        z-index: 10;
+      }
+
+      /* Shared action-btn style */
+      .action-btn {
+        width: 42px; height: 42px;
+        border-radius: 50%;
+        border: 1px solid rgba(255,255,255,0.25);
+        background: rgba(255,255,255,0.12);
+        color: rgba(255,255,255,0.6);
+        font-size: 16px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: all 0.2s;
+        backdrop-filter: blur(8px);
+      }
+      .action-btn:hover { background: rgba(255,255,255,0.22); color: white; transform: scale(1.06); }
+
+      /* Player card inner elements */
+      .player-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.4); transition: box-shadow 0.3s; }
       .dot-maintso { background: var(--green); }
       .dot-mena    { background: var(--red); }
-      .player-dot.active-turn { box-shadow: 0 0 0 3px rgba(245,166,35,0.5), 0 0 12px rgba(245,166,35,0.6); border-color: var(--accent); }
-      .player-info-col { display: flex; flex-direction: column; align-items: center; }
-      .player-name { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; text-align: center; }
-      .piece-count { font-size: 0.7em; font-weight: 800; color: var(--accent); }
-      .timer-box { background: rgba(0,212,255,0.08); border: 1px solid rgba(0,212,255,0.2); border-radius: 8px; padding: 4px 10px; font-family: 'Rajdhani', sans-serif; font-size: 0.95em; font-weight: 700; color: var(--accent2); letter-spacing: 0.05em; text-align: center; width: 100%; max-width: 150px; }
-      .action-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--panel-border); background: var(--panel); color: var(--text-dim); font-size: 15px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(8px); }
-      .action-btn:hover { border-color: rgba(255,255,255,0.3); color: white; transform: scale(1.05); }
-      .action-btn.btn-demand { font-family: 'Rajdhani', sans-serif; font-size: 0.6em; font-weight: 700; width: auto; border-radius: 20px; padding: 0 10px; letter-spacing: 0.05em; color: var(--text-dim); height: 32px; }
-      .ping-wrap { display: flex; align-items: center; gap: 5px; }
-      .ping-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 5px var(--green); }
-      .ping-label { font-size: 0.6em; color: var(--text-dim); }
-      #stop-move-btn-ls { width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.15); background: rgba(239,68,68,0.12); color: rgba(255,255,255,0.25); font-size: 18px; cursor: pointer; transition: all 0.3s; pointer-events: none; display: flex; align-items: center; justify-content: center; }
-      #stop-move-btn-ls.active { color: white; border-color: #ef4444; background: rgba(239,68,68,0.35); box-shadow: 0 0 20px rgba(239,68,68,0.5); pointer-events: all; transform: scale(1.05); }
-      #shared-timer-ls { display: flex !important; position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 4px 14px; font-family: 'Rajdhani', sans-serif; font-size: 0.85em; font-weight: 700; color: var(--text-dim); letter-spacing: 0.1em; z-index: 10; align-items: center; gap: 6px; }
+      .player-dot.active-turn { box-shadow: 0 0 0 3px rgba(245,166,35,0.5), 0 0 10px rgba(245,166,35,0.7); border-color: var(--accent); }
+      .player-name { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; color: white; }
+      .piece-count { font-size: 0.68em; font-weight: 800; color: var(--accent); }
+      .timer-box { background: rgba(0,212,255,0.12); border: 1px solid rgba(0,212,255,0.3); border-radius: 6px; padding: 2px 8px; font-family: 'Rajdhani', sans-serif; font-size: 0.9em; font-weight: 700; color: var(--accent2); letter-spacing: 0.05em; }
+      .player-row { display: flex; align-items: center; gap: 6px; }
+      .player-info-col { display: flex; flex-direction: column; gap: 2px; }
+      #my-card-ls .player-info-col { align-items: flex-end; }
+
+      /* Ping */
+      .ping-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 7px var(--green); }
+      .ping-label { font-size: 0.65em; color: rgba(255,255,255,0.55); font-family: 'Exo 2', sans-serif; }
+
+      /* hide portrait-only and unused */
       #stop-move-btn { display: none !important; }
+      #shared-timer-ls { display: none !important; }
       #shared-timer { display: none !important; }
       #btn-row { display: none !important; }
     }
@@ -189,37 +287,52 @@
     </div>
   </div>
 
-  <!-- LANDSCAPE: left side -->
-  <div id="side-left">
-    <div class="player-card left-card" id="opp-card-ls">
+  <!-- LANDSCAPE: opp card top-left (fixed) -->
+  <div id="opp-card-ls">
+    <div class="player-row">
       <div class="player-dot" id="opp-dot-ls"></div>
       <div class="player-info-col">
         <span class="player-name" id="opp-name-ls">—</span>
         <span class="piece-count" id="opp-count-ls">22</span>
       </div>
-      <div class="timer-box" id="opp-timer-ls">∞</div>
     </div>
-    <button class="action-btn" title="Message"><i class="fas fa-comment-dots"></i></button>
-    <button class="action-btn" title="Paramètres"><i class="fas fa-cog"></i></button>
-    <button class="action-btn btn-demand">Demande</button>
-    <div class="ping-wrap"><div class="ping-dot"></div><span class="ping-label">ping</span></div>
+    <div class="timer-box" id="opp-timer-ls">∞</div>
   </div>
 
-  <!-- LANDSCAPE: right side -->
-  <div id="side-right">
-    <div class="player-card right-card" id="my-card-ls">
+  <!-- LANDSCAPE: ping center-left (fixed) -->
+  <div id="ping-ls">
+    <div class="ping-dot"></div>
+    <span class="ping-label">ping</span>
+  </div>
+
+  <!-- LANDSCAPE: chat btn bottom-left (fixed) -->
+  <div id="btn-chat-ls">
+    <button class="action-btn" title="Chat"><i class="fas fa-comment-dots"></i></button>
+  </div>
+
+  <!-- LANDSCAPE: my card top-right (fixed) -->
+  <div id="my-card-ls">
+    <div class="player-row" style="flex-direction:row-reverse;">
       <div class="player-dot" id="my-dot-ls"></div>
       <div class="player-info-col">
-        <span class="player-name" id="my-name-ls">—</span>
-        <span class="piece-count" id="my-count-ls">22</span>
+        <span class="player-name" id="my-name-ls" style="text-align:right;">—</span>
+        <span class="piece-count" id="my-count-ls" style="text-align:right;">22</span>
       </div>
-      <div class="timer-box" id="my-timer-ls">∞</div>
     </div>
-    <button id="stop-move-btn-ls"><i class="fas fa-times"></i></button>
+    <div class="timer-box" id="my-timer-ls" style="align-self:flex-end;">∞</div>
   </div>
 
-  <!-- LANDSCAPE: shared timer fixed bottom -->
-  <div id="shared-timer-ls"><span>∞</span></div>
+  <!-- LANDSCAPE: stop btn center-right (fixed) -->
+  <button id="stop-move-btn-ls"><i class="fas fa-times"></i></button>
+
+  <!-- LANDSCAPE: settings btn bottom-right (fixed) -->
+  <div id="btn-settings-ls">
+    <button class="action-btn" title="Paramètres"><i class="fas fa-cog"></i></button>
+  </div>
+
+  <!-- keep side-left/right as empty placeholders (hidden) -->
+  <div id="side-left" style="display:none;"></div>
+  <div id="side-right" style="display:none;"></div>
 
   <div id="error-msg"></div>
 
