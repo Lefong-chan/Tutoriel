@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fanorona</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
@@ -73,14 +74,12 @@
 
     /* ── Bouton Stop ── */
     #stop-move-btn {
-      width: 60px; height: 60px; border-radius: 50%;
-      background: #f44336; color: white; border: 4px solid white;
+      width: 60px; height: 60px;
       font-size: 30px; font-weight: bold; cursor: pointer;
-      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none;
+      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none; border: none; background-color: transparent;
     }
     #stop-move-btn.active {
-      opacity: 1; transform: scale(1.1);
-      box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all;
+      opacity: 1; transform: scale(1.1); pointer-events: all;
     }
 
     /* ── Loading ── */
@@ -129,7 +128,9 @@
     <g id="spots-group"></g>
   </svg>
 
-  <button id="stop-move-btn" style="display:none;">OK</button>
+  <button id="stop-move-btn" style="display:none;">
+    <i class="fas fa-times"></i>
+  </button>
   <div id="error-msg"></div>
 
   <script>
