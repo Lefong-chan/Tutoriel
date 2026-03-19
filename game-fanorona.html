@@ -5,305 +5,128 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fanorona</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Exo+2:wght@400;600;800&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --accent: #f5a623;
-      --accent2: #00d4ff;
-      --green: #22c55e;
-      --red: #ef4444;
-      --glass: rgba(255,255,255,0.13);
-      --glass-border: rgba(255,255,255,0.22);
-      --text: #ffffff;
-      --text-dim: rgba(255,255,255,0.55);
-    }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
-      font-family: 'Exo 2', sans-serif;
+      font-family: sans-serif;
+      margin: 0; padding: 0;
       background: linear-gradient(135deg, #6e8efb, #a777e3);
-      overflow: hidden; height: 100vh; width: 100vw; color: var(--text);
+      overflow: hidden;
+      height: 100vh;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
     }
 
-    /* ═══════════════════════════════════════
-       PORTRAIT  — flex column
-    ═══════════════════════════════════════ */
-    @media (orientation: portrait) {
-      body {
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: center;
-        gap: 10px; padding: 12px 0;
-      }
-
-      /* ── Top bar: 2 player cards ── */
-      #portrait-top {
-        display: flex; gap: 8px;
-        width: 94vw; max-width: 480px;
-      }
-      .p-card {
-        flex: 1; display: flex; align-items: center; gap: 8px;
-        background: var(--glass); border: 1px solid var(--glass-border);
-        border-radius: 14px; padding: 8px 10px;
-        backdrop-filter: blur(12px);
-        transition: border-color .3s, box-shadow .3s;
-        min-width: 0;
-      }
-      .p-card.right { flex-direction: row-reverse; }
-      .p-card.active-card {
-        border-color: var(--accent);
-        box-shadow: 0 0 18px rgba(245,166,35,.35);
-        animation: cardPulse 2s ease-in-out infinite;
-      }
-      .p-dot {
-        width: 12px; height: 12px; border-radius: 50%;
-        border: 2px solid rgba(255,255,255,.35); flex-shrink: 0;
-        transition: box-shadow .3s;
-      }
-      .p-dot.active-turn { box-shadow: 0 0 0 3px rgba(245,166,35,.5), 0 0 10px rgba(245,166,35,.7); border-color: var(--accent); }
-      .dot-maintso { background: var(--green); }
-      .dot-mena    { background: var(--red); }
-      .p-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-      .right .p-info { align-items: flex-end; }
-      .p-name {
-        font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: .9em;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px;
-      }
-      .p-timer {
-        background: rgba(0,212,255,.1); border: 1px solid rgba(0,212,255,.25);
-        border-radius: 6px; padding: 2px 7px;
-        font-family: 'Rajdhani', sans-serif; font-size: .85em; font-weight: 700;
-        color: var(--accent2); letter-spacing: .05em; white-space: nowrap; flex-shrink: 0;
-      }
-
-      /* ── Board ── */
-      #game-board {
-        background-image: url('img/table-game.jpg');
-        background-size: cover; border-radius: 18px;
-        width: 94vw; max-width: 480px;
-        aspect-ratio: 440 / 240;
-        display: block; touch-action: none;
-        box-shadow: 0 8px 40px rgba(0,0,0,.45);
-      }
-
-      /* ── Bottom bar ── */
-      #portrait-bottom {
-        display: flex; flex-direction: column; align-items: center; gap: 8px;
-        width: 94vw; max-width: 480px;
-      }
-      #shared-timer-p {
-        background: var(--glass); border: 1px solid var(--glass-border);
-        border-radius: 10px; padding: 5px 20px;
-        font-family: 'Rajdhani', sans-serif; font-size: .95em; font-weight: 700;
-        color: var(--text-dim); letter-spacing: .1em;
-        display: flex; align-items: center; gap: 6px;
-      }
-      #btn-row-p {
-        display: flex; align-items: center; justify-content: center; gap: 10px;
-      }
-      .abtn {
-        width: 44px; height: 44px; border-radius: 50%;
-        border: 1px solid var(--glass-border); background: var(--glass);
-        color: var(--text-dim); font-size: 17px;
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer; transition: all .2s; backdrop-filter: blur(8px);
-      }
-      .abtn:hover { border-color: rgba(255,255,255,.4); color: white; transform: scale(1.06); }
-      .abtn.demand {
-        font-family: 'Rajdhani', sans-serif; font-size: .62em; font-weight: 700;
-        width: auto; border-radius: 20px; padding: 0 12px; letter-spacing: .05em;
-        color: var(--text-dim);
-      }
-      .ping-wrap { display: flex; align-items: center; gap: 5px; }
-      .ping-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
-      .ping-lbl { font-size: .62em; color: var(--text-dim); }
-      #stop-move-btn {
-        width: 50px; height: 50px; border-radius: 50%;
-        border: 2px solid rgba(255,255,255,.18); background: rgba(239,68,68,.1);
-        color: rgba(255,255,255,.25); font-size: 20px; cursor: pointer;
-        transition: all .3s; pointer-events: none;
-        display: flex; align-items: center; justify-content: center;
-      }
-      #stop-move-btn.active {
-        color: white; border-color: #ef4444; background: rgba(239,68,68,.35);
-        box-shadow: 0 0 20px rgba(239,68,68,.55); pointer-events: all; transform: scale(1.06);
-      }
-
-      /* hide landscape elements */
-      #landscape-wrap { display: none !important; }
+    /* ── Bande joueurs ── */
+    #players-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      width: 95vw; max-width: 800px;
+      margin-bottom: 8px; padding: 8px 14px;
+      background: rgba(0,0,0,0.25); border-radius: 12px;
+      color: white; font-size: 1em; font-weight: 700; min-height: 44px;
+      position: fixed;
+      top: 5px;
     }
-
-    /* ═══════════════════════════════════════
-       LANDSCAPE / DESKTOP — grid 3 cols
-    ═══════════════════════════════════════ */
-    @media (orientation: landscape) {
-      body {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        grid-template-rows: 1fr;
-        align-items: stretch;
-        overflow: hidden;
-      }
-
-      /* hide portrait elements */
-      #portrait-top, #portrait-bottom, #game-board-wrap-p { display: none !important; }
-      /* game-board inside center-col, handled below */
-
-      /* Landscape wrapper is a grid child spanning all 3 (used as overlay anchor) */
-      #landscape-wrap {
-        display: contents; /* children become grid children */
-      }
-
-      /* ── Left col ── */
-      #ls-left {
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: space-between;
-        padding: 14px 8px; height: 100vh;
-      }
-
-      /* ── Center col ── */
-      #ls-center {
-        display: flex; align-items: center; justify-content: center;
-        padding: 10px 6px; height: 100vh;
-      }
-      #game-board {
-        background-image: url('img/table-game.jpg');
-        background-size: cover; border-radius: 18px;
-        width: 100%; height: auto; max-height: 90vh;
-        aspect-ratio: 440 / 240;
-        display: block; touch-action: none;
-        box-shadow: 0 6px 32px rgba(0,0,0,.4);
-      }
-
-      /* ── Right col ── */
-      #ls-right {
-        display: flex; flex-direction: column;
-        align-items: center; justify-content: space-between;
-        padding: 14px 8px; height: 100vh;
-      }
-
-      /* Player cards landscape */
-      .ls-card {
-        background: var(--glass); border: 1px solid var(--glass-border);
-        border-radius: 12px; padding: 8px 10px;
-        display: flex; flex-direction: column; gap: 5px;
-        backdrop-filter: blur(12px);
-        transition: border-color .3s, box-shadow .3s;
-        width: 100%; max-width: 140px;
-      }
-      .ls-card.right-card { align-items: flex-end; }
-      .ls-card.active-card { border-color: var(--accent); box-shadow: 0 0 14px rgba(245,166,35,.4); animation: cardPulse 2s ease-in-out infinite; }
-      .ls-row { display: flex; align-items: center; gap: 5px; }
-      .ls-row-rev { display: flex; align-items: center; gap: 5px; flex-direction: row-reverse; }
-      .p-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); flex-shrink: 0; transition: box-shadow .3s; }
-      .p-dot.active-turn { box-shadow: 0 0 0 3px rgba(245,166,35,.5), 0 0 8px rgba(245,166,35,.7); border-color: var(--accent); }
-      .ls-info { display: flex; flex-direction: column; gap: 2px; max-width: 80px; }
-      .ls-info.right { align-items: flex-end; }
-      .p-name { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: .8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; }
-      .p-timer { background: rgba(0,212,255,.1); border: 1px solid rgba(0,212,255,.25); border-radius: 6px; padding: 2px 6px; font-family: 'Rajdhani', sans-serif; font-size: .8em; font-weight: 700; color: var(--accent2); letter-spacing: .05em; width: fit-content; }
-
-      /* Middle section in side cols */
-      .ls-mid { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-
-      /* Ping */
-      .ping-wrap { display: flex; align-items: center; gap: 5px; }
-      .ping-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 7px var(--green); }
-      .ping-lbl { font-size: .6em; color: var(--text-dim); }
-
-      /* Shared timer landscape */
-      #shared-timer-ls {
-        background: var(--glass); border: 1px solid var(--glass-border);
-        border-radius: 8px; padding: 4px 14px;
-        font-family: 'Rajdhani', sans-serif; font-size: .82em; font-weight: 700;
-        color: var(--text-dim); letter-spacing: .1em;
-        display: flex; align-items: center; gap: 6px;
-      }
-
-      /* Stop btn landscape */
-      #stop-move-btn-ls {
-        width: 44px; height: 44px; border-radius: 50%;
-        border: 2px solid rgba(255,255,255,.22); background: rgba(239,68,68,.12);
-        color: rgba(255,255,255,.28); font-size: 18px; cursor: pointer;
-        transition: all .3s; pointer-events: none;
-        display: flex; align-items: center; justify-content: center;
-      }
-      #stop-move-btn-ls.active {
-        color: white; border-color: #ef4444; background: rgba(239,68,68,.4);
-        box-shadow: 0 0 20px rgba(239,68,68,.6); pointer-events: all; transform: scale(1.08);
-      }
-
-      /* Action buttons landscape */
-      .abtn {
-        width: 40px; height: 40px; border-radius: 50%;
-        border: 1px solid var(--glass-border); background: var(--glass);
-        color: var(--text-dim); font-size: 15px;
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer; transition: all .2s; backdrop-filter: blur(8px);
-      }
-      .abtn:hover { border-color: rgba(255,255,255,.4); color: white; transform: scale(1.06); }
-      .abtn.demand {
-        font-family: 'Rajdhani', sans-serif; font-size: .58em; font-weight: 700;
-        width: auto; border-radius: 20px; padding: 0 10px; letter-spacing: .05em;
-        color: var(--text-dim); height: 32px;
-      }
+    .player-info { display: flex; align-items: center; gap: 8px; }
+    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
+    .dot-maintso { background: #22c55e; }
+    .dot-mena    { background: #ef4444; }
+    .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
+    .player-name  { font-size: 0.95em; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .piece-count {
+      font-size: 0.78em; font-weight: 800;
+      background: rgba(255,255,255,0.18); border-radius: 20px;
+      padding: 2px 8px; min-width: 28px; text-align: center;
+      letter-spacing: 0.02em;
     }
+    .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; flex-shrink: 0; }
 
-    /* ═══ SHARED ═══ */
+    /* ── Plateau ── */
+#game-board {
+  background-image: url('img/table-game.jpg');
+  background-size: cover;
+  border-radius: 20px;
+  width: 95vw;
+  max-width: 800px;
+  aspect-ratio: 440 / 240;
+  display: block;
+  touch-action: none;
+}
+
+@media (orientation: landscape) {
+  #game-board {
+    width: auto;
+    height: 85vh;
+    aspect-ratio: 440 / 240;
+  }
+}
     .grid-line { stroke: #333; stroke-width: 2; }
+
+    /* ── Pièces & interactions ── */
     .flipped { transform: rotate(180deg); }
-    .piece-group { transition: transform .22s ease-in-out; }
+    .piece-group { transition: transform 0.22s ease-in-out; }
     .piece-group.no-transition { transition: none; }
     .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
     .movable-piece  { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
     .blocked-piece  { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
-    .capture-target { stroke: darkorange; stroke-width: 5px; cursor: pointer; pointer-events: all !important; stroke-dasharray: 5; animation: dash 1s linear infinite; }
+    .capture-target {
+      stroke: darkorange; stroke-width: 5px; cursor: pointer;
+      pointer-events: all !important; stroke-dasharray: 5;
+      animation: dash 1s linear infinite;
+    }
     @keyframes dash { to { stroke-dashoffset: 10; } }
     .spot { cursor: pointer; pointer-events: all; }
     .lock-board .spot { pointer-events: none !important; }
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
-    .guide-dot  { fill: #FFF700; opacity: .8; pointer-events: none; }
+    .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
 
+    /* ── Bouton Stop ── */
+    #stop-move-btn {
+      width: 60px; height: 60px;
+      font-size: 30px; font-weight: bold; cursor: pointer;
+      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none; border: none; background-color: transparent; color: white;
+      position: absolute;
+      right: 0;
+    }
+    #stop-move-btn.active {
+      opacity: 1; transform: scale(1.1); pointer-events: all;
+    }
+
+    /* ── Loading ── */
     #loading-overlay {
       position: fixed; inset: 0;
-      background: rgba(110, 142, 251, 0.6);
-      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      background: rgba(0, 146, 255, 0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       display: flex; justify-content: center; align-items: center;
-      z-index: 100; color: white; flex-direction: column; gap: 16px;
+      z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
+      flex-direction: column; gap: 16px;
+      transition: opacity 0.4s ease;
     }
     #loading-overlay.hidden { display: none; }
-    .spinner { width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.2); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 4px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes cardPulse { 0%,100% { box-shadow: 0 0 8px rgba(245,166,35,.15); } 50% { box-shadow: 0 0 20px rgba(245,166,35,.45); } }
-    #error-msg { display: none; color: #fef08a; font-size: 1em; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 200; text-align: center; }
+
+    /* ── Erreur ── */
+    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
   </style>
 </head>
 <body>
 
   <div id="loading-overlay">
     <div class="spinner"></div>
-    <div style="text-align:center;line-height:1.8;">
-      <div style="font-family:'Rajdhani',sans-serif;font-size:1.05em;font-weight:700;letter-spacing:.08em;">MIANDRY…</div>
-      <div style="font-size:.7em;opacity:.5;font-weight:400;margin-top:2px;">Waiting for opponent</div>
+    <div style="text-align:center;line-height:1.6;">
+      <div style="font-size:1.1em;font-weight:800;letter-spacing:0.03em;">Waiting for opponent</div>
+      <div style="font-size:0.85em;opacity:0.75;font-weight:400;margin-top:4px;">Waiting for opponent</div>
     </div>
   </div>
 
-  <!-- ══════════ PORTRAIT ELEMENTS ══════════ -->
-  <div id="portrait-top">
-    <div class="p-card left" id="opp-card">
-      <div class="p-dot dot-mena" id="opp-dot"></div>
-      <div class="p-info" id="opp-info">
-        <span class="p-name" id="opp-name">—</span>
-      </div>
-      <div class="p-timer" id="opp-timer">∞</div>
-    </div>
-    <div class="p-card right" id="my-card">
-      <div class="p-timer" id="my-timer">∞</div>
-      <div class="p-info" id="my-info" style="align-items:flex-end;">
-        <span class="p-name" id="my-name">—</span>
-      </div>
-      <div class="p-dot dot-maintso" id="my-dot"></div>
-    </div>
-  </div>
+  <div id="players-bar"></div>
 
-  <!-- Board (portrait: direct child of flex body) -->
   <svg id="game-board" viewBox="-20 -20 440 240">
     <defs>
       <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
@@ -325,144 +148,102 @@
     <g id="spots-group"></g>
   </svg>
 
-  <div id="portrait-bottom">
-    <div id="shared-timer-p"><span>∞</span></div>
-    <div id="btn-row-p">
-      <button class="abtn" title="Chat"><i class="fas fa-comment-dots"></i></button>
-      <button class="abtn demand">Demande</button>
-      <div class="ping-wrap"><div class="ping-dot"></div><span class="ping-lbl">ping</span></div>
-      <button class="abtn" title="Paramètres"><i class="fas fa-cog"></i></button>
-      <button id="stop-move-btn"><i class="fas fa-times"></i></button>
-    </div>
-  </div>
-
-  <!-- ══════════ LANDSCAPE ELEMENTS (display:contents → children = grid cells) ══════════ -->
-  <div id="landscape-wrap">
-
-    <!-- col 1 -->
-    <div id="ls-left">
-      <div class="ls-card" id="opp-card-ls">
-        <div class="ls-row">
-          <div class="p-dot dot-mena" id="opp-dot-ls"></div>
-          <div class="ls-info">
-            <span class="p-name" id="opp-name-ls">—</span>
-            <div class="p-timer" id="opp-timer-ls">∞</div>
-          </div>
-        </div>
-      </div>
-      <div class="ls-mid">
-        <div class="ping-wrap"><div class="ping-dot"></div><span class="ping-lbl">ping</span></div>
-        <div id="shared-timer-ls"><span>∞</span></div>
-      </div>
-      <button class="abtn" title="Chat"><i class="fas fa-comment-dots"></i></button>
-    </div>
-
-    <!-- col 2: board -->
-    <div id="ls-center">
-      <!-- #game-board is a shared element; in landscape CSS it fills this col via width:100% -->
-    </div>
-
-    <!-- col 3 -->
-    <div id="ls-right">
-      <div class="ls-card right-card" id="my-card-ls">
-        <div class="ls-row-rev">
-          <div class="p-dot dot-maintso" id="my-dot-ls"></div>
-          <div class="ls-info right">
-            <span class="p-name" id="my-name-ls">—</span>
-            <div class="p-timer" id="my-timer-ls">∞</div>
-          </div>
-        </div>
-      </div>
-      <div class="ls-mid">
-        <button id="stop-move-btn-ls"><i class="fas fa-times"></i></button>
-        <button class="abtn demand">Demande</button>
-      </div>
-      <button class="abtn" title="Paramètres"><i class="fas fa-cog"></i></button>
-    </div>
-
-  </div><!-- /landscape-wrap -->
-
+  <button id="stop-move-btn">
+    <i class="fas fa-times"></i>
+  </button>
   <div id="error-msg"></div>
 
   <script>
   (function () {
 
+    //  SECTION 1 — Config & helpers
     var SESSION_API_URL = '/api/session';
     var GAME_API_URL    = '/api/game-fanorona';
     var POLL_INTERVAL   = 1500;
     var RECONCILE_DELAY = 5000;
 
-    /* ── DOM helper ── */
-    function $(id){ return document.getElementById(id); }
-
     function showError(msg) {
-      $('error-msg').textContent = msg;
-      $('error-msg').style.display = 'block';
-      $('loading-overlay').classList.add('hidden');
+      document.getElementById('error-msg').textContent = msg;
+      document.getElementById('error-msg').style.display = 'block';
+      document.getElementById('loading-overlay').classList.add('hidden');
     }
     function escapeHtml(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    /* ── Landscape board placement ──
-       In landscape the SVG is a flex child of body (portrait) but we want it
-       inside #ls-center. We move it on orientation change. */
-    function placeBoardForOrientation() {
-      var board = $('game-board');
-      var lsc   = $('ls-center');
-      var isLS  = window.matchMedia('(orientation: landscape)').matches;
-      if (isLS) {
-        if (board.parentNode !== lsc) lsc.appendChild(board);
-      } else {
-        var ref = $('portrait-bottom');
-        if (board.parentNode !== document.body) {
-          document.body.insertBefore(board, ref);
-        }
-      }
-    }
-    placeBoardForOrientation();
-    window.addEventListener('resize', placeBoardForOrientation);
-    window.addEventListener('orientationchange', function(){ setTimeout(placeBoardForOrientation, 100); });
-
     var gameOverTriggered = false;
     function disableBoardCompletely() {
-      var board = $('game-board');
+      var board = document.getElementById('game-board');
       if (board) board.classList.add('lock-board');
-      syncStopBtn(false);
-      $('guides-group').innerHTML = '';
-      document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el){ el.removeAttribute('class'); });
-      document.querySelectorAll('.cross-line').forEach(function(el){ el.remove(); });
+      var stopBtn = document.getElementById('stop-move-btn');
+      if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = 'none'; }
+      document.getElementById('guides-group').innerHTML = '';
+      document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el) {
+        el.removeAttribute('class');
+      });
+      document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
     }
 
     function showGameOverAlert(winnerColor, delayMs) {
       if (gameOverTriggered) return;
       gameOverTriggered = true;
+
       disableBoardCompletely();
+
+      var delay = (typeof delayMs === 'number') ? delayMs : 2000;
+
       setTimeout(function() {
         var overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;justify-content:center;align-items:center;z-index:9999;';
+        overlay.style.cssText = [
+          'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
+          'display:flex','justify-content:center','align-items:center',
+          'z-index:9999','flex-direction:column','gap:0'
+        ].join(';');
+
         var box = document.createElement('div');
-        box.style.cssText = 'background:linear-gradient(135deg,#5a6efb,#9060d0);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:36px 40px;text-align:center;color:white;font-family:"Exo 2",sans-serif;box-shadow:0 8px 60px rgba(0,0,0,.7);max-width:320px;width:88vw;';
-        var iWon = (winnerColor === myColor);
+        box.style.cssText = [
+          'background:#1a3a5c','border-radius:18px','padding:36px 40px',
+          'text-align:center','color:white','font-family:sans-serif',
+          'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
+        ].join(';');
+
+        var iWon  = (winnerColor === myColor);
+        var myMsg = iWon ? '&#127942; You win!' : '&#128532; You lose!';
+
         var title = document.createElement('div');
-        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;font-family:"Rajdhani",sans-serif;letter-spacing:.05em;';
-        title.textContent = iWon ? '🏆 You win!' : '😔 You lose!';
+        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
+        title.textContent = myMsg;
+
         var btn = document.createElement('button');
         btn.textContent = 'OK';
-        btn.style.cssText = 'background:rgba(255,255,255,.25);color:white;border:1px solid rgba(255,255,255,.4);border-radius:10px;padding:12px 48px;font-size:1.1em;font-weight:800;cursor:pointer;font-family:"Rajdhani",sans-serif;';
-        btn.onclick = function(){ window.location.href = 'dashboard.html'; };
-        box.appendChild(title); box.appendChild(btn);
-        overlay.appendChild(box); document.body.appendChild(overlay);
-      }, (typeof delayMs === 'number') ? delayMs : 2000);
+        btn.style.cssText = [
+          'background:#0092FF','color:white','border:none',
+          'border-radius:10px','padding:12px 48px',
+          'font-size:1.1em','font-weight:700','cursor:pointer',
+          'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
+        ].join(';');
+        btn.onclick = function() {
+          window.location.href = 'dashboard.html';
+        };
+
+        box.appendChild(title);
+        box.appendChild(btn);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+      }, delay);
     }
 
     async function callApi(url, action, payload) {
-      var r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({action:action}, payload)) });
+      var r = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ action: action }, payload))
+      });
       var d = await r.json();
       if (!r.ok) throw new Error(d.error || 'API error');
       return d;
     }
 
+    //  SECTION 2 — Constantes du jeu
     var rows = ['A','B','C','D','E'];
     var cols = ['1','2','3','4','5','6','7','8','9'];
 
@@ -489,14 +270,32 @@
       'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
     };
 
-    var myColor = null, myOppColor = null, gameId = null, myUid = null;
+    //  SECTION 3 — État
+    var myColor    = null;
+    var myOppColor = null;
+    var gameId     = null;
+    var myUid      = null;
+
     var localState = null;
-    var selectedSpot = null, lastBlockedSpot = null, canChangePiece = true;
-    var pendingCaptures = { approach:[], withdrawal:[], moveData:null };
+
+    var selectedSpot    = null;
+    var lastBlockedSpot = null;
+    var canChangePiece  = true;
+    var pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+
     var piecesOnBoard = {};
+
+    var moveQueue       = [];
     var movingInProgress = false;
-    var lastSeenHistKey = null;
+
+    var lastSeenHistKey   = null;
+
     var reconcileTimer = null;
+
+    var myDotEl  = null;
+    var oppDotEl = null;
+
+    //  SECTION 4 — Init
 
     var params   = new URLSearchParams(window.location.search);
     var gameId_p = params.get('gameId');
@@ -507,328 +306,590 @@
     async function init() {
       if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
       if (color_p !== 'maintso' && color_p !== 'mena') { showError('Diso ny color.'); return; }
+
       var stored = localStorage.getItem('user');
       if (!stored) { window.location.href = 'login&register.html'; return; }
       var localUser = null;
       try { localUser = JSON.parse(stored); } catch(e) {}
       if (!localUser || !localUser.uid) { window.location.href = 'login&register.html'; return; }
+
       try {
         var data = await callApi(SESSION_API_URL, 'get-fanorona-game', { uid: localUser.uid, gameId: gameId_p });
         if (!data.success) { showError('Tsy hita ny lalao.'); return; }
-        myUid = localUser.uid; gameId = gameId_p;
-        myColor = color_p; myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
+
+        myUid      = localUser.uid;
+        gameId     = gameId_p;
+        myColor    = color_p;
+        myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
+
         renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
-        if (myColor === 'mena') $('game-board').classList.add('flipped');
+
+        if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
+
         drawBoardSpots();
-        $('stop-move-btn').onclick = function(){ handleStopBtn(); };
-        $('stop-move-btn-ls').onclick = function(){ handleStopBtn(); };
+
+        document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
+
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
           localState = copyState(d.game);
+          // Masomboly ny mpilalao roa vao esorina ny loading-overlay
           if (data.opponentUsername && data.opponentUsername !== '???') {
-            $('loading-overlay').classList.add('hidden');
+            document.getElementById('loading-overlay').classList.add('hidden');
           }
           applyLocalState();
         }
+
         setInterval(pollAdversaire, POLL_INTERVAL);
         setInterval(checkBothPlayersReady, 2000);
+
       } catch(err) { showError('Nisy olana: ' + err.message); }
     }
 
+    //  SECTION 5 — Players bar
+
     function renderPlayersBar(myCol, myUsername, oppUsername) {
+      var bar = document.getElementById('players-bar');
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-      function setDot(id, cls){ var el=$(id); if(el){ el.className='p-dot '+cls; } }
-      function setName(id, n){ var el=$(id); if(el) el.textContent=escapeHtml(n); }
-      setDot('opp-dot', oppDotClass); setDot('my-dot', myDotClass);
-      setDot('opp-dot-ls', oppDotClass); setDot('my-dot-ls', myDotClass);
-      setName('opp-name', oppUsername); setName('my-name', myUsername);
-      setName('opp-name-ls', oppUsername); setName('my-name-ls', myUsername);
+      bar.innerHTML =
+        // Adversaire (gauche)
+        '<div class="player-info">' +
+          '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
+          '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
+          '<span class="piece-count" id="opp-count">22</span>' +
+        '</div>' +
+        // VS
+        '<span class="vs-sep">VS</span>' +
+        // Moi (droite)
+        '<div class="player-info">' +
+          '<span class="piece-count" id="my-count">22</span>' +
+          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
+          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
+        '</div>';
+      myDotEl  = document.getElementById('my-dot');
+      oppDotEl = document.getElementById('opp-dot');
     }
 
     function updateTurnIndicator(turn) {
-      var isMyTurn = turn === myColor;
-      function toggle(id, active){
-        var el=$(id); if(!el) return;
-        if(id.indexOf('dot')!==-1) el.classList.toggle('active-turn', active);
-        else el.classList.toggle('active-card', active);
+      if (!myDotEl || !oppDotEl) return;
+      if (turn === myColor) {
+        myDotEl.classList.add('active-turn');   oppDotEl.classList.remove('active-turn');
+      } else {
+        oppDotEl.classList.add('active-turn');  myDotEl.classList.remove('active-turn');
       }
-      toggle('my-dot', isMyTurn); toggle('my-card', isMyTurn);
-      toggle('opp-dot', !isMyTurn); toggle('opp-card', !isMyTurn);
-      toggle('my-dot-ls', isMyTurn); toggle('my-card-ls', isMyTurn);
-      toggle('opp-dot-ls', !isMyTurn); toggle('opp-card-ls', !isMyTurn);
+      // Mise à jour du nombre de pièces
+      if (localState && localState.pieces) {
+        var myCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s] === myColor; }).length;
+        var oppCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s] === myOppColor; }).length;
+        var myEl  = document.getElementById('my-count');
+        var oppEl = document.getElementById('opp-count');
+        if (myEl)  myEl.textContent  = myCount;
+        if (oppEl) oppEl.textContent = oppCount;
+      }
     }
 
-    function syncStopBtn(active) {
-      ['stop-move-btn','stop-move-btn-ls'].forEach(function(id){
-        var btn=$(id); if(!btn) return;
-        if(active) btn.classList.add('active'); else btn.classList.remove('active');
-      });
-    }
-
+    //  SECTION 6 — Polling adversaire UNIQUEMENT
     async function pollAdversaire() {
       try {
-        var d = await callApi(GAME_API_URL, 'get-state', { uid:myUid, gameId:gameId });
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
         var serverTurn = d.game.turn;
+
         if (movingInProgress) return;
+
         if (serverTurn !== myColor) {
-          if (localState) { localState.pieces=Object.assign({},d.game.pieces); localState.turn=d.game.turn; renderPieces(localState.pieces,localState); }
+          if (localState) {
+            localState.pieces = Object.assign({}, d.game.pieces);
+            localState.turn   = d.game.turn;
+            renderPieces(localState.pieces, localState);
+          }
           return;
         }
+
         if (selectedSpot || (localState && localState.movingPiece)) return;
-        var histColor=d.game.lastTurnColor||''; var history=Array.isArray(d.game.lastTurnHistory)?d.game.lastTurnHistory:[];
-        var histKey=histColor+'|'+history.length+'|'+(history.length>0?history[history.length-1].target:'');
-        if (histColor===myOppColor && history.length>0 && histKey!==lastSeenHistKey) lastSeenHistKey=histKey;
-        var serverPiecesStr=JSON.stringify(d.game.pieces); var localPiecesStr=localState?JSON.stringify(localState.pieces):'';
-        if (serverPiecesStr===localPiecesStr && localState && localState.turn===myColor) return;
-        localState=copyState(d.game); canChangePiece=true; selectedSpot=null; lastBlockedSpot=null;
-        pendingCaptures={approach:[],withdrawal:[],moveData:null};
-        $('guides-group').innerHTML=''; syncStopBtn(false); applyLocalState();
-        var myPC=Object.keys(localState.pieces).filter(function(s){return localState.pieces[s]===myColor;}).length;
-        var oppPC=Object.keys(localState.pieces).filter(function(s){return localState.pieces[s]===myOppColor;}).length;
-        if(myPC===0) showGameOverAlert(myOppColor,2000); else if(oppPC===0) showGameOverAlert(myColor,2000);
-      } catch(e) { console.warn('poll error',e); }
+
+        var histColor = d.game.lastTurnColor || '';
+        var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
+        var histKey   = histColor + '|' + history.length + '|' +
+                        (history.length > 0 ? history[history.length - 1].target : '');
+
+        if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
+          lastSeenHistKey = histKey;
+        }
+
+        var serverPiecesStr = JSON.stringify(d.game.pieces);
+        var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
+        if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
+
+        localState      = copyState(d.game);
+        canChangePiece  = true;
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+        document.getElementById('guides-group').innerHTML = '';
+        document.getElementById('stop-move-btn').classList.remove('active');
+        applyLocalState();
+
+        var myPieceCountPoll  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPieceCountPoll = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        if (myPieceCountPoll === 0) {
+          showGameOverAlert(myOppColor, 2000);
+        } else if (oppPieceCountPoll === 0) {
+          showGameOverAlert(myColor, 2000);
+        }
+
+      } catch(e) { console.warn('poll error', e); }
     }
 
     function copyState(game) {
-      return { pieces:Object.assign({},game.pieces), turn:game.turn, movingPiece:game.movingPiece||'', visited:(game.visited||[]).slice(), lastDir:game.lastDir||'' };
+      return {
+        pieces:      Object.assign({}, game.pieces),
+        turn:        game.turn,
+        movingPiece: game.movingPiece || '',
+        visited:     (game.visited || []).slice(),
+        lastDir:     game.lastDir || '',
+      };
     }
 
     function applyLocalState() {
       updateTurnIndicator(localState.turn);
-      if (localState.turn===myColor && localState.movingPiece) syncStopBtn(true);
-      else if (!movingInProgress) syncStopBtn(false);
-      renderPieces(localState.pieces,localState);
-      if (selectedSpot && localState.turn===myColor) renderGuides(selectedSpot,localState);
+      var stopBtn = document.getElementById('stop-move-btn');
+      if (localState.turn === myColor && localState.movingPiece) {
+        stopBtn.classList.add('active');
+      } else if (!movingInProgress) {
+        stopBtn.classList.remove('active');
+      }
+      renderPieces(localState.pieces, localState);
+      if (selectedSpot && localState.turn === myColor) {
+        renderGuides(selectedSpot, localState);
+      }
     }
 
+    //  SECTION 7 — Spots cliquables
     function drawBoardSpots() {
-      var spotsGrp=$('spots-group'); spotsGrp.innerHTML='';
-      rows.forEach(function(r,ri){ cols.forEach(function(c,ci){
-        var circle=document.createElementNS('http://www.w3.org/2000/svg','circle');
-        circle.setAttribute('cx',ci*50); circle.setAttribute('cy',ri*50);
-        circle.setAttribute('r',18); circle.setAttribute('fill','transparent'); circle.setAttribute('class','spot');
-        (function(spotID){ circle.onclick=function(e){ e.stopPropagation(); handleSpotClick(spotID); }; })(r+c);
-        spotsGrp.appendChild(circle);
-      }); });
+      var spotsGrp = document.getElementById('spots-group');
+      spotsGrp.innerHTML = '';
+      rows.forEach(function(r, ri) {
+        cols.forEach(function(c, ci) {
+          var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', ci * 50);
+          circle.setAttribute('cy', ri * 50);
+          circle.setAttribute('r', 18);
+          circle.setAttribute('fill', 'transparent');
+          circle.setAttribute('class', 'spot');
+          (function(spotID) { circle.onclick = function(e) { e.stopPropagation(); handleSpotClick(spotID); }; })(r + c);
+          spotsGrp.appendChild(circle);
+        });
+      });
     }
 
     function handleSpotClick(spotID) {
-      if (!localState||localState.turn!==myColor) return;
-      if (pendingCaptures.approach.length>0||pendingCaptures.withdrawal.length>0) return;
-      var pieces=localState.pieces;
-      if (canChangePiece&&pieces[spotID]===myColor) {
-        if (canPieceMove(spotID,pieces,myColor,playerHasAnyCapture(pieces,myColor))) { selectedSpot=spotID; lastBlockedSpot=null; }
-        else { selectedSpot=null; lastBlockedSpot=spotID; }
-        renderGuides(selectedSpot||'',localState); renderPieces(pieces,localState); return;
+      if (!localState || localState.turn !== myColor) return;
+      if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
+
+      var pieces = localState.pieces;
+
+      if (canChangePiece && pieces[spotID] === myColor) {
+        if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
+          selectedSpot    = spotID;
+          lastBlockedSpot = null;
+        } else {
+          selectedSpot    = null;
+          lastBlockedSpot = spotID;
+        }
+        renderGuides(selectedSpot || '', localState);
+        renderPieces(pieces, localState);
+        return;
       }
+
       if (!selectedSpot) return;
-      if ((allowedMoves[selectedSpot]||[]).indexOf(spotID)===-1) return;
+      if ((allowedMoves[selectedSpot] || []).indexOf(spotID) === -1) return;
       if (pieces[spotID]) return;
-      if (localState.visited&&localState.visited.indexOf(spotID)!==-1) return;
-      var caps=getCaptures(pieces,selectedSpot,spotID,myColor);
-      var isCaptureMove=caps.approach.length>0||caps.withdrawal.length>0;
-      if (playerHasAnyCapture(pieces,myColor)&&!isCaptureMove) return;
-      var r1=rows.indexOf(selectedSpot[0]),c1=cols.indexOf(selectedSpot[1]);
-      var r2=rows.indexOf(spotID[0]),c2=cols.indexOf(spotID[1]);
-      var dir=(r2-r1)+','+(c2-c1);
-      if (!canChangePiece&&localState.lastDir===dir) return;
-      var origin=selectedSpot; var newPieces=Object.assign({},pieces);
-      delete newPieces[origin]; newPieces[spotID]=myColor;
-      var newVisited=(localState.visited||[]).concat([origin]);
-      if (isCaptureMove&&caps.approach.length>0&&caps.withdrawal.length>0) {
-        pendingCaptures={approach:caps.approach,withdrawal:caps.withdrawal,moveData:{origin:origin,target:spotID,dir:dir}};
-        localState.pieces=newPieces; localState.visited=newVisited; selectedSpot=spotID;
-        renderPieces(newPieces,localState); $('guides-group').innerHTML=''; return;
+      if (localState.visited && localState.visited.indexOf(spotID) !== -1) return;
+
+      var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
+      var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+      if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+
+      var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
+      var r2 = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
+      var dir = (r2-r1) + ',' + (c2-c1);
+      if (!canChangePiece && localState.lastDir === dir) return;
+
+      var origin     = selectedSpot;
+      var newPieces  = Object.assign({}, pieces);
+      delete newPieces[origin];
+      newPieces[spotID] = myColor;
+      var newVisited = (localState.visited || []).concat([origin]);
+
+      if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
+        pendingCaptures = {
+          approach:   caps.approach,
+          withdrawal: caps.withdrawal,
+          moveData:   { origin: origin, target: spotID, dir: dir }
+        };
+        localState.pieces  = newPieces;
+        localState.visited = newVisited;
+        selectedSpot = spotID;
+        renderPieces(newPieces, localState);
+        // Guides vides pendant le choix
+        document.getElementById('guides-group').innerHTML = '';
+        return;
       }
-      var capturedSpots=isCaptureMove?caps.approach.concat(caps.withdrawal):[];
-      doMove(origin,spotID,capturedSpots,dir,newVisited,newPieces,isCaptureMove);
+
+      var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
+      doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
     }
 
     function confirmCapture(type) {
-      var md=pendingCaptures.moveData;
-      var capturedSpots=type==='approach'?pendingCaptures.approach:pendingCaptures.withdrawal;
-      pendingCaptures={approach:[],withdrawal:[],moveData:null};
-      var newPieces=Object.assign({},localState.pieces); var newVisited=(localState.visited||[]).slice();
-      doMove(md.origin,md.target,capturedSpots,md.dir,newVisited,newPieces,true);
+      var md = pendingCaptures.moveData;
+      var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
+      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      var newPieces  = Object.assign({}, localState.pieces);
+      var newVisited = (localState.visited || []).slice();
+      doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
     }
 
-    function doMove(origin,target,capturedSpots,dir,newVisited,newPieces,wasCapture) {
-      capturedSpots.forEach(function(s){ delete newPieces[s]; });
-      var canContinue=wasCapture&&checkAvailableCaptures(newPieces,target,newVisited,dir,myColor);
-      movingInProgress=true; localState.pieces=newPieces;
+    function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
+      capturedSpots.forEach(function(s) { delete newPieces[s]; });
+
+      var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
+
+      movingInProgress = true;
+      localState.pieces = newPieces;
+
       if (canContinue) {
-        localState.movingPiece=target; localState.visited=newVisited; localState.lastDir=dir;
-        selectedSpot=target; canChangePiece=false; syncStopBtn(true);
+        localState.movingPiece = target;
+        localState.visited     = newVisited;
+        localState.lastDir     = dir;
+        selectedSpot   = target;
+        canChangePiece = false;
+        document.getElementById('stop-move-btn').classList.add('active');
       } else {
-        localState.turn=myOppColor; localState.movingPiece=''; localState.visited=[]; localState.lastDir='';
-        selectedSpot=null; lastBlockedSpot=null; canChangePiece=true; syncStopBtn(false);
+        localState.turn        = myOppColor;
+        localState.movingPiece = '';
+        localState.visited     = [];
+        localState.lastDir     = '';
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        canChangePiece  = true;
+        document.getElementById('stop-move-btn').classList.remove('active');
       }
-      if (canContinue&&selectedSpot) renderGuides(selectedSpot,localState);
-      else $('guides-group').innerHTML='';
-      updateTurnIndicator(localState.turn); renderPieces(localState.pieces,localState);
-      sendMoveToBackend(origin,target,capturedSpots,dir);
+
+      if (canContinue && selectedSpot) {
+        renderGuides(selectedSpot, localState);
+      } else {
+        document.getElementById('guides-group').innerHTML = '';
+      }
+
+      updateTurnIndicator(localState.turn);
+      renderPieces(localState.pieces, localState);
+
+      sendMoveToBackend(origin, target, capturedSpots, dir);
+
       if (!canContinue) {
         scheduleReconcile();
-        var myPC=Object.keys(localState.pieces).filter(function(s){return localState.pieces[s]===myColor;}).length;
-        var oppPC=Object.keys(localState.pieces).filter(function(s){return localState.pieces[s]===myOppColor;}).length;
-        if(oppPC===0) showGameOverAlert(myColor,2000); else if(myPC===0) showGameOverAlert(myOppColor,2000);
+      }
+
+      if (!canContinue) {
+        var myPieceCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPieceCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        if (oppPieceCount === 0) {
+          showGameOverAlert(myColor, 2000);
+        } else if (myPieceCount === 0) {
+          showGameOverAlert(myOppColor, 2000);
+        }
       }
     }
 
     function handleStopBtn() {
-      if (!localState||localState.turn!==myColor||!localState.movingPiece) return;
-      var piecesSnapshot=Object.assign({},localState.pieces);
-      movingInProgress=true; localState.turn=myOppColor; localState.movingPiece='';
-      localState.visited=[]; localState.lastDir='';
-      selectedSpot=null; lastBlockedSpot=null; canChangePiece=true;
-      syncStopBtn(false); $('guides-group').innerHTML='';
-      updateTurnIndicator(localState.turn); renderPieces(localState.pieces,localState);
-      callApi(GAME_API_URL,'stop-move',{uid:myUid,gameId:gameId,pieces:piecesSnapshot}).catch(function(e){console.warn('stop-move error',e);});
+      if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
+      var piecesSnapshot = Object.assign({}, localState.pieces);
+
+      movingInProgress = true;
+      localState.turn        = myOppColor;
+      localState.movingPiece = '';
+      localState.visited     = [];
+      localState.lastDir     = '';
+      selectedSpot    = null;
+      lastBlockedSpot = null;
+      canChangePiece  = true;
+      document.getElementById('stop-move-btn').classList.remove('active');
+      document.getElementById('guides-group').innerHTML = '';
+      updateTurnIndicator(localState.turn);
+      renderPieces(localState.pieces, localState);
+
+      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
+        .catch(function(e) { console.warn('stop-move error', e); });
+
       scheduleReconcile();
-      var myPCS=Object.keys(localState.pieces).filter(function(s){return localState.pieces[s]===myColor;}).length;
-      var oppPCS=Object.keys(localState.pieces).filter(function(s){return localState.pieces[s]===myOppColor;}).length;
-      if(oppPCS===0) showGameOverAlert(myColor,2000); else if(myPCS===0) showGameOverAlert(myOppColor,2000);
+
+      var myPieceCountS  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+      var oppPieceCountS = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+      if (oppPieceCountS === 0) {
+        showGameOverAlert(myColor, 2000);
+      } else if (myPieceCountS === 0) {
+        showGameOverAlert(myOppColor, 2000);
+      }
     }
 
-    function sendMoveToBackend(origin,target,capturedSpots,dir) {
-      callApi(GAME_API_URL,'make-move',{uid:myUid,gameId:gameId,origin:origin,target:target,capturedSpots:capturedSpots,dir:dir}).catch(function(e){console.warn('make-move error:',e);});
+    //  Envoi backend & réconciliation
+    function sendMoveToBackend(origin, target, capturedSpots, dir) {
+      callApi(GAME_API_URL, 'make-move', {
+        uid: myUid, gameId: gameId,
+        origin: origin, target: target,
+        capturedSpots: capturedSpots, dir: dir
+      }).catch(function(e) {
+        console.warn('make-move backend error (non-blocking):', e);
+      });
     }
 
     function scheduleReconcile() {
       if (reconcileTimer) clearTimeout(reconcileTimer);
-      reconcileTimer=setTimeout(function(){ reconcileTimer=null; doReconcile(); },RECONCILE_DELAY);
+      reconcileTimer = setTimeout(function() {
+        reconcileTimer = null;
+        doReconcile();
+      }, RECONCILE_DELAY);
     }
 
     async function doReconcile() {
       try {
-        var d=await callApi(GAME_API_URL,'get-state',{uid:myUid,gameId:gameId});
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
-        movingInProgress=false;
-        if (d.game.turn!==myColor) {
-          if (localState.turn!==myColor) return;
-          localState=copyState(d.game); selectedSpot=null; lastBlockedSpot=null; canChangePiece=true;
-          pendingCaptures={approach:[],withdrawal:[],moveData:null};
-          $('guides-group').innerHTML=''; syncStopBtn(false); applyLocalState();
+
+        movingInProgress = false;
+
+        var serverTurn = d.game.turn;
+
+        if (serverTurn !== myColor) {
+          if (localState.turn !== myColor) return;
+          localState = copyState(d.game);
+          selectedSpot    = null;
+          lastBlockedSpot = null;
+          canChangePiece  = true;
+          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+          document.getElementById('guides-group').innerHTML = '';
+          document.getElementById('stop-move-btn').classList.remove('active');
+          applyLocalState();
+
         } else {
-          var serverMoving=d.game.movingPiece||'';
-          if (serverMoving) { selectedSpot=localState.movingPiece||serverMoving; canChangePiece=false; localState.movingPiece=selectedSpot; syncStopBtn(true); }
-          if (selectedSpot) renderGuides(selectedSpot,localState);
-          renderPieces(localState.pieces,localState); updateTurnIndicator(localState.turn);
-        }
-      } catch(e) { movingInProgress=false; console.warn('reconcile error',e); }
-    }
-
-    function renderPieces(pieces,stateData) {
-      var grp=$('pieces-group');
-      var isMyTurn=stateData.turn===myColor;
-      var globalCapture=playerHasAnyCapture(pieces,myColor);
-      var newPiecesOnBoard={};
-      var vanished=Object.keys(piecesOnBoard).filter(function(k){return !pieces[k];});
-      var appeared=Object.keys(pieces).filter(function(k){return !piecesOnBoard[k];});
-      vanished.forEach(function(vKey){
-        var color=piecesOnBoard[vKey].color; var target=null;
-        for(var i=0;i<appeared.length;i++){ if(pieces[appeared[i]]===color){target=appeared[i];break;} }
-        if(target){ newPiecesOnBoard[target]=piecesOnBoard[vKey]; appeared=appeared.filter(function(a){return a!==target;}); }
-        else { piecesOnBoard[vKey].el.remove(); }
-      });
-      appeared.forEach(function(aKey){
-        var g=document.createElementNS('http://www.w3.org/2000/svg','g'); g.setAttribute('class','piece-group');
-        var c=document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('r',8);
-        g.appendChild(c); grp.appendChild(g); newPiecesOnBoard[aKey]={el:g,color:pieces[aKey]};
-      });
-      Object.keys(pieces).forEach(function(k){ if(!newPiecesOnBoard[k]) newPiecesOnBoard[k]=piecesOnBoard[k]; });
-      piecesOnBoard=newPiecesOnBoard;
-      var hasPending=pendingCaptures.approach.length>0||pendingCaptures.withdrawal.length>0;
-      Object.keys(pieces).forEach(function(spot){
-        var ri=rows.indexOf(spot[0]),ci=cols.indexOf(spot[1]); if(ri<0||ci<0) return;
-        var entry=piecesOnBoard[spot]; if(!entry) return;
-        var g=entry.el,circle=g.querySelector('circle');
-        g.setAttribute('transform','translate('+(ci*50)+','+(ri*50)+')');
-        circle.setAttribute('fill','url(#'+pieces[spot]+'-pat)');
-        circle.removeAttribute('class'); circle.style.pointerEvents='all';
-        circle.onclick=(function(s){ return function(e){ e.stopPropagation(); handleSpotClick(s); }; })(spot);
-        if(isMyTurn&&pieces[spot]===myColor){
-          if(selectedSpot===spot) circle.setAttribute('class','selected-piece');
-          else if(lastBlockedSpot===spot) circle.setAttribute('class','blocked-piece');
-          else if(!stateData.movingPiece&&canPieceMove(spot,pieces,myColor,globalCapture)) circle.setAttribute('class','movable-piece');
-        }
-        var isApp=pendingCaptures.approach.indexOf(spot)!==-1;
-        var isWith=pendingCaptures.withdrawal.indexOf(spot)!==-1;
-        g.querySelectorAll('.cross-line').forEach(function(l){l.remove();});
-        if(isApp||isWith){
-          circle.classList.add('capture-target'); circle.style.pointerEvents='all';
-          var ct=isApp?'approach':'withdrawal';
-          circle.onclick=(function(type){ return function(e){ e.stopPropagation(); confirmCapture(type); }; })(ct);
-          g.appendChild(createCross(-5,-5,5,5)); g.appendChild(createCross(5,-5,-5,5));
-        }
-      });
-      var board=$('game-board');
-      if(!isMyTurn||hasPending) board.classList.add('lock-board'); else board.classList.remove('lock-board');
-    }
-
-    function createCross(x1,y1,x2,y2){
-      var l=document.createElementNS('http://www.w3.org/2000/svg','line');
-      l.setAttribute('x1',x1); l.setAttribute('y1',y1); l.setAttribute('x2',x2); l.setAttribute('y2',y2);
-      l.setAttribute('class','cross-line'); return l;
-    }
-
-    function renderGuides(startSpot,stateData){
-      var grp=$('guides-group'); if(!grp) return;
-      grp.innerHTML=''; if(!startSpot) return;
-      var pieces=stateData.pieces; var visited=stateData.visited||[]; var lastDir=stateData.lastDir||'';
-      var globalCapturePossible=playerHasAnyCapture(pieces,myColor);
-      var moves=allowedMoves[startSpot]||[];
-      moves.forEach(function(target){
-        if(pieces[target]||visited.indexOf(target)!==-1) return;
-        var caps=getCaptures(pieces,startSpot,target,myColor);
-        var isCaptureMove=caps.approach.length>0||caps.withdrawal.length>0;
-        if(globalCapturePossible&&!isCaptureMove) return;
-        var r1=rows.indexOf(startSpot[0]),c1=cols.indexOf(startSpot[1]);
-        var r2=rows.indexOf(target[0]),c2=cols.indexOf(target[1]);
-        var dir=(r2-r1)+','+(c2-c1);
-        if(!canChangePiece&&lastDir===dir) return;
-        var dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
-        dot.setAttribute('cx',c2*50); dot.setAttribute('cy',r2*50);
-        dot.setAttribute('r',6); dot.setAttribute('class','guide-dot'); grp.appendChild(dot);
-      });
-    }
-
-    function getCaptures(pieces,s,e,color){
-      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
-      var enemy=color==='maintso'?'mena':'maintso',dr=r2-r1,dc=c2-c1;
-      function scan(row,col,sr,sc){ var res=[],cr=row+sr,cc=col+sc; while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;} return res; }
-      return { approach:scan(r2,c2,dr,dc), withdrawal:scan(r1,c1,-dr,-dc) };
-    }
-    function playerHasAnyCapture(pieces,color){
-      var sl=Object.keys(pieces);
-      for(var i=0;i<sl.length;i++){ var s=sl[i]; if(pieces[s]!==color)continue; var mv=allowedMoves[s]||[]; for(var j=0;j<mv.length;j++){ var t=mv[j]; if(!pieces[t]){var c=getCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;} } }
-      return false;
-    }
-    function canPieceMove(spot,pieces,color,globalCapture){
-      var mv=allowedMoves[spot]||[];
-      for(var i=0;i<mv.length;i++){ var t=mv[i]; if(pieces[t])continue; var caps=getCaptures(pieces,spot,t,color); var isCap=caps.approach.length>0||caps.withdrawal.length>0; if(globalCapture?isCap:true)return true; }
-      return false;
-    }
-    function checkAvailableCaptures(pieces,s,visited,lastDir,color){
-      var mv=allowedMoves[s]||[];
-      for(var i=0;i<mv.length;i++){ var t=mv[i]; if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue; var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]); var dir=(r2-r1)+','+(c2-c1); if(lastDir&&lastDir===dir)continue; var caps=getCaptures(pieces,s,t,color); if(caps.approach.length>0||caps.withdrawal.length>0)return true; }
-      return false;
-    }
-
-    function checkBothPlayersReady() {
-      if ($('loading-overlay').classList.contains('hidden')) return;
-      callApi(SESSION_API_URL,'get-fanorona-game',{uid:myUid,gameId:gameId})
-        .then(function(data){
-          if(data.success&&data.opponentUsername&&data.opponentUsername!=='???'){
-            renderPlayersBar(myColor,(JSON.parse(localStorage.getItem('user')||'{}')).username||myUid,data.opponentUsername);
-            $('loading-overlay').classList.add('hidden');
+          var serverMoving = d.game.movingPiece || '';
+          if (serverMoving) {
+            selectedSpot   = localState.movingPiece || serverMoving;
+            canChangePiece = false;
+            localState.movingPiece = selectedSpot;
+            document.getElementById('stop-move-btn').classList.add('active');
           }
-        }).catch(function(){});
+          // Rerender avec le state actuel (pas de rollback)
+          if (selectedSpot) renderGuides(selectedSpot, localState);
+          renderPieces(localState.pieces, localState);
+          updateTurnIndicator(localState.turn);
+        }
+      } catch(e) {
+        movingInProgress = false;
+        console.warn('reconcile error', e);
+      }
+    }
+
+    //  SECTION 10
+    function renderPieces(pieces, stateData) {
+      var grp           = document.getElementById('pieces-group');
+      var isMyTurn      = stateData.turn === myColor;
+      var globalCapture = playerHasAnyCapture(pieces, myColor);
+
+      var newPiecesOnBoard = {};
+      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
+      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+
+      vanished.forEach(function(vKey) {
+        var color  = piecesOnBoard[vKey].color;
+        var target = null;
+        for (var i = 0; i < appeared.length; i++) {
+          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
+        }
+        if (target) {
+          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          appeared = appeared.filter(function(a) { return a !== target; });
+        } else {
+          piecesOnBoard[vKey].el.remove();
+        }
+      });
+
+      appeared.forEach(function(aKey) {
+        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'piece-group');
+        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('r', 8);
+        g.appendChild(c);
+        grp.appendChild(g);
+        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+      });
+
+      Object.keys(pieces).forEach(function(k) {
+        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
+      });
+      piecesOnBoard = newPiecesOnBoard;
+
+      var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
+
+      Object.keys(pieces).forEach(function(spot) {
+        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+        if (ri < 0 || ci < 0) return;
+        var entry = piecesOnBoard[spot];
+        if (!entry) return;
+        var g = entry.el, circle = g.querySelector('circle');
+
+        var svgX = ci * 50;
+        var svgY = ri * 50;
+        g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
+        circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
+        circle.removeAttribute('class');
+        circle.style.pointerEvents = 'all';
+        circle.onclick = (function(s) {
+          return function(e) { e.stopPropagation(); handleSpotClick(s); };
+        })(spot);
+
+        if (isMyTurn && pieces[spot] === myColor) {
+          if (selectedSpot === spot)
+            circle.setAttribute('class', 'selected-piece');
+          else if (lastBlockedSpot === spot)
+            circle.setAttribute('class', 'blocked-piece');
+          else if (!stateData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture))
+            circle.setAttribute('class', 'movable-piece');
+        }
+
+        var isApp  = pendingCaptures.approach.indexOf(spot)   !== -1;
+        var isWith = pendingCaptures.withdrawal.indexOf(spot) !== -1;
+        g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
+
+        if (isApp || isWith) {
+          circle.classList.add('capture-target');
+          circle.style.pointerEvents = 'all';
+          var ct = isApp ? 'approach' : 'withdrawal';
+          circle.onclick = (function(type) {
+            return function(e) { e.stopPropagation(); confirmCapture(type); };
+          })(ct);
+          g.appendChild(createCross(-5,-5,5,5));
+          g.appendChild(createCross(5,-5,-5,5));
+        }
+      });
+
+      var board = document.getElementById('game-board');
+      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+      else board.classList.remove('lock-board');
+    }
+
+    function createCross(x1,y1,x2,y2) {
+      var l = document.createElementNS('http://www.w3.org/2000/svg','line');
+      l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+      l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+      l.setAttribute('class','cross-line');
+      return l;
+    }
+
+    //— Guides
+    function renderGuides(startSpot, stateData) {
+      var grp = document.getElementById('guides-group');
+      if (!grp) return;
+      grp.innerHTML = '';
+      if (!startSpot) return;
+
+      var pieces  = stateData.pieces;
+      var visited = stateData.visited  || [];
+      var lastDir = stateData.lastDir  || '';
+      var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
+      var moves = allowedMoves[startSpot] || [];
+
+      moves.forEach(function(target) {
+        if (pieces[target] || visited.indexOf(target) !== -1) return;
+        var caps = getCaptures(pieces, startSpot, target, myColor);
+        var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+        if (globalCapturePossible && !isCaptureMove) return;
+
+        var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
+        var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
+        var dir = (r2-r1) + ',' + (c2-c1);
+        if (!canChangePiece && lastDir === dir) return;
+
+        var svgX = c2 * 50;
+        var svgY = r2 * 50;
+
+        var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', svgX); dot.setAttribute('cy', svgY);
+        dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
+        grp.appendChild(dot);
+      });
+    }
+
+    //  SECTION 12
+    function getCaptures(pieces, s, e, color) {
+      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
+      var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
+      function scan(row,col,sr,sc) {
+        var res=[],cr=row+sr,cc=col+sc;
+        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}
+        return res;
+      }
+      return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+    }
+
+    function playerHasAnyCapture(pieces, color) {
+      var sl = Object.keys(pieces);
+      for (var i=0;i<sl.length;i++) {
+        var s=sl[i]; if(pieces[s]!==color)continue;
+        var mv=allowedMoves[s]||[];
+        for (var j=0;j<mv.length;j++) {
+          var t=mv[j]; if(!pieces[t]){var c=getCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
+        }
+      }
+      return false;
+    }
+
+    function canPieceMove(spot, pieces, color, globalCapture) {
+      var mv=allowedMoves[spot]||[];
+      for(var i=0;i<mv.length;i++){
+        var t=mv[i]; if(pieces[t])continue;
+        var caps=getCaptures(pieces,spot,t,color);
+        var isCap=caps.approach.length>0||caps.withdrawal.length>0;
+        if(globalCapture?isCap:true)return true;
+      }
+      return false;
+    }
+
+    function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
+      var mv=allowedMoves[s]||[];
+      for(var i=0;i<mv.length;i++){
+        var t=mv[i];
+        if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue;
+        var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
+        var dir=(r2-r1)+','+(c2-c1);
+        if(lastDir&&lastDir===dir)continue;
+        var caps=getCaptures(pieces,s,t,color);
+        if(caps.approach.length>0||caps.withdrawal.length>0)return true;
+      }
+      return false;
+    }
+
+    //  SECTION 11b — Attente des deux joueurs
+    var bothPlayersReadyTimer = null;
+    function checkBothPlayersReady() {
+      if (document.getElementById('loading-overlay').classList.contains('hidden')) return;
+      callApi(SESSION_API_URL, 'get-fanorona-game', { uid: myUid, gameId: gameId })
+        .then(function(data) {
+          if (data.success && data.opponentUsername && data.opponentUsername !== '???') {
+            // Mettre à jour le nom de l'adversaire dans la barre
+            renderPlayersBar(myColor,
+              (JSON.parse(localStorage.getItem('user') || '{}')).username || myUid,
+              data.opponentUsername);
+            document.getElementById('loading-overlay').classList.add('hidden');
+          }
+        })
+        .catch(function() {});
     }
 
     init();
+
   })();
   </script>
 </body>
