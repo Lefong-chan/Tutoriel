@@ -30,8 +30,21 @@
     .dot-maintso { background: #22c55e; }
     .dot-mena    { background: #ef4444; }
     .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
-    .player-name  { font-size: 0.95em; }
-    .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
+    .player-name  { font-size: 0.95em; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .piece-count {
+      font-size: 0.78em; font-weight: 800;
+      background: rgba(255,255,255,0.18); border-radius: 20px;
+      padding: 2px 8px; min-width: 28px; text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .turn-badge {
+      font-size: 0.7em; font-weight: 700; padding: 2px 8px;
+      border-radius: 20px; background: rgba(255,255,255,0.15);
+      opacity: 0; transition: opacity 0.3s;
+      white-space: nowrap;
+    }
+    .turn-badge.visible { opacity: 1; background: rgba(255,220,0,0.25); color: #FFE066; }
+    .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; flex-shrink: 0; }
 
     /* ── Plateau ── */
 #game-board {
@@ -84,10 +97,14 @@
 
     /* ── Loading ── */
     #loading-overlay {
-      position: fixed; inset: 0; background: #0092FF;
+      position: fixed; inset: 0;
+      background: rgba(0, 146, 255, 0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       display: flex; justify-content: center; align-items: center;
       z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
       flex-direction: column; gap: 16px;
+      transition: opacity 0.4s ease;
     }
     #loading-overlay.hidden { display: none; }
     .spinner {
@@ -103,11 +120,17 @@
 </head>
 <body>
 
-  <div id="loading-overlay"><div class="spinner"></div></div>
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div style="text-align:center;line-height:1.6;">
+      <div style="font-size:1.1em;font-weight:800;letter-spacing:0.03em;">Miandry ny mpilalao faharoa…</div>
+      <div style="font-size:0.85em;opacity:0.75;font-weight:400;margin-top:4px;">Waiting for opponent</div>
+    </div>
+  </div>
 
-  <div id="players-bar" style="display:none;"></div>
+  <div id="players-bar"></div>
 
-  <svg id="game-board" viewBox="-20 -20 440 240" style="display: none;">
+  <svg id="game-board" viewBox="-20 -20 440 240">
     <defs>
       <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
         <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
@@ -128,7 +151,7 @@
     <g id="spots-group"></g>
   </svg>
 
-  <button id="stop-move-btn" style="display:none;">
+  <button id="stop-move-btn">
     <i class="fas fa-times"></i>
   </button>
   <div id="error-msg"></div>
@@ -306,10 +329,6 @@
 
         if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
 
-        document.getElementById('game-board').style.display    = 'block';
-        document.getElementById('stop-move-btn').style.display = 'block';
-        document.getElementById('loading-overlay').classList.add('hidden');
-
         drawBoardSpots();
 
         document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
@@ -317,10 +336,15 @@
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
           localState = copyState(d.game);
+          // Masomboly ny mpilalao roa vao esorina ny loading-overlay
+          if (data.opponentUsername && data.opponentUsername !== '???') {
+            document.getElementById('loading-overlay').classList.add('hidden');
+          }
           applyLocalState();
         }
 
         setInterval(pollAdversaire, POLL_INTERVAL);
+        setInterval(checkBothPlayersReady, 2000);
 
       } catch(err) { showError('Nisy olana: ' + err.message); }
     }
@@ -332,26 +356,47 @@
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
       bar.innerHTML =
+        // Adversaire (gauche)
         '<div class="player-info">' +
           '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
           '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
+          '<span class="piece-count" id="opp-count">22</span>' +
+          '<span class="turn-badge" id="opp-turn-badge">manetsika…</span>' +
         '</div>' +
+        // VS
         '<span class="vs-sep">VS</span>' +
+        // Moi (droite)
         '<div class="player-info">' +
+          '<span class="turn-badge" id="my-turn-badge">Diako!</span>' +
+          '<span class="piece-count" id="my-count">22</span>' +
           '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
           '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
         '</div>';
-      bar.style.display = 'flex';
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
     }
 
     function updateTurnIndicator(turn) {
       if (!myDotEl || !oppDotEl) return;
+      var myBadge  = document.getElementById('my-turn-badge');
+      var oppBadge = document.getElementById('opp-turn-badge');
       if (turn === myColor) {
-        myDotEl.classList.add('active-turn'); oppDotEl.classList.remove('active-turn');
+        myDotEl.classList.add('active-turn');   oppDotEl.classList.remove('active-turn');
+        if (myBadge)  myBadge.classList.add('visible');
+        if (oppBadge) oppBadge.classList.remove('visible');
       } else {
-        oppDotEl.classList.add('active-turn'); myDotEl.classList.remove('active-turn');
+        oppDotEl.classList.add('active-turn');  myDotEl.classList.remove('active-turn');
+        if (oppBadge) oppBadge.classList.add('visible');
+        if (myBadge)  myBadge.classList.remove('visible');
+      }
+      // Mise à jour du nombre de pièces
+      if (localState && localState.pieces) {
+        var myCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s] === myColor; }).length;
+        var oppCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s] === myOppColor; }).length;
+        var myEl  = document.getElementById('my-count');
+        var oppEl = document.getElementById('opp-count');
+        if (myEl)  myEl.textContent  = myCount;
+        if (oppEl) oppEl.textContent = oppCount;
       }
     }
 
@@ -835,6 +880,23 @@
         if(caps.approach.length>0||caps.withdrawal.length>0)return true;
       }
       return false;
+    }
+
+    //  SECTION 11b — Attente des deux joueurs
+    var bothPlayersReadyTimer = null;
+    function checkBothPlayersReady() {
+      if (document.getElementById('loading-overlay').classList.contains('hidden')) return;
+      callApi(SESSION_API_URL, 'get-fanorona-game', { uid: myUid, gameId: gameId })
+        .then(function(data) {
+          if (data.success && data.opponentUsername && data.opponentUsername !== '???') {
+            // Mettre à jour le nom de l'adversaire dans la barre
+            renderPlayersBar(myColor,
+              (JSON.parse(localStorage.getItem('user') || '{}')).username || myUid,
+              data.opponentUsername);
+            document.getElementById('loading-overlay').classList.add('hidden');
+          }
+        })
+        .catch(function() {});
     }
 
     init();
