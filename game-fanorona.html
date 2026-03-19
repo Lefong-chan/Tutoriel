@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="mg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fanorona</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+      --accent: #6e8efb;
+      --accent2: #a777e3;
+      --gold: #f5c842;
+      --glass: rgba(255,255,255,0.08);
+      --glass-border: rgba(255,255,255,0.18);
+      --shadow: 0 8px 32px rgba(0,0,0,0.38);
+      --radius: 18px;
+    }
+
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      margin: 0; padding: 0;
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      overflow: hidden;
+      height: 100vh;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+    }
+
+    /* ─── PORTRAIT (téléphone debout) ─── */
+
+    /* Zone haute : noms des joueurs */
+    #portrait-top {
+      display: none;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+      width: 95vw; max-width: 520px;
+      margin-bottom: 10px;
+      gap: 10px;
+    }
+    .player-card-portrait {
+      flex: 1;
+      background: var(--glass);
+      border: 1.5px solid var(--glass-border);
+      border-radius: 14px;
+      padding: 8px 14px;
+      display: flex; align-items: center; gap: 8px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+      min-height: 46px;
+    }
+    .player-card-portrait.right-player {
+      flex-direction: row-reverse;
+      text-align: right;
+    }
+    .player-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.5); transition: box-shadow 0.3s; }
+    .dot-maintso { background: #22c55e; }
+    .dot-mena    { background: #ef4444; }
+    .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
+    .player-name-txt { color: white; font-family: 'Rajdhani', sans-serif; font-size: 0.95em; font-weight: 700; letter-spacing: 0.03em; }
+
+    /* Zone centrale : board */
+    #board-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+    }
+
+    /* Zone basse : boutons portrait */
+    #portrait-bottom {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px;
+      width: 95vw; max-width: 520px;
+    }
+
+    /* ─── LANDSCAPE (téléphone couché) ─── */
+
+    /* Colonne gauche et droite */
+    #landscape-left, #landscape-right {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      width: 90px;
+      min-width: 80px;
+    }
+
+    /* Card joueur landscape */
+    .player-card-landscape {
+      background: var(--glass);
+      border: 1.5px solid var(--glass-border);
+      border-radius: 14px;
+      padding: 10px 10px;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+      width: 80px; min-height: 60px;
+    }
+    .player-name-landscape {
+      color: white; font-family: 'Rajdhani', sans-serif;
+      font-size: 0.78em; font-weight: 700; text-align: center;
+      letter-spacing: 0.03em; word-break: break-word;
+    }
+
+    /* ─── PLATEAU ─── */
+    #game-board {
+      width: 95vw; max-width: 800px; max-height: 68vh; display: block;
+      border-radius: 16px;
+      filter: drop-shadow(0 8px 32px rgba(80,50,180,0.38));
+    }
+    .grid-line { stroke: #333; stroke-width: 2; }
+
+    /* Board background */
+    #board-bg-rect {
+      rx: 14; ry: 14;
+    }
+
+    /* ─── Pièces & interactions ─── */
+    .flipped { transform: rotate(180deg); }
+    .piece-group { transition: transform 0.22s ease-in-out; }
+    .piece-group.no-transition { transition: none; }
+    .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
+    .movable-piece  { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
+    .blocked-piece  { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
+    .capture-target {
+      stroke: darkorange; stroke-width: 5px; cursor: pointer;
+      pointer-events: all !important; stroke-dasharray: 5;
+      animation: dash 1s linear infinite;
+    }
+    @keyframes dash { to { stroke-dashoffset: 10; } }
+    .spot { cursor: pointer; pointer-events: all; }
+    .lock-board .spot { pointer-events: none !important; }
+    .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+    .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
+
+    /* ─── Bouton OK (stop) ─── */
+    #stop-move-btn {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: linear-gradient(135deg, #ef4444, #b91c1c);
+      color: white; border: 3px solid rgba(255,255,255,0.7);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+      opacity: 0.3; transition: 0.3s; pointer-events: none;
+      box-shadow: 0 4px 18px rgba(239,68,68,0.3);
+      letter-spacing: 0.05em;
+    }
+    #stop-move-btn.active {
+      opacity: 1; transform: scale(1.1);
+      box-shadow: 0 0 20px rgba(255,100,100,0.7); pointer-events: all;
+    }
+
+    /* ─── Cadres timer portrait (affichage ∞) ─── */
+    #timers-portrait {
+      display: none;
+      flex-direction: row;
+      gap: 10px;
+      justify-content: space-between;
+      width: 95vw; max-width: 520px;
+      margin-bottom: 6px;
+    }
+    .timer-card {
+      flex: 1;
+      background: var(--glass);
+      border: 1.5px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 6px 10px;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      gap: 6px;
+    }
+    .timer-icon { font-size: 0.8em; opacity: 0.7; color: white; }
+    .timer-val { font-family: 'Orbitron', sans-serif; font-size: 1.1em; color: white; font-weight: 700; letter-spacing: 0.08em; }
+
+    /* ─── Cadre secondes partagées (∞ fixe) ─── */
+    #shared-timer {
+      position: fixed;
+      background: var(--glass);
+      border: 1.5px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 5px 14px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.22);
+      color: white;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.15em;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 50;
+    }
+
+    /* ─── Boutons action (portrait bas / landscape côté) ─── */
+    .action-btns-group {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+    }
+    .action-btn {
+      width: 42px; height: 42px; border-radius: 50%;
+      background: var(--glass);
+      border: 1.5px solid var(--glass-border);
+      backdrop-filter: blur(10px);
+      color: white; font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+      transition: background 0.2s, transform 0.15s;
+      position: relative;
+    }
+    .action-btn:hover { background: rgba(255,255,255,0.18); transform: scale(1.08); }
+    .action-btn.demande-btn {
+      width: auto; height: 38px; border-radius: 10px;
+      padding: 0 14px; font-size: 0.82em; font-family: 'Rajdhani', sans-serif;
+      font-weight: 700; letter-spacing: 0.05em;
+    }
+
+    /* Ping indicator */
+    .ping-indicator {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--glass);
+      border: 1.5px solid var(--glass-border);
+      border-radius: 10px;
+      padding: 4px 10px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .ping-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+      animation: ping-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes ping-pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+    .ping-label { font-family: 'Orbitron', sans-serif; font-size: 0.65em; color: rgba(255,255,255,0.8); letter-spacing: 0.05em; }
+
+    /* ─── Loading ─── */
+    #loading-overlay {
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
+      flex-direction: column; gap: 16px;
+      font-family: 'Rajdhani', sans-serif;
+    }
+    #loading-overlay.hidden { display: none; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 4px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Erreur ─── */
+    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
+
+    /* ─── RESPONSIVE: Portrait ─── */
+    @media (orientation: portrait) {
+      body { flex-direction: column; }
+
+      #portrait-top    { display: flex !important; }
+      #portrait-bottom { display: flex !important; }
+      #timers-portrait { display: flex !important; }
+      #shared-timer    { display: flex !important; bottom: 12px; left: 50%; transform: translateX(-50%); }
+
+      #landscape-left, #landscape-right { display: none !important; }
+      #players-bar { display: none !important; }
+
+      #game-board { width: 95vw; max-width: 520px; max-height: 55vh; }
+      #board-wrapper { width: 95vw; max-width: 520px; }
+
+      /* Stop btn in portrait bottom */
+      #stop-move-btn-portrait { display: flex; }
+      #stop-move-btn-landscape { display: none; }
+    }
+
+    /* ─── RESPONSIVE: Landscape ─── */
+    @media (orientation: landscape) {
+      body { flex-direction: row; justify-content: center; align-items: center; gap: 0; }
+
+      #portrait-top    { display: none !important; }
+      #portrait-bottom { display: none !important; }
+      #timers-portrait { display: none !important; }
+      #shared-timer    { display: flex !important; bottom: 12px; left: 50%; transform: translateX(-50%); }
+
+      #landscape-left, #landscape-right { display: flex !important; }
+      #players-bar { display: none !important; }
+
+      #game-board { width: auto; max-width: 70vw; max-height: 90vh; }
+      #board-wrapper { width: auto; }
+
+      #stop-move-btn-portrait { display: none; }
+      #stop-move-btn-landscape { display: flex; }
+    }
+
+    /* ─── Landscape column layout ─── */
+    #landscape-left { padding-right: 12px; }
+    #landscape-right { padding-left: 12px; }
+
+    /* ─── Game over ─── */
+    .gameover-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 9999; flex-direction: column;
+      backdrop-filter: blur(6px);
+    }
+    .gameover-box {
+      background: linear-gradient(135deg, #1a1a3e, #2d1f4e);
+      border: 1.5px solid rgba(110,142,251,0.4);
+      border-radius: 22px; padding: 40px 44px;
+      text-align: center; color: white;
+      font-family: 'Rajdhani', sans-serif;
+      box-shadow: 0 12px 60px rgba(0,0,0,0.7), 0 0 60px rgba(110,142,251,0.15);
+      max-width: 320px; width: 88vw;
+    }
+    .gameover-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.6em; font-weight: 900; margin-bottom: 28px;
+      letter-spacing: 0.05em;
+    }
+    .gameover-btn {
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      color: white; border: none;
+      border-radius: 12px; padding: 13px 52px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1em; font-weight: 700; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(110,142,251,0.45);
+      letter-spacing: 0.08em;
+      transition: transform 0.15s;
+    }
+    .gameover-btn:hover { transform: scale(1.05); }
+  </style>
+</head>
+<body>
+
+  <div id="loading-overlay"><div class="spinner"></div><span>Fananganana ny lalao…</span></div>
+
+  <!-- ═══ OLD bar (hidden, kept for JS compat) ═══ -->
+  <div id="players-bar" style="display:none;"></div>
+
+  <!-- ═══ PORTRAIT TOP : noms ═══ -->
+  <div id="timers-portrait" style="display:none;">
+    <div class="timer-card">
+      <span class="timer-icon">⏱</span>
+      <span class="timer-val" id="timer-opp-portrait">∞</span>
+    </div>
+    <div class="timer-card">
+      <span class="timer-icon">⏱</span>
+      <span class="timer-val" id="timer-me-portrait">∞</span>
+    </div>
+  </div>
+
+  <div id="portrait-top" style="display:none;">
+    <div class="player-card-portrait" id="opp-card-portrait">
+      <div class="player-dot" id="opp-dot-portrait"></div>
+      <span class="player-name-txt" id="opp-name-portrait">—</span>
+    </div>
+    <div class="player-card-portrait right-player" id="me-card-portrait">
+      <div class="player-dot" id="my-dot-portrait"></div>
+      <span class="player-name-txt" id="my-name-portrait">—</span>
+    </div>
+  </div>
+
+  <!-- ═══ LANDSCAPE LEFT ═══ -->
+  <div id="landscape-left" style="display:none;">
+    <div class="player-card-landscape">
+      <div class="player-dot" id="opp-dot-landscape"></div>
+      <span class="player-name-landscape" id="opp-name-landscape">—</span>
+      <span class="timer-val" style="font-size:0.9em;">∞</span>
+    </div>
+    <div class="action-btns-group" style="flex-direction:column; gap:10px;">
+      <button class="action-btn" title="Message">💬</button>
+      <button class="action-btn" title="Paramètres">⚙️</button>
+      <button class="action-btn demande-btn" title="Demande">Demande</button>
+    </div>
+    <div class="ping-indicator">
+      <div class="ping-dot"></div>
+      <span class="ping-label">PING</span>
+    </div>
+  </div>
+
+  <!-- ═══ BOARD ═══ -->
+  <div id="board-wrapper">
+    <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
+      <defs>
+        <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+          <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
+        </pattern>
+        <pattern id="maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+          <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
+        </pattern>
+        <pattern id="board-bg-pat" x="0" y="0" width="1" height="1">
+          <image href="img/table-gray.png" x="0" y="0" width="400" height="200" preserveAspectRatio="xMidYMid slice"/>
+        </pattern>
+        <clipPath id="board-clip">
+          <rect x="-45" y="-45" width="490" height="290" rx="14" ry="14"/>
+        </clipPath>
+      </defs>
+      <!-- Background image avec border radius -->
+      <rect x="-45" y="-45" width="490" height="290" rx="14" ry="14"
+            fill="url(#board-bg-pat)" opacity="1" clip-path="url(#board-clip)"/>
+      <!-- Overlay léger pour lisibilité des lignes -->
+      <rect x="-45" y="-45" width="490" height="290" rx="14" ry="14"
+            fill="rgba(0,0,0,0.08)" clip-path="url(#board-clip)"/>
+      <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
+        M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
+        M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
+        M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
+        M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
+        M300 0 L400 100 M400 0 L200 200
+        M0 100 L100 200 M400 100 L300 200"/>
+      <g id="guides-group"></g>
+      <g id="pieces-group"></g>
+      <g id="spots-group"></g>
+    </svg>
+  </div>
+
+  <!-- ═══ LANDSCAPE RIGHT ═══ -->
+  <div id="landscape-right" style="display:none;">
+    <div class="player-card-landscape">
+      <div class="player-dot" id="my-dot-landscape"></div>
+      <span class="player-name-landscape" id="my-name-landscape">—</span>
+      <span class="timer-val" style="font-size:0.9em;">∞</span>
+    </div>
+    <!-- Stop btn landscape : centré verticalement à droite -->
+    <button id="stop-move-btn-landscape" class="action-btn" style="width:56px;height:56px;font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;opacity:0.3;pointer-events:none;background:linear-gradient(135deg,#ef4444,#b91c1c);border:3px solid rgba(255,255,255,0.7);letter-spacing:0.05em;box-shadow:0 4px 18px rgba(239,68,68,0.3);border-radius:50%;">OK</button>
+    <div class="action-btns-group" style="flex-direction:column; gap:10px;">
+      <button class="action-btn" title="Message">💬</button>
+      <button class="action-btn" title="Paramètres">⚙️</button>
+      <button class="action-btn demande-btn" title="Demande">Demande</button>
+    </div>
+    <div class="ping-indicator">
+      <div class="ping-dot"></div>
+      <span class="ping-label">PING</span>
+    </div>
+  </div>
+
+  <!-- ═══ PORTRAIT BOTTOM ═══ -->
+  <div id="portrait-bottom" style="display:none;">
+    <div class="action-btns-group">
+      <button class="action-btn" title="Message">💬</button>
+      <button class="action-btn demande-btn" title="Demande">Demande</button>
+      <button id="stop-move-btn-portrait" class="action-btn" style="width:56px;height:56px;font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;opacity:0.3;pointer-events:none;background:linear-gradient(135deg,#ef4444,#b91c1c);border:3px solid rgba(255,255,255,0.7);letter-spacing:0.05em;box-shadow:0 4px 18px rgba(239,68,68,0.3);border-radius:50%;">OK</button>
+      <button class="action-btn" title="Paramètres">⚙️</button>
+      <div class="ping-indicator">
+        <div class="ping-dot"></div>
+        <span class="ping-label">PING</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Shared timer (fixed, always shown when game active) ═══ -->
+  <div id="shared-timer" style="display:none;">∞</div>
+
+  <!-- Hidden real stop btn for JS compat -->
+  <button id="stop-move-btn" style="display:none;">OK</button>
+
+  <div id="error-msg"></div>
+
+  <script>
+  (function () {
+
+    //  SECTION 1 — Config & helpers
+    var SESSION_API_URL = '/api/session';
+    var GAME_API_URL    = '/api/game-fanorona';
+    var POLL_INTERVAL   = 1500;
+    var RECONCILE_DELAY = 5000;
+
+    function showError(msg) {
+      document.getElementById('error-msg').textContent = msg;
+      document.getElementById('error-msg').style.display = 'block';
+      document.getElementById('loading-overlay').classList.add('hidden');
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    var gameOverTriggered = false;
+    function disableBoardCompletely() {
+      var board = document.getElementById('game-board');
+      if (board) board.classList.add('lock-board');
+      setStopBtnActive(false);
+      document.getElementById('guides-group').innerHTML = '';
+      document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el) {
+        el.removeAttribute('class');
+      });
+      document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
+    }
+
+    function showGameOverAlert(winnerColor, delayMs) {
+      if (gameOverTriggered) return;
+      gameOverTriggered = true;
+      disableBoardCompletely();
+      var delay = (typeof delayMs === 'number') ? delayMs : 2000;
+      setTimeout(function() {
+        var overlay = document.createElement('div');
+        overlay.className = 'gameover-overlay';
+
+        var box = document.createElement('div');
+        box.className = 'gameover-box';
+
+        var iWon  = (winnerColor === myColor);
+        var myMsg = iWon ? '🏆 You win!' : '😔 You lose!';
+
+        var title = document.createElement('div');
+        title.className = 'gameover-title';
+        title.textContent = myMsg;
+
+        var btn = document.createElement('button');
+        btn.textContent = 'OK';
+        btn.className = 'gameover-btn';
+        btn.onclick = function() { window.location.href = 'dashboard.html'; };
+
+        box.appendChild(title);
+        box.appendChild(btn);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+      }, delay);
+    }
+
+    async function callApi(url, action, payload) {
+      var r = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ action: action }, payload))
+      });
+      var d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'API error');
+      return d;
+    }
+
+    //  SECTION 2 — Constantes du jeu
+    var rows = ['A','B','C','D','E'];
+    var cols = ['1','2','3','4','5','6','7','8','9'];
+
+    var allowedMoves = {
+      'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],
+      'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
+      'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
+      'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],
+      'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],
+      'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
+      'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
+      'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],
+      'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
+      'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],
+      'C6':['B6','C5','C7','D6'],
+      'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],
+      'C9':['B8','B9','C8','D8','D9'],
+      'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
+      'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],
+      'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
+      'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
+      'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],
+      'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
+      'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
+    };
+
+    //  SECTION 3 — État
+    var myColor    = null;
+    var myOppColor = null;
+    var gameId     = null;
+    var myUid      = null;
+    var localState = null;
+    var selectedSpot    = null;
+    var lastBlockedSpot = null;
+    var canChangePiece  = true;
+    var pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+    var piecesOnBoard = {};
+    var moveQueue       = [];
+    var movingInProgress = false;
+    var lastSeenHistKey   = null;
+    var reconcileTimer = null;
+    var myDotEl  = null;
+    var oppDotEl = null;
+
+    //  SECTION 4 — Init
+    var params   = new URLSearchParams(window.location.search);
+    var gameId_p = params.get('gameId');
+    var color_p  = params.get('color');
+    var inviteId = params.get('inviteId');
+    var gameSource = params.get('source') || 'fanorona';
+
+    // ── Stop btn: sync all variants ──
+    function setStopBtnActive(active) {
+      var ids = ['stop-move-btn', 'stop-move-btn-portrait', 'stop-move-btn-landscape'];
+      ids.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        if (active) {
+          el.style.opacity = '1';
+          el.style.pointerEvents = 'all';
+          el.style.transform = 'scale(1.1)';
+          el.style.boxShadow = '0 0 20px rgba(255,100,100,0.7)';
+        } else {
+          el.style.opacity = '0.3';
+          el.style.pointerEvents = 'none';
+          el.style.transform = '';
+          el.style.boxShadow = '0 4px 18px rgba(239,68,68,0.3)';
+        }
+      });
+    }
+
+    async function init() {
+      if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
+      if (color_p !== 'maintso' && color_p !== 'mena') { showError('Diso ny color.'); return; }
+
+      var stored = localStorage.getItem('user');
+      if (!stored) { window.location.href = 'login&register.html'; return; }
+      var localUser = null;
+      try { localUser = JSON.parse(stored); } catch(e) {}
+      if (!localUser || !localUser.uid) { window.location.href = 'login&register.html'; return; }
+
+      try {
+        var data = await callApi(SESSION_API_URL, 'get-fanorona-game', { uid: localUser.uid, gameId: gameId_p });
+        if (!data.success) { showError('Tsy hita ny lalao.'); return; }
+
+        myUid      = localUser.uid;
+        gameId     = gameId_p;
+        myColor    = color_p;
+        myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
+
+        renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
+
+        if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
+
+        document.getElementById('game-board').style.display = 'block';
+        document.getElementById('loading-overlay').classList.add('hidden');
+
+        // Show UI zones
+        document.getElementById('portrait-top').style.display = 'flex';
+        document.getElementById('portrait-bottom').style.display = 'flex';
+        document.getElementById('timers-portrait').style.display = 'flex';
+        document.getElementById('landscape-left').style.display = 'flex';
+        document.getElementById('landscape-right').style.display = 'flex';
+        document.getElementById('shared-timer').style.display = 'flex';
+
+        drawBoardSpots();
+
+        // Hook stop buttons
+        ['stop-move-btn', 'stop-move-btn-portrait', 'stop-move-btn-landscape'].forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.onclick = function() { handleStopBtn(); };
+        });
+
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
+        if (d.success) {
+          localState = copyState(d.game);
+          applyLocalState();
+        }
+
+        setInterval(pollAdversaire, POLL_INTERVAL);
+
+      } catch(err) { showError('Nisy olana: ' + err.message); }
+    }
+
+    //  SECTION 5 — Players bar
+    function renderPlayersBar(myCol, myUsername, oppUsername) {
+      // Old bar (hidden)
+      var bar = document.getElementById('players-bar');
+      var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
+      var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
+      bar.innerHTML =
+        '<div class="player-info">' +
+          '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
+          '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
+        '</div>' +
+        '<span class="vs-sep">VS</span>' +
+        '<div class="player-info">' +
+          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
+          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
+        '</div>';
+
+      // Portrait noms
+      document.getElementById('opp-name-portrait').textContent = oppUsername;
+      document.getElementById('my-name-portrait').textContent  = myUsername;
+      var oppDotP = document.getElementById('opp-dot-portrait');
+      var myDotP  = document.getElementById('my-dot-portrait');
+      oppDotP.className = 'player-dot ' + oppDotClass;
+      myDotP.className  = 'player-dot ' + myDotClass;
+
+      // Landscape noms
+      document.getElementById('opp-name-landscape').textContent = oppUsername;
+      document.getElementById('my-name-landscape').textContent  = myUsername;
+      var oppDotL = document.getElementById('opp-dot-landscape');
+      var myDotL  = document.getElementById('my-dot-landscape');
+      oppDotL.className = 'player-dot ' + oppDotClass;
+      myDotL.className  = 'player-dot ' + myDotClass;
+
+      myDotEl  = { portrait: myDotP,  landscape: myDotL  };
+      oppDotEl = { portrait: oppDotP, landscape: oppDotL };
+    }
+
+    function updateTurnIndicator(turn) {
+      if (!myDotEl || !oppDotEl) return;
+      var isMyTurn = turn === myColor;
+      ['portrait','landscape'].forEach(function(k) {
+        if (isMyTurn) {
+          myDotEl[k].classList.add('active-turn');
+          oppDotEl[k].classList.remove('active-turn');
+        } else {
+          oppDotEl[k].classList.add('active-turn');
+          myDotEl[k].classList.remove('active-turn');
+        }
+      });
+    }
+
+    //  SECTION 6 — Polling adversaire
+    async function pollAdversaire() {
+      try {
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
+        if (!d.success) return;
+        var serverTurn = d.game.turn;
+
+        if (movingInProgress) return;
+
+        if (serverTurn !== myColor) {
+          if (localState) {
+            localState.pieces = Object.assign({}, d.game.pieces);
+            localState.turn   = d.game.turn;
+            renderPieces(localState.pieces, localState);
+          }
+          return;
+        }
+
+        if (selectedSpot || (localState && localState.movingPiece)) return;
+
+        var histColor = d.game.lastTurnColor || '';
+        var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
+        var histKey   = histColor + '|' + history.length + '|' +
+                        (history.length > 0 ? history[history.length - 1].target : '');
+
+        if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
+          lastSeenHistKey = histKey;
+        }
+
+        var serverPiecesStr = JSON.stringify(d.game.pieces);
+        var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
+        if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
+
+        localState      = copyState(d.game);
+        canChangePiece  = true;
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+        document.getElementById('guides-group').innerHTML = '';
+        setStopBtnActive(false);
+        applyLocalState();
+
+        var myPieceCountPoll  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPieceCountPoll = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        if (myPieceCountPoll === 0) {
+          showGameOverAlert(myOppColor, 2000);
+        } else if (oppPieceCountPoll === 0) {
+          showGameOverAlert(myColor, 2000);
+        }
+
+      } catch(e) { console.warn('poll error', e); }
+    }
+
+    function copyState(game) {
+      return {
+        pieces:      Object.assign({}, game.pieces),
+        turn:        game.turn,
+        movingPiece: game.movingPiece || '',
+        visited:     (game.visited || []).slice(),
+        lastDir:     game.lastDir || '',
+      };
+    }
+
+    function applyLocalState() {
+      updateTurnIndicator(localState.turn);
+      if (localState.turn === myColor && localState.movingPiece) {
+        setStopBtnActive(true);
+      } else if (!movingInProgress) {
+        setStopBtnActive(false);
+      }
+      renderPieces(localState.pieces, localState);
+      if (selectedSpot && localState.turn === myColor) {
+        renderGuides(selectedSpot, localState);
+      }
+    }
+
+    //  SECTION 7 — Spots cliquables
+    function drawBoardSpots() {
+      var spotsGrp = document.getElementById('spots-group');
+      spotsGrp.innerHTML = '';
+      rows.forEach(function(r, ri) {
+        cols.forEach(function(c, ci) {
+          var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', ci * 50);
+          circle.setAttribute('cy', ri * 50);
+          circle.setAttribute('r', 18);
+          circle.setAttribute('fill', 'transparent');
+          circle.setAttribute('class', 'spot');
+          (function(spotID) { circle.onclick = function(e) { e.stopPropagation(); handleSpotClick(spotID); }; })(r + c);
+          spotsGrp.appendChild(circle);
+        });
+      });
+    }
+
+    function handleSpotClick(spotID) {
+      if (!localState || localState.turn !== myColor) return;
+      if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
+
+      var pieces = localState.pieces;
+
+      if (canChangePiece && pieces[spotID] === myColor) {
+        if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
+          selectedSpot    = spotID;
+          lastBlockedSpot = null;
+        } else {
+          selectedSpot    = null;
+          lastBlockedSpot = spotID;
+        }
+        renderGuides(selectedSpot || '', localState);
+        renderPieces(pieces, localState);
+        return;
+      }
+
+      if (!selectedSpot) return;
+      if ((allowedMoves[selectedSpot] || []).indexOf(spotID) === -1) return;
+      if (pieces[spotID]) return;
+      if (localState.visited && localState.visited.indexOf(spotID) !== -1) return;
+
+      var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
+      var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+      if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+
+      var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
+      var r2 = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
+      var dir = (r2-r1) + ',' + (c2-c1);
+      if (!canChangePiece && localState.lastDir === dir) return;
+
+      var origin     = selectedSpot;
+      var newPieces  = Object.assign({}, pieces);
+      delete newPieces[origin];
+      newPieces[spotID] = myColor;
+      var newVisited = (localState.visited || []).concat([origin]);
+
+      if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
+        pendingCaptures = {
+          approach:   caps.approach,
+          withdrawal: caps.withdrawal,
+          moveData:   { origin: origin, target: spotID, dir: dir }
+        };
+        localState.pieces  = newPieces;
+        localState.visited = newVisited;
+        selectedSpot = spotID;
+        renderPieces(newPieces, localState);
+        document.getElementById('guides-group').innerHTML = '';
+        return;
+      }
+
+      var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
+      doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
+    }
+
+    function confirmCapture(type) {
+      var md = pendingCaptures.moveData;
+      var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
+      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      var newPieces  = Object.assign({}, localState.pieces);
+      var newVisited = (localState.visited || []).slice();
+      doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
+    }
+
+    function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
+      capturedSpots.forEach(function(s) { delete newPieces[s]; });
+
+      var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
+
+      movingInProgress = true;
+      localState.pieces = newPieces;
+
+      if (canContinue) {
+        localState.movingPiece = target;
+        localState.visited     = newVisited;
+        localState.lastDir     = dir;
+        selectedSpot   = target;
+        canChangePiece = false;
+        setStopBtnActive(true);
+      } else {
+        localState.turn        = myOppColor;
+        localState.movingPiece = '';
+        localState.visited     = [];
+        localState.lastDir     = '';
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        canChangePiece  = true;
+        setStopBtnActive(false);
+      }
+
+      if (canContinue && selectedSpot) {
+        renderGuides(selectedSpot, localState);
+      } else {
+        document.getElementById('guides-group').innerHTML = '';
+      }
+
+      updateTurnIndicator(localState.turn);
+      renderPieces(localState.pieces, localState);
+      sendMoveToBackend(origin, target, capturedSpots, dir);
+
+      if (!canContinue) {
+        scheduleReconcile();
+        var myPieceCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPieceCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        if (oppPieceCount === 0) {
+          showGameOverAlert(myColor, 2000);
+        } else if (myPieceCount === 0) {
+          showGameOverAlert(myOppColor, 2000);
+        }
+      }
+    }
+
+    function handleStopBtn() {
+      if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
+      var piecesSnapshot = Object.assign({}, localState.pieces);
+
+      movingInProgress = true;
+      localState.turn        = myOppColor;
+      localState.movingPiece = '';
+      localState.visited     = [];
+      localState.lastDir     = '';
+      selectedSpot    = null;
+      lastBlockedSpot = null;
+      canChangePiece  = true;
+      setStopBtnActive(false);
+      document.getElementById('guides-group').innerHTML = '';
+      updateTurnIndicator(localState.turn);
+      renderPieces(localState.pieces, localState);
+
+      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
+        .catch(function(e) { console.warn('stop-move error', e); });
+
+      scheduleReconcile();
+
+      var myPieceCountS  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+      var oppPieceCountS = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+      if (oppPieceCountS === 0) {
+        showGameOverAlert(myColor, 2000);
+      } else if (myPieceCountS === 0) {
+        showGameOverAlert(myOppColor, 2000);
+      }
+    }
+
+    function sendMoveToBackend(origin, target, capturedSpots, dir) {
+      callApi(GAME_API_URL, 'make-move', {
+        uid: myUid, gameId: gameId,
+        origin: origin, target: target,
+        capturedSpots: capturedSpots, dir: dir
+      }).catch(function(e) {
+        console.warn('make-move backend error (non-blocking):', e);
+      });
+    }
+
+    function scheduleReconcile() {
+      if (reconcileTimer) clearTimeout(reconcileTimer);
+      reconcileTimer = setTimeout(function() {
+        reconcileTimer = null;
+        doReconcile();
+      }, RECONCILE_DELAY);
+    }
+
+    async function doReconcile() {
+      try {
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
+        if (!d.success) return;
+
+        movingInProgress = false;
+
+        var serverTurn = d.game.turn;
+
+        if (serverTurn !== myColor) {
+          if (localState.turn !== myColor) return;
+          localState = copyState(d.game);
+          selectedSpot    = null;
+          lastBlockedSpot = null;
+          canChangePiece  = true;
+          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+          document.getElementById('guides-group').innerHTML = '';
+          setStopBtnActive(false);
+          applyLocalState();
+        } else {
+          var serverMoving = d.game.movingPiece || '';
+          if (serverMoving) {
+            selectedSpot   = localState.movingPiece || serverMoving;
+            canChangePiece = false;
+            setStopBtnActive(true);
+          }
+          if (selectedSpot) renderGuides(selectedSpot, localState);
+          renderPieces(localState.pieces, localState);
+          updateTurnIndicator(localState.turn);
+        }
+      } catch(e) {
+        movingInProgress = false;
+        console.warn('reconcile error', e);
+      }
+    }
+
+    //  SECTION 10
+    function renderPieces(pieces, stateData) {
+      var grp           = document.getElementById('pieces-group');
+      var isMyTurn      = stateData.turn === myColor;
+      var globalCapture = playerHasAnyCapture(pieces, myColor);
+
+      var newPiecesOnBoard = {};
+      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
+      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+
+      vanished.forEach(function(vKey) {
+        var color  = piecesOnBoard[vKey].color;
+        var target = null;
+        for (var i = 0; i < appeared.length; i++) {
+          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
+        }
+        if (target) {
+          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          appeared = appeared.filter(function(a) { return a !== target; });
+        } else {
+          piecesOnBoard[vKey].el.remove();
+        }
+      });
+
+      appeared.forEach(function(aKey) {
+        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'piece-group');
+        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('r', 8);
+        g.appendChild(c);
+        grp.appendChild(g);
+        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+      });
+
+      Object.keys(pieces).forEach(function(k) {
+        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
+      });
+      piecesOnBoard = newPiecesOnBoard;
+
+      var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
+
+      Object.keys(pieces).forEach(function(spot) {
+        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+        if (ri < 0 || ci < 0) return;
+        var entry = piecesOnBoard[spot];
+        if (!entry) return;
+        var g = entry.el, circle = g.querySelector('circle');
+
+        var svgX = ci * 50;
+        var svgY = ri * 50;
+        g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
+        circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
+        circle.removeAttribute('class');
+        circle.style.pointerEvents = 'all';
+        circle.onclick = (function(s) {
+          return function(e) { e.stopPropagation(); handleSpotClick(s); };
+        })(spot);
+
+        if (isMyTurn && pieces[spot] === myColor) {
+          if (selectedSpot === spot)
+            circle.setAttribute('class', 'selected-piece');
+          else if (lastBlockedSpot === spot)
+            circle.setAttribute('class', 'blocked-piece');
+          else if (!stateData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture))
+            circle.setAttribute('class', 'movable-piece');
+        }
+
+        var isApp  = pendingCaptures.approach.indexOf(spot)   !== -1;
+        var isWith = pendingCaptures.withdrawal.indexOf(spot) !== -1;
+        g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
+
+        if (isApp || isWith) {
+          circle.classList.add('capture-target');
+          circle.style.pointerEvents = 'all';
+          var ct = isApp ? 'approach' : 'withdrawal';
+          circle.onclick = (function(type) {
+            return function(e) { e.stopPropagation(); confirmCapture(type); };
+          })(ct);
+          g.appendChild(createCross(-5,-5,5,5));
+          g.appendChild(createCross(5,-5,-5,5));
+        }
+      });
+
+      var board = document.getElementById('game-board');
+      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+      else board.classList.remove('lock-board');
+    }
+
+    function createCross(x1,y1,x2,y2) {
+      var l = document.createElementNS('http://www.w3.org/2000/svg','line');
+      l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+      l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+      l.setAttribute('class','cross-line');
+      return l;
+    }
+
+    function renderGuides(startSpot, stateData) {
+      var grp = document.getElementById('guides-group');
+      if (!grp) return;
+      grp.innerHTML = '';
+      if (!startSpot) return;
+
+      var pieces  = stateData.pieces;
+      var visited = stateData.visited  || [];
+      var lastDir = stateData.lastDir  || '';
+      var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
+      var moves = allowedMoves[startSpot] || [];
+
+      moves.forEach(function(target) {
+        if (pieces[target] || visited.indexOf(target) !== -1) return;
+        var caps = getCaptures(pieces, startSpot, target, myColor);
+        var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+        if (globalCapturePossible && !isCaptureMove) return;
+
+        var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
+        var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
+        var dir = (r2-r1) + ',' + (c2-c1);
+        if (!canChangePiece && lastDir === dir) return;
+
+        var svgX = c2 * 50;
+        var svgY = r2 * 50;
+
+        var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', svgX); dot.setAttribute('cy', svgY);
+        dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
+        grp.appendChild(dot);
+      });
+    }
+
+    //  SECTION 12
+    function getCaptures(pieces, s, e, color) {
+      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
+      var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
+      function scan(row,col,sr,sc) {
+        var res=[],cr=row+sr,cc=col+sc;
+        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}
+        return res;
+      }
+      return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+    }
+
+    function playerHasAnyCapture(pieces, color) {
+      var sl = Object.keys(pieces);
+      for (var i=0;i<sl.length;i++) {
+        var s=sl[i]; if(pieces[s]!==color)continue;
+        var mv=allowedMoves[s]||[];
+        for (var j=0;j<mv.length;j++) {
+          var t=mv[j]; if(!pieces[t]){var c=getCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
+        }
+      }
+      return false;
+    }
+
+    function canPieceMove(spot, pieces, color, globalCapture) {
+      var mv=allowedMoves[spot]||[];
+      for(var i=0;i<mv.length;i++){
+        var t=mv[i]; if(pieces[t])continue;
+        var caps=getCaptures(pieces,spot,t,color);
+        var isCap=caps.approach.length>0||caps.withdrawal.length>0;
+        if(globalCapture?isCap:true)return true;
+      }
+      return false;
+    }
+
+    function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
+      var mv=allowedMoves[s]||[];
+      for(var i=0;i<mv.length;i++){
+        var t=mv[i];
+        if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue;
+        var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
+        var dir=(r2-r1)+','+(c2-c1);
+        if(lastDir&&lastDir===dir)continue;
+        var caps=getCaptures(pieces,s,t,color);
+        if(caps.approach.length>0||caps.withdrawal.length>0)return true;
+      }
+      return false;
+    }
+
+    init();
+
+  })();
+  </script>
+</body>
+</html>
