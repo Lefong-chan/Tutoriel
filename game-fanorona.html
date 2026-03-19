@@ -21,25 +21,19 @@
     #players-bar {
       display: flex; justify-content: space-between; align-items: center;
       width: 95vw; max-width: 800px;
-      margin-bottom: 8px; padding: 8px 14px;
-      background: rgba(0,0,0,0.25); border-radius: 12px;
+      margin-bottom: 8px; gap: 8px;
       color: white; font-size: 1em; font-weight: 700; min-height: 44px;
-      position: fixed;
-      top: 5px;
     }
-    .player-info { display: flex; align-items: center; gap: 8px; }
+    .player-info {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px;
+      background: rgba(0,0,0,0.25); border-radius: 12px;
+    }
     .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
     .dot-maintso { background: #22c55e; }
     .dot-mena    { background: #ef4444; }
     .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
     .player-name  { font-size: 0.95em; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .piece-count {
-      font-size: 0.78em; font-weight: 800;
-      background: rgba(255,255,255,0.18); border-radius: 20px;
-      padding: 2px 8px; min-width: 28px; text-align: center;
-      letter-spacing: 0.02em;
-    }
-    .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; flex-shrink: 0; }
 
     /* ── Plateau ── */
 #game-board {
@@ -125,7 +119,16 @@
     </div>
   </div>
 
-  <div id="players-bar"></div>
+  <div id="players-bar">
+    <div class="player-info">
+      <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+      <span class="player-name" style="opacity:0.4;">---</span>
+    </div>
+    <div class="player-info">
+      <span class="player-name" style="opacity:0.4;">---</span>
+      <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+    </div>
+  </div>
 
   <svg id="game-board" viewBox="-20 -20 440 240">
     <defs>
@@ -357,13 +360,9 @@
         '<div class="player-info">' +
           '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
           '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
-          '<span class="piece-count" id="opp-count">22</span>' +
         '</div>' +
-        // VS
-        '<span class="vs-sep">VS</span>' +
         // Moi (droite)
         '<div class="player-info">' +
-          '<span class="piece-count" id="my-count">22</span>' +
           '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
           '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
         '</div>';
@@ -377,15 +376,6 @@
         myDotEl.classList.add('active-turn');   oppDotEl.classList.remove('active-turn');
       } else {
         oppDotEl.classList.add('active-turn');  myDotEl.classList.remove('active-turn');
-      }
-      // Mise à jour du nombre de pièces
-      if (localState && localState.pieces) {
-        var myCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s] === myColor; }).length;
-        var oppCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s] === myOppColor; }).length;
-        var myEl  = document.getElementById('my-count');
-        var oppEl = document.getElementById('opp-count');
-        if (myEl)  myEl.textContent  = myCount;
-        if (oppEl) oppEl.textContent = oppCount;
       }
     }
 
