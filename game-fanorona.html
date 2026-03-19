@@ -37,13 +37,6 @@
       padding: 2px 8px; min-width: 28px; text-align: center;
       letter-spacing: 0.02em;
     }
-    .turn-badge {
-      font-size: 0.7em; font-weight: 700; padding: 2px 8px;
-      border-radius: 20px; background: rgba(255,255,255,0.15);
-      opacity: 0; transition: opacity 0.3s;
-      white-space: nowrap;
-    }
-    .turn-badge.visible { opacity: 1; background: rgba(255,220,0,0.25); color: #FFE066; }
     .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; flex-shrink: 0; }
 
     /* ── Plateau ── */
@@ -123,7 +116,7 @@
   <div id="loading-overlay">
     <div class="spinner"></div>
     <div style="text-align:center;line-height:1.6;">
-      <div style="font-size:1.1em;font-weight:800;letter-spacing:0.03em;">Miandry ny mpilalao faharoa…</div>
+      <div style="font-size:1.1em;font-weight:800;letter-spacing:0.03em;">Waiting for opponent</div>
       <div style="font-size:0.85em;opacity:0.75;font-weight:400;margin-top:4px;">Waiting for opponent</div>
     </div>
   </div>
@@ -361,13 +354,11 @@
           '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
           '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
           '<span class="piece-count" id="opp-count">22</span>' +
-          '<span class="turn-badge" id="opp-turn-badge">manetsika…</span>' +
         '</div>' +
         // VS
         '<span class="vs-sep">VS</span>' +
         // Moi (droite)
         '<div class="player-info">' +
-          '<span class="turn-badge" id="my-turn-badge">Diako!</span>' +
           '<span class="piece-count" id="my-count">22</span>' +
           '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
           '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
@@ -378,16 +369,10 @@
 
     function updateTurnIndicator(turn) {
       if (!myDotEl || !oppDotEl) return;
-      var myBadge  = document.getElementById('my-turn-badge');
-      var oppBadge = document.getElementById('opp-turn-badge');
       if (turn === myColor) {
         myDotEl.classList.add('active-turn');   oppDotEl.classList.remove('active-turn');
-        if (myBadge)  myBadge.classList.add('visible');
-        if (oppBadge) oppBadge.classList.remove('visible');
       } else {
         oppDotEl.classList.add('active-turn');  myDotEl.classList.remove('active-turn');
-        if (oppBadge) oppBadge.classList.add('visible');
-        if (myBadge)  myBadge.classList.remove('visible');
       }
       // Mise à jour du nombre de pièces
       if (localState && localState.pieces) {
