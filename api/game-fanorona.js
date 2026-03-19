@@ -1,5 +1,4 @@
 // api/game.js
-
 import admin from "firebase-admin";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
