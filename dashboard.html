@@ -1,1546 +1,948 @@
-// =============================================================
-// dashboard.js
-// =============================================================
-(function () {
-  var SESSION_API_URL = '/api/session';
-  var AUTH_API_URL = '/api/auth';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Fanorona</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: linear-gradient(135deg, #6e8efb, #a777e3); color: #333; min-height: 100vh; display: flex; flex-direction: column; }
 
-  var currentUser = null;
-  var activeFriendUid = null;
-  var activeFriendName = null;
-  var activeCtxTrigger = null;
-  var pendingRemoveUid = null;
-  var pendingRemoveName = null;
-  var upmCurrentUid = null;
-  var upmCurrentRelation = null;
+    .header { padding: 10px 30px; display: flex; justify-content: space-between; align-items: center; color: white; }
+    .user-info { display: flex; align-items: center; flex-grow: 1; }
+    .profile-box { background: rgba(255,255,255,0.2); border-radius: 8px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; transition: background 0.2s; }
+    .profile-box:hover { background: rgba(255,255,255,0.3); }
+    .profile-box .icon-user { color: #fff; font-size: 25px; }
+    .profile-box .name { font-size: 1.2em; font-weight: bold; color: white; }
+    .settings-btn { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.2); border-radius: 8px; padding: 5px 10px; border: 1px solid rgba(255,255,255,0.3); font-size: 1.2em; font-weight: bold; color: white; cursor: pointer; transition: background 0.2s; }
+    .settings-btn:hover { background: rgba(255,255,255,0.3); }
+    .settings-btn i { color: #FFD700; font-size: 1.3em; }
 
-  var loadingOverlay = document.getElementById('loadingOverlay');
-  var settingModal = document.getElementById('userSettingModal');
-  var profileBox = document.getElementById('profileBox');
-  var settingsBtn = document.getElementById('settingsBtn');
-  var friendCtxMenu = document.getElementById('friendCtxMenu');
-  var userProfileModal = document.getElementById('userProfileModal');
-  var removeFriendOverlay = document.getElementById('removeFriendOverlay');
+    .main-content { flex-grow: 1; display: flex; justify-content: center; align-items: center; padding: 20px; padding-bottom: 70px; }
+    .game-options-container { display: flex; gap: 20px; max-width: 900px; width: 100%; justify-content: center; }
+    .game-option { background-color: white; color: #a777e3; border: none; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; max-width: 150px; min-height: 150px; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition: transform 0.2s, box-shadow 0.2s; text-align: center; }
+    .game-option:hover { transform: translateY(-5px); box-shadow: 0 8px 16px rgba(0,0,0,0.3); }
+    .game-option i { font-size: 3em; margin-bottom: 10px; color: #a777e3; }
+    .game-option span { font-size: 1em; font-weight: bold; }
 
-  var toastEl = document.getElementById('toastNotification');
-  var toastIconEl = document.getElementById('toastIcon');
-  var toastTitleEl = document.getElementById('toastTitle');
-  var toastMsgEl = document.getElementById('toastMessage');
-  var toastCloseBtn = document.getElementById('toastClose');
-  var toastTimeout = null;
+    /* ── Game Select Modal ── */
+    .game-select-modal .modal-content { max-width: 440px; padding: 24px 22px 22px; }
+    .game-select-modal-header { display: flex; align-items: center; margin-bottom: 5px; position: relative; }
+    .game-select-modal-header .gm-close { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.1em; padding: 2px 4px; line-height: 1; transition: color 0.15s; position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+    .game-select-modal-header .gm-close:hover { color: #1e293b; }
+    .game-select-modal .gm-title { font-size: 1.05em; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; }
+    .game-select-modal .gm-sub { font-size: 0.79em; color: #64748b; margin-bottom: 16px; margin-top: 3px; text-align: center; }
+    .game-type-grid { display: flex; flex-direction: column; gap: 9px; }
+    .game-type-btn { display: flex; align-items: center; gap: 13px; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 11px 14px; background: white; cursor: pointer; transition: border-color 0.18s, background 0.18s, transform 0.15s, box-shadow 0.18s; text-align: left; width: 100%; }
+    .game-type-btn:hover { border-color: #a78bfa; background: #faf5ff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124,58,237,0.1); }
+    .game-type-img { width: 48px; height: 48px; border-radius: 10px; background: #f1f5f9; flex-shrink: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .game-type-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+    .game-type-img .placeholder-icon { font-size: 1.6em; color: #a78bfa; }
+    .game-type-info { flex: 1; }
+    .game-type-name { font-size: 0.92em; font-weight: 700; color: #1e293b; margin-bottom: 1px; }
+    .game-type-desc { font-size: 0.73em; color: #94a3b8; }
+    .game-type-arrow { color: #c4b5fd; font-size: 0.85em; }
 
-  function showToast(msg, type, title) {
-    var icons = { error: '✕', success: '✓', info: 'ℹ' };
-    var titles = { error: 'Error', success: 'Success', info: 'Info' };
-    toastIconEl.textContent = icons[type] || icons.info;
-    toastTitleEl.textContent = title || titles[type] || titles.info;
-    toastMsgEl.textContent = msg;
-    toastEl.className = 'toast-notification ' + type + ' show';
-    if (toastTimeout) clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(function () { toastEl.classList.remove('show'); }, 5000);
-  }
-  toastCloseBtn.addEventListener('click', function () { toastEl.classList.remove('show'); if (toastTimeout) clearTimeout(toastTimeout); });
-
-  function setPageLoading(on) { loadingOverlay.classList.toggle('active', on); }
-  function openModal(m) { if (m) m.classList.add('active'); }
-  function closeModal(m) {
-    if (!m) return;
-    m.classList.remove('active');
-    if (m.id === 'gameSetupModal' && roomSyncTimer) {
-      clearInterval(roomSyncTimer); roomSyncTimer = null;
+    /* ── Game Setup Modal ── */
+    .game-setup-modal .modal-content { max-width: 560px; padding: 0; overflow: hidden; width: 94%; max-height: 96vh; }
+    .game-setup-header { background: linear-gradient(135deg, #5b21b6, #7c3aed, #a78bfa); padding: 15px 18px 14px; color: white; display: flex; align-items: center; gap: 11px; }
+    .game-setup-header-img { width: 40px; height: 40px; border-radius: 9px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+    .game-setup-header-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
+    .game-setup-header-img .ph { font-size: 1.3em; color: white; }
+    .game-setup-header-info { flex: 1; text-align: center; }
+    .game-setup-header-title { font-size: 0.98em; font-weight: 800; margin-bottom: 1px; }
+    .game-setup-header-sub { font-size: 0.72em; opacity: 0.75; }
+    .game-setup-header .gsh-back { background: rgba(255,255,255,0.18); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9em; transition: background 0.15s; flex-shrink: 0; }
+    .game-setup-header .gsh-back.hidden { visibility: hidden; pointer-events: none; }
+    .game-setup-header .gsh-back:hover { background: rgba(255,255,255,0.34); }
+    .game-setup-header .gsh-spacer { width: 30px; flex-shrink: 0; }
+    .gsh-quit { background: rgba(255,255,255,0.18); border: none; color: white; height: 30px; border-radius: 8px; cursor: pointer; display: none; align-items: center; justify-content: center; font-size: 0.72em; font-weight: 700; gap: 5px; padding: 0 10px; transition: background 0.15s; flex-shrink: 0; white-space: nowrap; }
+    .gsh-quit:hover { background: rgba(239,68,68,0.55); }
+    .gsh-quit.visible { display: flex; }
+    /* Room quit confirm overlay */
+    .room-quit-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.7); backdrop-filter: blur(3px); z-index: 9000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.22s; }
+    .room-quit-overlay.active { display: flex; opacity: 1; }
+    .room-quit-card { background: white; border-radius: 16px; padding: 26px 24px 22px; max-width: 340px; width: 88%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.25); animation: rmCardIn 0.2s ease; }
+    .room-quit-card .rq-icon { width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+    .room-quit-card .rq-icon i { font-size: 1.4em; color: #ef4444; }
+    .room-quit-card h3 { font-size: 1em; font-weight: 800; color: #1e293b; margin-bottom: 8px; }
+    .room-quit-card p { font-size: 0.84em; color: #64748b; margin-bottom: 20px; line-height: 1.5; }
+    .rq-buttons { display: flex; gap: 10px; }
+    .rq-btn-cancel { flex: 1; padding: 11px; border: none; border-radius: 10px; background: #f1f5f9; color: #475569; font-weight: 700; font-size: 0.88em; cursor: pointer; transition: opacity 0.2s; }
+    .rq-btn-cancel:hover { opacity: 0.8; }
+    .rq-btn-confirm { flex: 1; padding: 11px; border: none; border-radius: 10px; background: #ef4444; color: white; font-weight: 700; font-size: 0.88em; cursor: pointer; transition: opacity 0.2s; }
+    .rq-btn-confirm:hover { opacity: 0.85; }
+    .game-setup-body { padding: 14px 12px 14px; }
+    
+    .gs-chat-messages {
+      flex: 1;
+      min-height: 0;
+      background: #faf8ff;
+      border: 1.5px solid #ede9f8;
+      border-radius: 10px;
+      padding: 7px 8px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.76em;
+      color: #94a3b8;
     }
-  }
-
-  function updateUsernameDisplay() {
-    var el = document.getElementById('UsernameDisplay');
-    if (el) el.textContent = (currentUser && currentUser.username) ? currentUser.username : '____';
-  }
-
-  async function callSessionApi(action, payload) {
-    var r = await fetch(SESSION_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, payload)) });
-    var d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Session error.');
-    return d;
-  }
-  async function callAuthApi(action, payload) {
-    var r = await fetch(AUTH_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, payload)) });
-    var d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Auth error.');
-    return d;
-  }
-
-  async function loadSession() {
-    setPageLoading(true);
-    try {
-      var stored = localStorage.getItem('user');
-      if (!stored) throw new Error('No session.');
-      var local = JSON.parse(stored);
-      if (!local || !local.uid) throw new Error('Invalid session.');
-      var data = await callSessionApi('get-session', { uid: local.uid });
-      if (data.success && data.user) {
-        currentUser = data.user;
-        localStorage.setItem('user', JSON.stringify(currentUser));
-        updateUsernameDisplay();
-        callSessionApi('ping', { uid: currentUser.uid }).catch(function(){});
-        setTimeout(loadRequestsBadge, 500);
-        if (!currentUser.username) setTimeout(function () { openModal(document.getElementById('setUsernameModal')); }, 500);
-        setInterval(function () { if (currentUser) callSessionApi('ping', { uid: currentUser.uid }).catch(function(){}); }, 15000);
-        setInterval(function () {
-          if (currentUser && !playersModal.classList.contains('active')) loadRequestsBadge();
-          if (currentUser && playersModal.classList.contains('active')) {
-            var ap = document.querySelector('.content-panel.active-panel');
-            if (ap && ap.id === 'friends-panel') loadFriendsPanel();
-          }
-        }, 30000);
-        startGameInvitePolling();
-      } else throw new Error('Session failed.');
-    } catch (err) { localStorage.removeItem('user'); window.location.href = 'login&register.html'; }
-    finally { setPageLoading(false); }
-  }
-
-  function validateUsername(u) {
-    if (u.length < 3 || u.length > 20) return { valid: false, message: 'Username must be 3–20 characters.' };
-    if (!/^[a-zA-Z0-9_]+$/.test(u)) return { valid: false, message: 'Only letters, numbers, and underscores are allowed.' };
-    return { valid: true };
-  }
-  function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-  // ── Username setup ──────────────────────────────────────────
-  var setUsernameModal = document.getElementById('setUsernameModal');
-  var setUsernameInput = document.getElementById('setUsernameInput');
-  var confirmSetUsernameBtn = document.getElementById('confirmSetUsernameBtn');
-  var setUsernameError = document.getElementById('setUsernameError');
-  var setUsernameLoadingSpinner = document.getElementById('setUsernameLoadingSpinner');
-
-  setUsernameInput.addEventListener('input', function () {
-    var val = setUsernameInput.value.trim();
-    setUsernameError.style.display = 'none';
-    var v = validateUsername(val);
-    confirmSetUsernameBtn.disabled = !v.valid;
-    if (!v.valid && val.length > 0) { setUsernameError.textContent = v.message; setUsernameError.style.display = 'block'; }
-    if (v.valid) {
-      clearTimeout(window._uCheck);
-      window._uCheck = setTimeout(async function () {
-        try { var d = await callSessionApi('check-username', { username: val }); if (!d.available) { setUsernameError.textContent = 'This username is already taken.'; setUsernameError.style.display = 'block'; confirmSetUsernameBtn.disabled = true; } } catch (e) {}
-      }, 500);
+    .gs-chat-messages .gs-chat-placeholder {
+      text-align: center;
+      margin: auto 0;
+      font-style: italic;
+      font-size: 0.9em;
+      color: #c4b5fd;
+      pointer-events: none;
+      line-height: 1.4;
     }
-  });
-  confirmSetUsernameBtn.addEventListener('click', async function () {
-    var u = setUsernameInput.value.trim();
-    if (!currentUser || !validateUsername(u).valid) return;
-    setUsernameLoadingSpinner.style.display = 'block'; confirmSetUsernameBtn.disabled = true;
-    try {
-      var check = await callSessionApi('check-username', { username: u });
-      if (!check.available) { setUsernameError.textContent = 'This username is already taken.'; setUsernameError.style.display = 'block'; return; }
-      var data = await callSessionApi('set-username', { uid: currentUser.uid, username: u });
-      if (data.success && data.user) { currentUser = data.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); closeModal(setUsernameModal); showToast('Username set successfully!', 'success'); }
-    } catch (err) { if (!err.message.includes('taken')) { setUsernameError.textContent = err.message; setUsernameError.style.display = 'block'; } }
-    finally { setUsernameLoadingSpinner.style.display = 'none'; confirmSetUsernameBtn.disabled = false; }
-  });
-
-  profileBox.addEventListener('click', function () { if (currentUser) openMyProfileModal(); });
-  settingsBtn.addEventListener('click', function () { if (currentUser) openModal(settingModal); });
-
-  document.querySelectorAll('.modal-close-btn').forEach(function (btn) {
-    btn.addEventListener('click', function (e) { var m = e.target.closest('.modal-overlay'); if (m) closeModal(m); });
-  });
-  document.querySelectorAll('.modal-overlay').forEach(function (o) {
-    o.addEventListener('click', function (e) {
-      if (e.target !== o) return;
-      if (o.id === 'gameSetupModal' || o.id === 'inviteFriendsModal') return;
-      if (o.id === 'gameSelectModal' && gameOrigin === 'room' && matchupData) return;
-      if (o === userProfileModal) syncUpmStateToSearch();
-      closeModal(o);
-    });
-  });
-  document.getElementById('upmCloseBtn').addEventListener('click', function () { syncUpmStateToSearch(); closeModal(userProfileModal); });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
-      if (userProfileModal.classList.contains('active')) syncUpmStateToSearch();
-      document.querySelectorAll('.modal-overlay.active').forEach(function (m) {
-        if (m.id === 'gameSetupModal' || m.id === 'inviteFriendsModal') return;
-        if (m.id === 'gameSelectModal' && gameOrigin === 'room' && matchupData) return;
-        closeModal(m);
-      });
-      closeCtxMenu(); closeRemoveOverlay();
+    /* ── Message bubbles ── */
+    .gs-msg-wrap { display: flex; max-width: 100%; }
+    .gs-msg-wrap.gs-msg-mine   { justify-content: flex-end; }
+    .gs-msg-wrap.gs-msg-theirs { justify-content: flex-start; }
+    .gs-msg-bubble {
+      max-width: 85%;
+      padding: 5px 9px;
+      border-radius: 12px;
+      font-size: 1em;
+      font-weight: 500;
+      word-break: break-word;
+      line-height: 1.35;
+      text-align: left;
     }
-  });
-
-  function openMyProfileModal() {
-    var upmUsername = document.getElementById('upmUsername');
-    var upmUid = document.getElementById('upmUid');
-    var upmRelation = document.getElementById('upmRelationBadge');
-    var upmActions = document.getElementById('upmActions');
-    upmUsername.textContent = currentUser.username || '____';
-    upmUid.textContent = 'UID: ' + (currentUser.uid || '—');
-    upmRelation.className = 'upm-relation-badge none';
-    upmRelation.innerHTML = '<i class="fas fa-user"></i> My Profile';
-    upmActions.innerHTML = '';
-    var hBtn = document.createElement('button'); hBtn.className = 'upm-btn upm-btn-history'; hBtn.innerHTML = '<i class="fas fa-history"></i> Game History'; hBtn.addEventListener('click', function () { showToast('Game history coming soon.', 'info'); });
-    var fBtn = document.createElement('button'); fBtn.className = 'upm-btn upm-btn-friends-list'; fBtn.innerHTML = '<i class="fas fa-users"></i> My Friends List';
-    fBtn.addEventListener('click', function () {
-      closeModal(userProfileModal);
-      _friendsFirstLoad = true;
-      document.querySelectorAll('.sidebar-item').forEach(function(s){ s.classList.remove('active'); });
-      var fsi = document.querySelector('.sidebar-item[data-panel="friends-panel"]');
-      if (fsi) fsi.classList.add('active');
-      document.querySelectorAll('.content-panel').forEach(function(p){ p.classList.remove('active-panel'); });
-      document.getElementById('friends-panel').classList.add('active-panel');
-      openModal(playersModal);
-      loadFriendsPanel(); loadRequestsBadge(); loadSentBadge();
-    });
-    var eBtn = document.createElement('button'); eBtn.className = 'upm-btn'; eBtn.style.cssText = 'background:#f0f9ff;color:#0369a1;border:1.5px solid #bae6fd;'; eBtn.innerHTML = '<i class="fas fa-envelope"></i> View My Email'; eBtn.addEventListener('click', function () { openEmailModal(); });
-    upmActions.appendChild(hBtn); upmActions.appendChild(fBtn); upmActions.appendChild(eBtn);
-    openModal(userProfileModal);
-  }
-
-  function setUpmLoading(btn, on) { btn.classList.toggle('loading', on); btn.disabled = on; }
-  function syncUpmStateToSearch() { if (!upmCurrentUid || !upmCurrentRelation) return; syncSearchListRelation(upmCurrentUid, upmCurrentRelation); upmCurrentUid = null; upmCurrentRelation = null; }
-
-  function openUserProfileModal(uid, username, relation) {
-    upmCurrentUid = uid; upmCurrentRelation = relation;
-    var upmUsername = document.getElementById('upmUsername');
-    var upmUid = document.getElementById('upmUid');
-    var upmRelation = document.getElementById('upmRelationBadge');
-    var upmActions = document.getElementById('upmActions');
-    upmUsername.textContent = username; upmUid.textContent = 'UID: ' + uid;
-    var bc = 'none', bh = '';
-    if (relation === 'friend') { bc = 'friend'; bh = '<i class="fas fa-user-check"></i> Friends'; }
-    else if (relation === 'pending_sent') { bc = 'pending'; bh = '<i class="fas fa-clock"></i> Request Sent'; }
-    else if (relation === 'pending_received') { bc = 'pending'; bh = '<i class="fas fa-bell"></i> Request Received'; }
-    else { bc = 'none'; bh = '<i class="fas fa-user"></i> Not Friends'; }
-    upmRelation.className = 'upm-relation-badge ' + bc; upmRelation.innerHTML = bh;
-    upmActions.innerHTML = '';
-    var h = document.createElement('button'); h.className = 'upm-btn upm-btn-history'; h.innerHTML = '<i class="fas fa-history"></i> Game History'; h.addEventListener('click', function () { showToast('Game history coming soon.', 'info'); }); upmActions.appendChild(h);
-    var f = document.createElement('button'); f.className = 'upm-btn upm-btn-friends-list'; f.innerHTML = '<i class="fas fa-users"></i> Friends List'; f.addEventListener('click', function () { showToast('Friends list feature coming soon.', 'info'); }); upmActions.appendChild(f);
-    if (relation === 'friend') {
-      var rm = document.createElement('button'); rm.className = 'upm-btn upm-btn-remove'; rm.innerHTML = '<i class="fas fa-user-times"></i> Remove Friend';
-      rm.addEventListener('click', function () { upmCurrentRelation = 'friend'; closeModal(userProfileModal); openRemoveOverlay(uid, username); }); upmActions.insertBefore(rm, upmActions.children[1]);
-    } else if (relation === 'pending_sent') {
-      var cn = document.createElement('button'); cn.className = 'upm-btn upm-btn-cancel'; cn.innerHTML = '<i class="fas fa-times-circle"></i> Cancel Request';
-      cn.addEventListener('click', async function () {
-        setUpmLoading(cn, true);
-        try { await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid }); upmRelation.className = 'upm-relation-badge none'; upmRelation.innerHTML = '<i class="fas fa-user"></i> Not Friends'; upmCurrentRelation = 'none'; cn.remove(); var ab = document.createElement('button'); ab.className = 'upm-btn upm-btn-add'; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend'; ab.addEventListener('click', makeUpmAddHandler(ab, uid, username, upmRelation, upmActions)); upmActions.insertBefore(ab, upmActions.children[1]); syncSearchListRelation(uid, 'none'); showToast('Friend request cancelled.', 'info'); loadSentPanel(); }
-        catch (err) { showToast(err.message, 'error'); setUpmLoading(cn, false); }
-      }); upmActions.insertBefore(cn, upmActions.children[1]);
-    } else if (relation === 'pending_received') {
-      var ac = document.createElement('button'); ac.className = 'upm-btn upm-btn-add'; ac.innerHTML = '<i class="fas fa-check-circle"></i> Accept Request';
-      ac.addEventListener('click', async function () {
-        setUpmLoading(ac, true);
-        try { await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: uid }); upmRelation.className = 'upm-relation-badge friend'; upmRelation.innerHTML = '<i class="fas fa-user-check"></i> Friends'; upmCurrentRelation = 'friend'; ac.remove(); showToast('Friend request accepted!', 'success'); loadFriendsPanel(); loadRequestsPanel(); }
-        catch (err) { showToast(err.message, 'error'); setUpmLoading(ac, false); }
-      }); upmActions.insertBefore(ac, upmActions.children[1]);
-    } else {
-      var ad = document.createElement('button'); ad.className = 'upm-btn upm-btn-add'; ad.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend';
-      ad.addEventListener('click', makeUpmAddHandler(ad, uid, username, upmRelation, upmActions)); upmActions.insertBefore(ad, upmActions.children[1]);
+    .gs-msg-mine   .gs-msg-bubble { background: linear-gradient(135deg, #5b21b6, #7c3aed); color: white; border-bottom-right-radius: 3px; }
+    .gs-msg-theirs .gs-msg-bubble { background: #ede9f8; color: #2d1b69; border-bottom-left-radius: 3px; }
+    .gs-chat-input-row {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      flex-shrink: 0;
+      padding-top: 5px;
     }
-    openModal(userProfileModal);
-  }
-
-  function makeUpmAddHandler(btn, uid, username, upmRelation, upmActions) {
-    return async function () {
-      setUpmLoading(btn, true);
-      try {
-        await callSessionApi('send-friend-request', { uid: currentUser.uid, toUid: uid });
-        upmRelation.className = 'upm-relation-badge pending'; upmRelation.innerHTML = '<i class="fas fa-clock"></i> Request Sent'; upmCurrentRelation = 'pending_sent'; btn.remove();
-        var cn = document.createElement('button'); cn.className = 'upm-btn upm-btn-cancel'; cn.innerHTML = '<i class="fas fa-times-circle"></i> Cancel Request';
-        cn.addEventListener('click', async function () {
-          setUpmLoading(cn, true);
-          try { await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid }); upmRelation.className = 'upm-relation-badge none'; upmRelation.innerHTML = '<i class="fas fa-user"></i> Not Friends'; upmCurrentRelation = 'none'; cn.remove(); var ab = document.createElement('button'); ab.className = 'upm-btn upm-btn-add'; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add Friend'; ab.addEventListener('click', makeUpmAddHandler(ab, uid, username, upmRelation, upmActions)); upmActions.insertBefore(ab, upmActions.children[1]); syncSearchListRelation(uid, 'none'); showToast('Friend request cancelled.', 'info'); loadSentPanel(); }
-          catch (err) { showToast(err.message, 'error'); setUpmLoading(cn, false); }
-        }); upmActions.insertBefore(cn, upmActions.children[1]); syncSearchListRelation(uid, 'pending_sent'); showToast('Friend request sent!', 'success');
-      } catch (err) { showToast(err.message, 'error'); setUpmLoading(btn, false); }
-    };
-  }
-
-  function syncSearchListRelation(uid, newRelation) {
-    var items = searchResultsContainer ? searchResultsContainer.querySelectorAll('.player-item') : [];
-    items.forEach(function(item) {
-      var ad = item.querySelector('.player-item-right'); if (!ad) return;
-      var match = false; ad.querySelectorAll('[data-uid]').forEach(function(b) { if (b.dataset.uid === uid) match = true; });
-      if (!match) return;
-      var username = item.querySelector('.username') ? item.querySelector('.username').textContent : uid;
-      ad.innerHTML = '';
-      var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>';
-      vb.addEventListener('click', function() { openUserProfileModal(uid, username, newRelation); });
-      if (newRelation === 'pending_sent') {
-        var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel';
-        cb.addEventListener('click', makeCancelHandler(cb, uid, ad, username)); ad.appendChild(vb); ad.appendChild(cb);
-      } else if (newRelation === 'none') {
-        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add';
-        ab.addEventListener('click', makeAddHandler(ab, uid, ad)); ad.appendChild(vb); ad.appendChild(ab);
-      } else if (newRelation === 'friend') { ad.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>'; }
-    });
-  }
-
-  function openRemoveOverlay(uid, name) { pendingRemoveUid = uid; pendingRemoveName = name; document.getElementById('rmFriendName').textContent = name; removeFriendOverlay.classList.add('active'); }
-  function closeRemoveOverlay() { removeFriendOverlay.classList.remove('active'); pendingRemoveUid = null; pendingRemoveName = null; }
-  document.getElementById('rmCancelBtn').addEventListener('click', closeRemoveOverlay);
-  removeFriendOverlay.addEventListener('click', function (e) { if (e.target === removeFriendOverlay) closeRemoveOverlay(); });
-  document.getElementById('rmConfirmBtn').addEventListener('click', async function () {
-    if (!pendingRemoveUid) return;
-    var btn = document.getElementById('rmConfirmBtn'); btn.disabled = true;
-    try { await callSessionApi('remove-friend', { uid: currentUser.uid, friendUid: pendingRemoveUid }); closeRemoveOverlay(); closeCtxMenu(); showToast('Friend removed successfully.', 'info'); loadFriendsPanel(); }
-    catch (err) { showToast(err.message, 'error'); } finally { btn.disabled = false; }
-  });
-
-  // ── Rename ──────────────────────────────────────────────────
-  var renameBtn = document.getElementById('renameBtn');
-  var renameModal = document.getElementById('renameModal');
-  var newNameInput = document.getElementById('newNameInput');
-  var passwordConfirmInput = document.getElementById('passwordConfirmInput');
-  var confirmRenameBtn = document.getElementById('confirmRenameBtn');
-  var usernameError = document.getElementById('UsernameError');
-  var passwordErrorMessage = document.getElementById('passwordErrorMessage');
-  var renameSuccessMessage = document.getElementById('renameSuccessMessage');
-  var renameLoadingSpinner = document.getElementById('renameLoadingSpinner');
-
-  renameBtn.addEventListener('click', function () { newNameInput.value = ''; passwordConfirmInput.value = ''; usernameError.style.display = 'none'; passwordErrorMessage.style.display = 'none'; renameSuccessMessage.style.display = 'none'; confirmRenameBtn.disabled = true; openModal(renameModal); });
-  newNameInput.addEventListener('input', function () { var v = validateUsername(newNameInput.value.trim()); usernameError.style.display = 'none'; confirmRenameBtn.disabled = !(v.valid && passwordConfirmInput.value); });
-  passwordConfirmInput.addEventListener('input', function () { confirmRenameBtn.disabled = !(validateUsername(newNameInput.value.trim()).valid && passwordConfirmInput.value); });
-  confirmRenameBtn.addEventListener('click', async function () {
-    var nu = newNameInput.value.trim(); var pw = passwordConfirmInput.value;
-    if (!pw) { passwordErrorMessage.textContent = 'Please enter your password.'; passwordErrorMessage.style.display = 'block'; return; }
-    renameLoadingSpinner.style.display = 'block'; confirmRenameBtn.disabled = true; usernameError.style.display = 'none'; passwordErrorMessage.style.display = 'none';
-    try {
-      var v = await callAuthApi('verify-password', { uid: currentUser.uid, password: pw });
-      if (!v.valid) { passwordErrorMessage.textContent = 'Incorrect password.'; passwordErrorMessage.style.display = 'block'; return; }
-      var c = await callSessionApi('check-username', { username: nu }); if (!c.available) { usernameError.style.display = 'block'; return; }
-      var d = await callSessionApi('set-username', { uid: currentUser.uid, username: nu });
-      if (d.success) { currentUser = d.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); renameSuccessMessage.style.display = 'block'; setTimeout(function () { closeModal(renameModal); }, 1500); }
-    } catch (err) { if (err.message.toLowerCase().includes('taken')) usernameError.style.display = 'block'; else { passwordErrorMessage.textContent = err.message; passwordErrorMessage.style.display = 'block'; } }
-    finally { renameLoadingSpinner.style.display = 'none'; confirmRenameBtn.disabled = false; }
-  });
-
-  document.getElementById('signOutBtn').addEventListener('click', function () { openModal(document.getElementById('logoutConfirmModal')); });
-  document.getElementById('confirmLogoutBtn').addEventListener('click', function () { localStorage.removeItem('user'); window.location.href = 'login&register.html'; });
-  document.getElementById('cancelLogoutBtn').addEventListener('click', function () { closeModal(document.getElementById('logoutConfirmModal')); });
-
-  // ── Players Modal ─────────────────────────────────────────
-  var playersModal = document.getElementById('playersModal');
-  document.getElementById('amisBtn').addEventListener('click', function () {
-    _friendsFirstLoad = true;
-    openModal(playersModal); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); updateFooterRequestsBadge(0);
-  });
-  document.querySelectorAll('.sidebar-item').forEach(function (item) {
-    item.addEventListener('click', function () {
-      document.querySelectorAll('.sidebar-item').forEach(function (s) { s.classList.remove('active'); }); item.classList.add('active');
-      var pid = item.dataset.panel;
-      document.querySelectorAll('.content-panel').forEach(function (p) { p.classList.remove('active-panel'); }); document.getElementById(pid).classList.add('active-panel');
-      if (pid === 'friends-panel') { _friendsFirstLoad = true; loadFriendsPanel(); }
-      if (pid === 'requests-panel') loadRequestsPanel();
-      if (pid === 'sent-panel') loadSentPanel();
-      if (pid === 'search-panel') document.getElementById('searchResultsContainer').innerHTML = '';
-    });
-  });
-
-  function renderEmptyState(container, icon, msg) { container.innerHTML = '<div class="empty-state"><i class="fas fa-' + icon + '"></i><p>' + msg + '</p></div>'; }
-
-  function openCtxMenu(triggerBtn, uid, name) {
-    activeFriendUid = uid; activeFriendName = name; activeCtxTrigger = triggerBtn;
-    var rect = triggerBtn.getBoundingClientRect(); var mw = 185;
-    var left = rect.right - mw; if (left < 6) left = 6;
-    var top = rect.bottom + 5; if (top + 180 > window.innerHeight) top = rect.top - 180;
-    friendCtxMenu.style.left = left + 'px'; friendCtxMenu.style.top = top + 'px'; friendCtxMenu.style.minWidth = mw + 'px'; friendCtxMenu.classList.add('open');
-    var isOnline = triggerBtn.dataset.online === '1';
-    var playBtn = document.getElementById('ctxPlayBtn');
-    if (playBtn) playBtn.style.display = isOnline ? '' : 'none';
-  }
-  function closeCtxMenu() { friendCtxMenu.classList.remove('open'); activeCtxTrigger = null; }
-  document.addEventListener('click', function (e) {
-    if (!friendCtxMenu.classList.contains('open')) return;
-    if (friendCtxMenu.contains(e.target)) return;
-    if (activeCtxTrigger && activeCtxTrigger.contains(e.target)) return;
-    if (ctxInviteTimer) return;
-    closeCtxMenu();
-  });
-
-  document.getElementById('ctxProfileBtn').addEventListener('click', function () { closeCtxMenu(); openUserProfileModal(activeFriendUid, activeFriendName, 'friend'); });
-  document.getElementById('ctxChatBtn').addEventListener('click', function () { closeCtxMenu(); showToast('Chat feature coming soon.', 'info'); });
-  var ctxInviteTimer = null;
-  var ctxInviteStatusTimer = null;
-  var ctxInviteId = null;
-  var ctxInviteUid = null;
-  var _ctxInviteFromFriends = false;
-
-  document.getElementById('ctxPlayBtn').addEventListener('click', function () {
-    if (ctxInviteTimer) return;
-    var uid = activeFriendUid;
-    var name = activeFriendName;
-    startCtxInvite(uid, name);
-  });
-
-  function resetCtxPlayBtn() {
-    var playBtn = document.getElementById('ctxPlayBtn');
-    var countdown = document.getElementById('ctxPlayCountdown');
-    if (playBtn) { playBtn.disabled = false; playBtn.style.opacity = ''; }
-    if (countdown) { countdown.style.display = 'none'; countdown.textContent = ''; }
-  }
-
-  async function startCtxInvite(uid, name) {
-    var playBtn = document.getElementById('ctxPlayBtn');
-    var countdown = document.getElementById('ctxPlayCountdown');
-    ctxInviteUid = uid;
-    ctxInviteId = null;
-    _ctxInviteFromFriends = document.getElementById('playersModal').classList.contains('active');
-
-    try {
-      var res = await callSessionApi('send-game-invite', {
-        uid: currentUser.uid, toUid: uid,
-        game: selectedGame || 'fanorona', color: selectedColor || 'green', minutes: selectedMinutes || 5
-      });
-      ctxInviteId = res.inviteId;
-    } catch(err) {
-      showToast(err.message || 'Failed to send invitation.', 'error');
-      return;
+    .gs-chat-input {
+      flex: 1;
+      padding: 5px 7px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.72em;
+      outline: none;
+      resize: none;
+      min-height: 28px;
+      max-height: 52px;
+      line-height: 1.4;
+      font-family: inherit;
+      color: #1e293b;
+      background: white;
+      transition: border-color 0.15s;
+      overflow-y: auto;
+      word-break: break-word;
+    }
+    .gs-chat-input:focus { border-color: #a78bfa; }
+    .gs-chat-input::placeholder { color: #c4b5fd; font-size: 0.92em; }
+    .gs-chat-send {
+      width: 28px; height: 28px; flex-shrink: 0;
+      border: none; border-radius: 8px;
+      background: linear-gradient(135deg, #5b21b6, #7c3aed);
+      color: white; font-size: 0.82em;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.15s, transform 0.12s;
+      align-self: center;
+      position: relative;
+    }
+    .gs-chat-send:hover:not(:disabled) { opacity: 0.85; transform: scale(1.06); }
+    .gs-chat-send:active:not(:disabled) { transform: scale(0.96); }
+    .gs-chat-send:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .gs-chat-send.loading { color: transparent !important; pointer-events: none; }
+    .gs-chat-send.loading::after {
+      content: "";
+      position: absolute;
+      width: 14px; height: 14px;
+      top: 7px; left: 7px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spinner 0.7s linear infinite;
     }
 
-    if (playBtn) { playBtn.disabled = true; playBtn.style.opacity = '0.8'; }
-    if (countdown) { countdown.style.display = 'inline'; countdown.textContent = '10'; }
-
-    var count = 10;
-    ctxInviteTimer = setInterval(function() {
-      count--;
-      if (countdown) countdown.textContent = count > 0 ? count : '0';
-      if (count <= 0) {
-        clearInterval(ctxInviteTimer); ctxInviteTimer = null;
-        resetCtxPlayBtn();
-        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: ctxInviteId }).catch(function(){});
-        if (ctxInviteStatusTimer) { clearInterval(ctxInviteStatusTimer); ctxInviteStatusTimer = null; }
-        ctxInviteId = null; ctxInviteUid = null;
-      }
-    }, 1000);
-
-    ctxInviteStatusTimer = setInterval(async function() {
-      if (!ctxInviteId) return;
-      try {
-        var sRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: ctxInviteId });
-        if (sRes.status === 'accepted') {
-          clearInterval(ctxInviteTimer); ctxInviteTimer = null;
-          clearInterval(ctxInviteStatusTimer); ctxInviteStatusTimer = null;
-          resetCtxPlayBtn();
-          closeCtxMenu();
-          closeModal(document.getElementById('playersModal'));
-          selectedGame = sRes.game; selectedMinutes = sRes.minutes; selectedColor = sRes.color;
-          gameOrigin = 'room';
-          openGameSetup(sRes.game, {
-            senderUsername: sRes.senderUsername,
-            receiverUsername: sRes.receiverUsername,
-            isSender: true,
-            inviteId: ctxInviteId
-          });
-          ctxInviteId = null; ctxInviteUid = null;
-        } else if (sRes.status === 'declined' || sRes.status === 'expired' || sRes.status === 'cancelled' || sRes.status === 'not_found') {
-          clearInterval(ctxInviteTimer); ctxInviteTimer = null;
-          clearInterval(ctxInviteStatusTimer); ctxInviteStatusTimer = null;
-          resetCtxPlayBtn();
-          if (sRes.status === 'declined') showToast(name + ' declined your invitation.', 'info');
-          ctxInviteId = null; ctxInviteUid = null;
-        }
-      } catch(e) {}
-    }, 2000);
-  }
-  document.getElementById('ctxRemoveBtn').addEventListener('click', function () { closeCtxMenu(); openRemoveOverlay(activeFriendUid, activeFriendName); });
-
-  function formatLastSeen(ls) {
-    if (!ls) return ''; var diff = Math.floor((Date.now() - ls) / 1000);
-    if (diff < 60) return ''; var min = Math.floor(diff / 60); if (min < 60) return min + 'min ago';
-    var hr = Math.floor(min / 60); if (hr < 24) return hr + 'h ago';
-    var d = Math.floor(hr / 24); if (d < 365) return d + 'd ago'; return Math.floor(d / 365) + 'y ago';
-  }
-
-  var _friendsFirstLoad = true;
-
-  async function loadFriendsPanel() {
-    var container = document.getElementById('friendsListContainer');
-    var isFirstLoad = _friendsFirstLoad || container.innerHTML === '';
-    if (isFirstLoad) {
-      _friendsFirstLoad = false;
-      container.innerHTML = '<div class="spinner-inline"></div>';
+    .gs-body-row { display: flex; gap: 0; align-items: stretch; }
+    .gs-body-left {
+      display: none;
+      flex-direction: column;
+      width: 152px;
+      flex-shrink: 0;
     }
-    try {
-      var data = await callSessionApi('get-friends', { uid: currentUser.uid });
-      var cb = document.getElementById('friendsCountBadge'); var fc = data.friendCount || 0;
-      cb.textContent = fc + '/100'; cb.style.display = fc > 0 ? 'inline-block' : 'none';
-      if (!data.friends || data.friends.length === 0) {
-        container.innerHTML = '';
-        renderEmptyState(container, 'user-friends', 'You have no friends yet. Use "Add Friend" to get started.');
-        return;
-      }
-      if (isFirstLoad) {
-        container.innerHTML = '';
-        data.friends.forEach(function (fr) {
-          var div = document.createElement('div'); div.className = 'player-item'; div.dataset.uid = fr.uid;
-          var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
-          div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst ? '<span class="last-seen" data-ls>' + escapeHtml(lst) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '" data-online="' + (fr.online ? '1' : '0') + '"><i class="fas fa-ellipsis-v"></i></button></div>';
-          div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
-          container.appendChild(div);
-        });
-      } else {
-        var existingUids = new Set(Array.from(container.querySelectorAll('.player-item[data-uid]')).map(function(d){ return d.dataset.uid; }));
-        var newUids = new Set(data.friends.map(function(f){ return f.uid; }));
-        existingUids.forEach(function(uid) {
-          if (!newUids.has(uid)) {
-            var el = container.querySelector('.player-item[data-uid="' + uid + '"]');
-            if (el) el.remove();
-          }
-        });
-        data.friends.forEach(function (fr) {
-          var existing = container.querySelector('.player-item[data-uid="' + fr.uid + '"]');
-          if (existing) {
-            var sd = existing.querySelector('[data-sd]');
-            if (sd) { sd.className = 'status-dot ' + (fr.online ? 'online' : 'offline'); sd.setAttribute('data-sd',''); }
-
-            var ctxB = existing.querySelector('.friend-ctx-btn');
-            if (ctxB) ctxB.dataset.online = fr.online ? '1' : '0';
-            var ls = existing.querySelector('[data-ls]');
-            var lst = fr.online ? '' : formatLastSeen(fr.lastSeen);
-            if (ls) ls.textContent = lst;
-          } else {
-            var div = document.createElement('div'); div.className = 'player-item'; div.dataset.uid = fr.uid;
-            var lst2 = fr.online ? '' : formatLastSeen(fr.lastSeen);
-            div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(fr.username) + '</span>' + (lst2 ? '<span class="last-seen" data-ls>' + escapeHtml(lst2) + '</span>' : '<span class="last-seen" data-ls></span>') + '<span class="status-dot ' + (fr.online ? 'online' : 'offline') + '" data-sd></span></div><div class="player-item-right"><button class="friend-ctx-btn" aria-label="Options" data-uid="' + fr.uid + '" data-name="' + escapeHtml(fr.username) + '" data-online="' + (fr.online ? '1' : '0') + '"><i class="fas fa-ellipsis-v"></i></button></div>';
-            div.querySelector('.friend-ctx-btn').addEventListener('click', function (e) { e.stopPropagation(); var btn = e.currentTarget; if (friendCtxMenu.classList.contains('open') && activeFriendUid === btn.dataset.uid) closeCtxMenu(); else openCtxMenu(btn, btn.dataset.uid, btn.dataset.name); });
-            container.appendChild(div);
-          }
-        });
-      }
-    } catch (err) {
-      if (isFirstLoad) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load friends. Please try again.'); }
+    .gs-body-row.room-active .gs-body-left {
+      display: flex;
+      height: 208px;
+      flex-direction: column;
     }
-  }
-
-  async function loadRequestsBadge() {
-    try { var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid }); var count = (data.requests || []).length; var badge = document.getElementById('requestsBadge'); badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; updateFooterRequestsBadge(count); } catch (e) {}
-  }
-  function updateFooterRequestsBadge(count) { var fb = document.getElementById('footerRequestsBadge'); if (!fb) return; if (count > 0) { fb.textContent = count > 9 ? '9+' : count; fb.style.display = 'flex'; } else { fb.style.display = 'none'; } }
-  async function loadSentBadge() {
-    try { var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid }); var badge = document.getElementById('sentCountBadge'); var count = data.sentCount || (data.sent || []).length; badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; } catch (e) {}
-  }
-
-  async function loadRequestsPanel() {
-    var container = document.getElementById('requestsListContainer'); container.innerHTML = '<div class="spinner-inline"></div>';
-    try {
-      var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid }); container.innerHTML = '';
-      var badge = document.getElementById('requestsBadge');
-      if (!data.requests || data.requests.length === 0) { badge.style.display = 'none'; renderEmptyState(container, 'handshake', 'No pending friend requests.'); return; }
-      badge.textContent = data.requests.length; badge.style.display = 'inline-block';
-      data.requests.forEach(function (req) {
-        var div = document.createElement('div'); div.className = 'player-item';
-        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(req.username) + '</span></div><div class="player-item-right"><button class="btn-sm btn-icon btn-accept-icon" title="Accept" data-uid="' + req.uid + '"><i class="fas fa-check"></i></button><button class="btn-sm btn-icon btn-reject-icon" title="Decline" data-uid="' + req.uid + '"><i class="fas fa-times"></i></button></div>';
-        var aBtn = div.querySelector('.btn-accept-icon'); var rBtn = div.querySelector('.btn-reject-icon');
-        aBtn.addEventListener('click', async function () { aBtn.classList.add('loading'); aBtn.disabled = true; rBtn.disabled = true; try { await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: aBtn.dataset.uid }); showToast('Friend request accepted!', 'success'); loadRequestsPanel(); loadFriendsPanel(); } catch (err) { showToast(err.message, 'error'); aBtn.classList.remove('loading'); aBtn.disabled = false; rBtn.disabled = false; } });
-        rBtn.addEventListener('click', async function () { rBtn.classList.add('loading'); rBtn.disabled = true; aBtn.disabled = true; try { await callSessionApi('reject-friend-request', { uid: currentUser.uid, fromUid: rBtn.dataset.uid }); showToast('Friend request declined.', 'info'); loadRequestsPanel(); } catch (err) { showToast(err.message, 'error'); rBtn.classList.remove('loading'); rBtn.disabled = false; aBtn.disabled = false; } });
-        container.appendChild(div);
-      });
-    } catch (err) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load requests. Please try again.'); }
-  }
-
-  async function loadSentPanel() {
-    var container = document.getElementById('sentListContainer'); container.innerHTML = '<div class="spinner-inline"></div>';
-    try {
-      var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid }); container.innerHTML = '';
-      var badge = document.getElementById('sentCountBadge'); var sc = data.sentCount || (data.sent || []).length;
-      badge.textContent = sc; badge.style.display = sc > 0 ? 'inline-block' : 'none';
-      if (!data.sent || data.sent.length === 0) { renderEmptyState(container, 'paper-plane', 'You have not sent any friend requests yet.'); return; }
-      data.sent.forEach(function (req) {
-        var div = document.createElement('div'); div.className = 'player-item';
-        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(req.username) + '</span></div><div class="player-item-right"><button class="btn-sm btn-cancel" data-uid="' + req.uid + '"><i class="fas fa-times"></i> Cancel</button></div>';
-        div.querySelector('.btn-cancel').addEventListener('click', async function (e) { var btn = e.currentTarget; btn.classList.add('loading'); btn.disabled = true; try { await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: btn.dataset.uid }); showToast('Friend request cancelled.', 'info'); loadSentPanel(); } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; } });
-        container.appendChild(div);
-      });
-    } catch (err) { container.innerHTML = ''; renderEmptyState(container, 'exclamation-circle', 'Failed to load sent requests. Please try again.'); }
-  }
-
-  var searchUserInput = document.getElementById('searchUserInput');
-  var searchUserBtn = document.getElementById('searchUserBtn');
-  var searchResultsContainer = document.getElementById('searchResultsContainer');
-  var searchLoadingSpinner = document.getElementById('searchLoadingSpinner');
-
-  searchUserBtn.addEventListener('click', async function () {
-    var query = searchUserInput.value.trim();
-    if (query.length < 3) { searchResultsContainer.innerHTML = '<p style="color:#ef4444;font-size:0.88em;padding:4px 0;">Please enter at least 3 characters.</p>'; return; }
-    searchLoadingSpinner.style.display = 'block'; searchResultsContainer.innerHTML = '';
-    try {
-      var data = await callSessionApi('search-users', { uid: currentUser.uid, query });
-      searchLoadingSpinner.style.display = 'none';
-      if (!data.users || data.users.length === 0) { searchResultsContainer.innerHTML = '<p style="color:#64748b;font-size:0.88em;padding:4px 0;">No players found for "' + escapeHtml(query) + '".</p>'; return; }
-      data.users.forEach(function (user) {
-        var div = document.createElement('div'); div.className = 'player-item';
-        var ad = document.createElement('div'); ad.className = 'player-item-right';
-        if (user.relation === 'friend') { ad.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>'; }
-        else if (user.relation === 'pending_sent') { var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = user.uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel'; cb.addEventListener('click', makeCancelHandler(cb, user.uid, ad)); ad.appendChild(cb); }
-        else if (user.relation === 'pending_received') { var aB = document.createElement('button'); aB.className = 'btn-sm btn-icon btn-accept-icon'; aB.title = 'Accept'; aB.dataset.uid = user.uid; aB.innerHTML = '<i class="fas fa-check"></i>'; var rB = document.createElement('button'); rB.className = 'btn-sm btn-icon btn-reject-icon'; rB.title = 'Decline'; rB.dataset.uid = user.uid; rB.innerHTML = '<i class="fas fa-times"></i>'; aB.addEventListener('click', makeAcceptHandler(aB, rB, user.uid, ad)); rB.addEventListener('click', makeRejectHandler(aB, rB, user.uid, ad)); ad.appendChild(aB); ad.appendChild(rB); }
-        else { var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = user.uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add'; ab.addEventListener('click', makeAddHandler(ab, user.uid, ad)); ad.appendChild(ab); }
-        var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>';
-        vb.addEventListener('click', (function(u, n, r) { return function() { openUserProfileModal(u, n, r); }; })(user.uid, user.username, user.relation));
-        ad.insertBefore(vb, ad.firstChild);
-        div.innerHTML = '<div class="player-item-left"><i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(user.username) + '</span></div>';
-        div.appendChild(ad); searchResultsContainer.appendChild(div);
-      });
-    } catch (err) { searchLoadingSpinner.style.display = 'none'; searchResultsContainer.innerHTML = '<p style="color:#ef4444;font-size:0.88em;">' + escapeHtml(err.message) + '</p>'; }
-  });
-  searchUserInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') searchUserBtn.click(); });
-
-  function makeAddHandler(btn, uid, ad) {
-    var su = ''; try { var pi = btn.closest('.player-item'); if (pi) su = pi.querySelector('.username').textContent; } catch(e){}
-    return async function () {
-      btn.classList.add('loading'); btn.disabled = true;
-      try {
-        await callSessionApi('send-friend-request', { uid: currentUser.uid, toUid: uid }); ad.innerHTML = '';
-        var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>'; vb.addEventListener('click', function() { openUserProfileModal(uid, su, 'pending_sent'); });
-        var cb = document.createElement('button'); cb.className = 'btn-sm btn-cancel-req'; cb.dataset.uid = uid; cb.innerHTML = '<i class="fas fa-times"></i> Cancel'; cb.addEventListener('click', makeCancelHandler(cb, uid, ad, su));
-        ad.appendChild(vb); ad.appendChild(cb); showToast('Friend request sent!', 'success');
-      } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; }
-    };
-  }
-  function makeCancelHandler(btn, uid, ad, su) {
-    return async function () {
-      btn.classList.add('loading'); btn.disabled = true;
-      var username = su || ''; if (!username) { try { var pi = btn.closest('.player-item'); if (pi) username = pi.querySelector('.username').textContent; } catch(e){} }
-      try {
-        await callSessionApi('cancel-friend-request', { uid: currentUser.uid, toUid: uid }); ad.innerHTML = '';
-        var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>'; vb.addEventListener('click', function() { openUserProfileModal(uid, username, 'none'); });
-        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add'; ab.addEventListener('click', makeAddHandler(ab, uid, ad));
-        ad.appendChild(vb); ad.appendChild(ab); showToast('Friend request cancelled.', 'info'); loadSentPanel();
-      } catch (err) { showToast(err.message, 'error'); btn.classList.remove('loading'); btn.disabled = false; }
-    };
-  }
-  function makeAcceptHandler(aBtn, rBtn, uid, ad) {
-    return async function () { aBtn.classList.add('loading'); aBtn.disabled = true; rBtn.disabled = true; try { await callSessionApi('accept-friend-request', { uid: currentUser.uid, fromUid: uid }); ad.innerHTML = '<button class="btn-sm btn-already" disabled><i class="fas fa-user-check"></i> Friends</button>'; showToast('Friend request accepted!', 'success'); loadFriendsPanel(); loadRequestsPanel(); } catch (err) { showToast(err.message, 'error'); aBtn.classList.remove('loading'); aBtn.disabled = false; rBtn.disabled = false; } };
-  }
-  function makeRejectHandler(aBtn, rBtn, uid, ad) {
-    var su = ''; try { var pi = rBtn.closest('.player-item'); if (pi) su = pi.querySelector('.username').textContent; } catch(e){}
-    return async function () {
-      rBtn.classList.add('loading'); rBtn.disabled = true; aBtn.disabled = true;
-      try {
-        await callSessionApi('reject-friend-request', { uid: currentUser.uid, fromUid: uid }); ad.innerHTML = '';
-        var vb = document.createElement('button'); vb.className = 'btn-sm btn-icon'; vb.style.background = '#f5f3ff'; vb.style.color = '#6C00BF'; vb.title = 'View Profile'; vb.innerHTML = '<i class="fas fa-user"></i>'; vb.addEventListener('click', function() { openUserProfileModal(uid, su, 'none'); });
-        var ab = document.createElement('button'); ab.className = 'btn-sm btn-add'; ab.dataset.uid = uid; ab.innerHTML = '<i class="fas fa-user-plus"></i> Add'; ab.addEventListener('click', makeAddHandler(ab, uid, ad));
-        ad.appendChild(vb); ad.appendChild(ab); showToast('Friend request declined.', 'info'); loadRequestsPanel();
-      } catch (err) { showToast(err.message, 'error'); rBtn.classList.remove('loading'); rBtn.disabled = false; aBtn.disabled = false; }
-    };
-  }
-
-  var gameSelectModal = document.getElementById('gameSelectModal');
-  var gameSetupModal = document.getElementById('gameSetupModal');
-  var inviteFriendsModal = document.getElementById('inviteFriendsModal');
-  var selectedGame = null;
-  var selectedColor = 'green';
-  var selectedMinutes = 5;
-  var gameOrigin = 'create';
-  var gsDropdownOpen = false;
-  var matchupData = null; 
-
-  var gameImages = { both: 'img/fanorona&vela.png', fanorona: 'img/fanorona.png', vela: 'img/vela.png' };
-  var gameLabels = { both: 'Fanorona & Vela', fanorona: 'Fanorona', vela: 'Vela' };
-
-  function openGameSelectModal(origin) {
-    gameOrigin = origin || 'create';
-    var isRoom = gameOrigin === 'room';
-    document.getElementById('gameSelectTitle').innerHTML = '<i class="fas fa-' + (isRoom ? 'users' : 'gamepad') + '" style="color:#7c3aed;"></i>' + (isRoom ? 'Room' : 'Create a Game');
-    document.getElementById('gameSelectSub').textContent = isRoom ? 'Choose the game type for your room' : 'Choose the game type you want to play';
-    openModal(gameSelectModal);
-  }
-  document.getElementById('searchAdversariesBtn').addEventListener('click', function () { openGameSelectModal('create'); });
-  document.getElementById('roomBtn').addEventListener('click', function () { openGameSelectModal('room'); });
-  document.getElementById('gameSelectCloseBtn').addEventListener('click', function () {
-    if (gameOrigin === 'room' && matchupData) {
-      openRoomQuitConfirm();
-    } else {
-      closeModal(gameSelectModal);
+    #gsChatWrap {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
     }
-  });
-  gameSelectModal.addEventListener('click', function (e) {
-    if (e.target !== gameSelectModal) return;
-    if (gameOrigin === 'room' && matchupData) return;
-    closeModal(gameSelectModal);
-  });
-
-  document.querySelectorAll('.game-type-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      selectedGame = btn.dataset.game;
-      closeModal(gameSelectModal);
-      if (gameOrigin === 'room' && matchupData) {
-        if (matchupData.inviteId) {
-          callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
-        }
-        openGameSetup(selectedGame, matchupData);
-      } else {
-        openGameSetup(selectedGame, null);
-      }
-    });
-  });
-
-  var roomIsSender = true;
-  var roomSyncTimer = null;
-
-  function openGameSetup(game, matchup) {
-    matchupData = matchup || null;
-    var label = gameLabels[game] || game;
-    var headerImg = document.getElementById('gsHeaderImg');
-    headerImg.innerHTML = '';
-    var img = document.createElement('img'); img.src = gameImages[game] || ''; img.alt = label;
-    img.onerror = function () { headerImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
-    headerImg.appendChild(img);
-    document.getElementById('gsHeaderTitle').textContent = label;
-    document.getElementById('gsHeaderSub').textContent = matchup ? 'Room · ' + selectedMinutes + ' min' : 'Configure your game settings';
-
-    var gsMatchup = document.getElementById('gsMatchup');
-    var gsMatchupWith = document.getElementById('gsMatchupWith');
-    var gsMatchupPending = document.getElementById('gsMatchupPending');
-    var gsMatchupSender = document.getElementById('gsMatchupSender');
-    var gsMatchupReceiver = document.getElementById('gsMatchupReceiver');
-    if (gameOrigin === 'room') {
-      gsMatchup.classList.add('visible');
-      if (matchup) {
-        if (gsMatchupWith) gsMatchupWith.style.display = 'flex';
-        if (gsMatchupPending) gsMatchupPending.style.display = 'none';
-        if (gsMatchupSender) gsMatchupSender.textContent = matchup.senderUsername;
-        if (gsMatchupReceiver) gsMatchupReceiver.textContent = matchup.receiverUsername;
-      } else {
-        if (gsMatchupWith) gsMatchupWith.style.display = 'none';
-        if (gsMatchupPending) gsMatchupPending.style.display = 'block';
-      }
-    } else {
-      gsMatchup.classList.remove('visible');
+    .gs-body-settings { flex: 1; min-width: 0; }
+    .gs-body-row.room-active .gs-body-settings {
+      padding-left: 12px;
+      margin-left: 0;
+    }
+    .gs-body-row.room-active .gs-body-left {
+      border-right: 1.5px solid #ddd6fe;
+      margin-right: 12px;
+      padding-right: 12px;
+    }
+    .gs-room-friends {
+      display: flex; flex-direction: column; flex: 1; min-height: 0;
+    }
+    .gs-room-friends-label {
+      font-size: 0.63em; font-weight: 700; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 6px; flex-shrink: 0;
+    }
+    .gs-room-friends-list {
+      flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
+    }
+    .gs-room-friend-item {
+      display: flex; align-items: center; justify-content: space-between;
+      background: #faf8ff; border: 1px solid #ede9f8; border-radius: 8px;
+      padding: 5px 7px; gap: 5px;
+    }
+    .gs-room-friend-name {
+      font-size: 0.75em; font-weight: 700; color: #2d1b69;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
+    }
+    .gs-room-invite-btn {
+      width: 26px; height: 26px; flex-shrink: 0;
+      border: none; border-radius: 7px;
+      background: linear-gradient(135deg, #5b21b6, #7c3aed);
+      color: white; font-size: 0.78em;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.15s, transform 0.12s;
+      position: relative;
+    }
+    .gs-room-invite-btn:hover:not(:disabled) { opacity: 0.85; transform: scale(1.08); }
+    .gs-room-invite-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+    .gs-room-invite-btn.counting {
+      background: #f59e0b; font-size: 0.7em; font-weight: 800;
+    }
+    .gs-room-empty {
+      font-size: 0.73em; color: #c4b5fd; font-style: italic;
+      text-align: center; padding: 10px 4px; line-height: 1.4;
     }
 
-    var isRoomMode = (gameOrigin === 'room');
-    if (!isRoomMode) {
-      selectedColor = 'green'; selectedMinutes = 5;
+    .gs-receiver-mode .color-pick-btn { pointer-events: none; cursor: default; }
+    .gs-receiver-mode .color-pick-btn:not(.selected) { opacity: 0.45; }
+    .gs-receiver-mode .gs-time-trigger { pointer-events: none; opacity: 0.6; cursor: default; }
+
+    .gs-matchup {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: #f5f0ff;
+      border: 1.5px solid #ddd6fe;
+      border-radius: 10px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      gap: 0;
     }
-    document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === selectedColor); });
-    document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
-    document.querySelectorAll('.gs-time-option').forEach(function (o) {
-      var sel = parseInt(o.dataset.minutes) === selectedMinutes; o.classList.toggle('selected', sel);
-      var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none';
-    });
-    closeGsDropdown();
+    .gs-matchup.visible { display: flex; }
+    .gs-matchup-name { font-size: 0.83em; font-weight: 800; color: #5b21b6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; text-align: center; min-width: 0; }
+    .gs-matchup-pending { font-size: 0.78em; font-weight: 600; color: #a78bfa; font-style: italic; line-height: 1.3; }
+    .gs-matchup-name.pending { color: #a78bfa; font-weight: 600; font-style: italic; font-size: 0.76em; }
+    .gs-matchup-vs-icon { color: #a78bfa; font-size: 0.78em; flex-shrink: 0; padding: 0 10px; }
+    .gs-section-label { font-size: 0.73em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 9px; text-align: left; }
+    .gs-time-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; min-height: 0; }
+    .gs-time-header-row .gs-section-label { margin-bottom: 0; }
+    .gs-opponent-not-ready { font-size: 0.7em; font-weight: 700; color: #ef4444; display: none; line-height: 1; }
 
-    var launchBtn = document.getElementById('gsLaunchBtn');
-    var gsBody = document.querySelector('.game-setup-body');
-    var gsSectionLabelPiece = document.getElementById('gsSectionLabelPiece');
 
-    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-    if (!matchup) {
-      Object.keys(roomFriendInviteTimers).forEach(function(u) { clearInterval(roomFriendInviteTimers[u]); });
-      Object.keys(roomFriendStatusTimers).forEach(function(i) { clearInterval(roomFriendStatusTimers[i]); });
-      Object.keys(roomFriendInviteIds).forEach(function(u) {
-        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: roomFriendInviteIds[u] }).catch(function(){});
-      });
-      roomFriendInviteTimers = {}; roomFriendStatusTimers = {}; roomFriendInviteIds = {};
+    .color-pick-row { display: flex; gap: 11px; margin-bottom: 18px; }
+    .color-pick-btn { flex: 1; border: 2px solid #e2e8f0; border-radius: 11px; padding: 10px 8px; background: white; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: border-color 0.18s, background 0.18s; }
+    .color-pick-btn:hover { border-color: #a78bfa; background: #faf5ff; }
+    .color-pick-btn.selected { border-color: #7c3aed; background: #faf5ff; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+    .color-pick-btn img { width: 44px; height: 44px; object-fit: contain; border-radius: 7px; }
+    .color-pick-btn .cpb-img-ph { width: 44px; height: 44px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 1.5em; }
+    .color-pick-btn .cpb-img-ph.green { background: #d1fae5; color: #065f46; }
+    .color-pick-btn .cpb-img-ph.red { background: #fee2e2; color: #991b1b; }
+    .color-pick-btn .cpb-label { font-size: 0.77em; font-weight: 700; color: #334155; }
+    .gs-time-row { display: flex; align-items: center; gap: 11px; }
+    .gs-time-trigger { flex: 1; display: flex; align-items: center; justify-content: space-between; padding: 10px 13px; border: 1.5px solid #e2e8f0; border-radius: 10px; background: white; cursor: pointer; font-size: 0.88em; font-weight: 600; color: #334155; transition: border-color 0.18s; user-select: none; }
+    .gs-time-trigger:hover { border-color: #a78bfa; background: #faf5ff; }
+    .gs-time-trigger .gs-time-val { display: flex; align-items: center; gap: 7px; }
+    .gs-time-trigger .gs-time-val i { color: #7c3aed; font-size: 0.9em; }
+    .gs-time-trigger .gs-time-chevron { color: #94a3b8; font-size: 0.8em; transition: transform 0.2s; }
+    .gs-time-trigger.open .gs-time-chevron { transform: rotate(180deg); }
+    .gs-launch-btn { padding: 10px 18px; border: none; border-radius: 10px; background: linear-gradient(to right, #5b21b6, #7c3aed); color: white; font-size: 0.88em; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 7px; transition: opacity 0.2s, transform 0.15s; white-space: nowrap; flex-shrink: 0; }
+    .gs-launch-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .gs-launch-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+    .gs-time-dropdown-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.45); backdrop-filter: blur(2px); z-index: 8000; justify-content: center; align-items: center; }
+    .gs-time-dropdown-overlay.open { display: flex; }
+    .gs-time-dropdown { background: white; border-radius: 14px; box-shadow: 0 12px 36px rgba(0,0,0,0.18); overflow: hidden; min-width: 200px; width: 240px; opacity: 0; transform: scale(0.94) translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: none; }
+    .gs-time-dropdown.open { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+    .gs-time-dropdown-title { padding: 14px 18px 10px; font-size: 0.82em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.7px; border-bottom: 1px solid #f1f5f9; }
+    .gs-time-option { padding: 13px 18px; font-size: 0.92em; font-weight: 600; color: #334155; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.12s; }
+    .gs-time-option:hover { background: #f5f0ff; color: #5b21b6; }
+    .gs-time-option.selected { background: #faf5ff; color: #5b21b6; font-weight: 700; }
+    .gs-time-option .gs-time-opt-icon { color: #a78bfa; font-size: 0.9em; width: 16px; text-align: center; }
+    .gs-time-option .gs-check { color: #7c3aed; margin-left: auto; font-size: 0.85em; }
+
+    /* ── Footer ── */
+    .footer { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 1000; padding: 0 30px; }
+    .footer-content { display: flex; width: 100%; gap: 15px; padding: 10px 0; }
+    .footer-button { border: none; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 15px 10px; transition: opacity 0.2s; gap: 8px; font-weight: bold; font-size: 1.1em; background: linear-gradient(135deg, #4f46e5, #6366f1); border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+    .footer-button i { font-size: 1.2em; }
+    .footer-button:hover { opacity: 0.8; }
+    .footer-button span { font-size: 0.9em; font-weight: bold; }
+    #chatFooterBtn { flex-grow: 0; flex-shrink: 0; }
+    #amisBtn { flex: 1; }
+    #contactBtn { flex-grow: 0; flex-shrink: 0; }
+
+    /* ── Modals ── */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(15,23,42,0.65); backdrop-filter: blur(3px); z-index: 2000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.25s ease-out; }
+    .modal-overlay.active { display: flex; opacity: 1; }
+    .modal-content { background-color: white; padding: 28px; border-radius: 16px; width: 90%; max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); text-align: center; color: #1e293b; position: relative; }
+    .modal-close-btn { position: absolute; top: 14px; right: 16px; font-size: 1.3em; cursor: pointer; color: #94a3b8; transition: color 0.2s; background: none; border: none; line-height: 1; }
+    .modal-close-btn:hover { color: #1e293b; }
+    .modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+    .modal-action-btn { padding: 12px; border: none; border-radius: 10px; font-size: 1em; font-weight: bold; cursor: pointer; transition: opacity 0.2s, transform 0.15s; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .modal-action-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+
+    .rename-form { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; text-align: left; }
+    .input-group { display: flex; flex-direction: column; gap: 5px; }
+    .input-group label { font-weight: 600; font-size: 0.9em; color: #555; margin-bottom: 4px; display: block; }
+    .rename-form input, #setUsernameModal input { width: 100%; padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: 15px; outline: none; background: #f8fafc; transition: all 0.2s; color: #1e293b; box-sizing: border-box; }
+    .rename-form input:focus, #setUsernameModal input:focus { border-color: #6e8efb; background: #fff; box-shadow: 0 0 0 4px rgba(110,142,251,0.12); }
+    .error-message { color: #ef4444; font-size: 0.82em; font-weight: 600; display: none; margin-top: 3px; }
+    .success-message { color: #10b981; font-size: 0.95em; font-weight: bold; margin-top: 8px; display: none; text-align: center; }
+    .password-error-message { color: #ef4444; font-size: 0.9em; font-weight: bold; margin-top: 8px; display: none; text-align: center; }
+    #confirmRenameBtn { background: linear-gradient(to right, #6e8efb, #a777e3); color: white; padding: 12px; border: none; border-radius: 10px; font-size: 1em; font-weight: bold; cursor: pointer; margin-top: 6px; width: 100%; transition: opacity 0.2s; }
+    #confirmRenameBtn:hover:not(:disabled) { opacity: 0.88; }
+    #confirmRenameBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .loading-spinner { border: 3px solid #f0f0f0; border-top: 3px solid #6C00BF; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: none; margin: 8px auto 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .signout-actions { display: flex; gap: 12px; margin-top: 24px; }
+    #confirmLogoutBtn { background-color: #ef4444; color: white; padding: 10px 20px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; flex-grow: 1; font-size: 0.95em; }
+    #confirmLogoutBtn:hover { opacity: 0.85; }
+    #cancelLogoutBtn { background-color: #e2e8f0; color: #475569; padding: 10px 20px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; transition: opacity 0.2s; flex-grow: 1; font-size: 0.95em; }
+    #cancelLogoutBtn:hover { opacity: 0.85; }
+    #setUsernameModal .modal-content { max-width: 360px; }
+    #setUsernameModal h2 { color: #6C00BF; margin-bottom: 16px; }
+    #setUsernameModal .confirm-btn { background: linear-gradient(to right, #6e8efb, #a777e3); color: white; padding: 13px; border: none; border-radius: 10px; font-size: 1em; font-weight: bold; cursor: pointer; width: 100%; margin-top: 12px; transition: opacity 0.2s; }
+    #setUsernameModal .confirm-btn:hover:not(:disabled) { opacity: 0.88; }
+    #setUsernameModal .confirm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Players Modal ── */
+    #playersModal { justify-content: center; align-items: center; padding: 0; }
+    #playersModal .modal-content { max-width: 820px; width: 92%; height: 88%; max-height: 88vh; padding: 0; display: flex; flex-direction: column; opacity: 0; transform: scale(0.95); transition: opacity 0.3s ease, transform 0.3s ease; border-radius: 16px; overflow: hidden; }
+    #playersModal.active .modal-content { opacity: 1; transform: scale(1); }
+    .players-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; background: linear-gradient(to right, #6C00BF, #a777e3); color: white; flex-shrink: 0; }
+    .players-modal-header h2 { margin: 0; color: white; font-size: 1.15em; }
+    .players-modal-header .modal-close-btn { position: relative; top: auto; right: auto; color: rgba(255,255,255,0.8); font-size: 1.4em; }
+    .players-modal-header .modal-close-btn:hover { color: white; }
+    .players-container { display: flex; flex-grow: 1; overflow: hidden; }
+    .sidebar { width: 190px; background-color: #f8f7ff; border-right: 1px solid #ede9f8; padding: 12px 0; display: flex; flex-direction: column; flex-shrink: 0; }
+    .sidebar-item { padding: 13px 18px; font-weight: 600; color: #4A008F; cursor: pointer; transition: background-color 0.2s; display: flex; align-items: center; gap: 9px; font-size: 0.88em; }
+    .sidebar-item:hover { background-color: #ede9f8; }
+    .sidebar-item.active { background-color: #6C00BF; color: white; }
+    .sidebar-item .badge { background: #ef4444; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.75em; margin-left: auto; min-width: 18px; text-align: center; font-weight: 700; }
+    .sidebar-item .friends-count, .sidebar-item .sent-count { background: #ede9f8; color: #6C00BF; border-radius: 10px; padding: 1px 7px; font-size: 0.75em; margin-left: auto; min-width: 18px; text-align: center; font-weight: 700; }
+    .sidebar-item.active .friends-count, .sidebar-item.active .sent-count { background: rgba(255,255,255,0.25); color: white; }
+    .last-seen { font-size: 0.72em; color: #94a3b8; margin-left: 2px; }
+    .main-panel { flex-grow: 1; padding: 20px; background-color: white; overflow-y: auto; }
+    .content-panel { display: none; }
+    .content-panel.active-panel { display: block; }
+    .panel-title { font-size: 1em; font-weight: 700; color: #4A008F; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #f0ebff; display: flex; align-items: center; gap: 8px; }
+    .search-bar-wrap { display: flex; gap: 10px; margin-bottom: 18px; }
+    .search-bar-wrap input { flex-grow: 1; padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 0.92em; outline: none; transition: border-color 0.2s; }
+    .search-bar-wrap input:focus { border-color: #6C00BF; }
+    .search-bar-wrap button { background: #6C00BF; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-weight: bold; cursor: pointer; font-size: 0.88em; transition: background 0.2s; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+    .search-bar-wrap button:hover { background: #4A008F; }
+
+    .player-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 13px; margin-bottom: 7px; background: #fafafa; border-radius: 10px; border: 1px solid #f0f0f0; transition: background 0.15s; }
+    .player-item:hover { background: #f5f0ff; }
+    .player-item-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+    .player-item-left .user-icon { color: #6C00BF; font-size: 1.25em; flex-shrink: 0; }
+    .player-item-left .username { font-weight: 700; color: #2d1b69; font-size: 0.92em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.online { background: #10b981; box-shadow: 0 0 5px rgba(16,185,129,0.6); }
+    .status-dot.offline { background: #cbd5e1; }
+    .player-item-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+    .btn-sm { border: none; border-radius: 7px; padding: 7px 12px; font-size: 0.82em; font-weight: 700; cursor: pointer; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; gap: 4px; }
+    .btn-sm:hover:not(:disabled) { opacity: 0.82; }
+    .btn-sm:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-add { background: #10b981; color: white; }
+    .btn-cancel-req { background: #f59e0b; color: white; }
+    .btn-already { background: #94a3b8; color: white; cursor: default; }
+    .btn-cancel { background: #f59e0b; color: white; }
+    .btn-icon { width: 32px; height: 32px; padding: 0; border-radius: 7px; flex-shrink: 0; }
+    .btn-accept-icon { background: #10b981; color: white; }
+    .btn-reject-icon { background: #ef4444; color: white; }
+
+    .friend-ctx-btn { background: none; border: 1px solid #e2e8f0; cursor: pointer; color: #64748b; font-size: 0.9em; padding: 5px 8px; border-radius: 7px; transition: all 0.15s; flex-shrink: 0; }
+    .friend-ctx-btn:hover { background: #f1eeff; color: #6C00BF; border-color: #c4b5fd; }
+
+    .friend-ctx-menu { position: fixed; background: white; border: 1px solid #e8e0f8; border-radius: 12px; box-shadow: 0 10px 30px rgba(108,0,191,0.12); z-index: 9000; min-width: 180px; overflow: hidden; display: none; }
+    .friend-ctx-menu.open { display: block; animation: ctxFadeIn 0.12s ease; }
+    @keyframes ctxFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    .friend-ctx-menu button { width: 100%; padding: 11px 16px; border: none; background: none; text-align: left; font-size: 0.88em; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 10px; color: #334155; transition: background 0.12s; justify-content: flex-start; }
+    .friend-ctx-menu button:hover { background: #f5f0ff; }
+    .friend-ctx-menu .ctx-remove { color: #ef4444; }
+    .friend-ctx-menu .ctx-remove:hover { background: #fff1f1; }
+    .ctx-divider { height: 1px; background: #f1f5f9; margin: 3px 0; }
+
+    .empty-state { text-align: center; padding: 40px 20px; }
+    .empty-state i { font-size: 2.8em; margin-bottom: 14px; opacity: 0.3; display: block; color: #6C00BF; }
+    .empty-state p { font-size: 0.92em; color: #64748b; }
+    .spinner-inline { border: 3px solid #f0ebff; border-top: 3px solid #6C00BF; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; margin: 24px auto; }
+
+    .toast-notification { position: fixed; top: 24px; right: 24px; min-width: 280px; max-width: calc(100% - 48px); background: #fff; border-radius: 12px; padding: 14px 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.13); z-index: 99999; display: flex; align-items: flex-start; gap: 12px; opacity: 0; transform: translateY(-10px); transition: opacity 0.3s, transform 0.3s; pointer-events: none; }
+    .toast-notification.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    .toast-notification.error { border-left: 4px solid #ef4444; }
+    .toast-notification.success { border-left: 4px solid #10b981; }
+    .toast-notification.info { border-left: 4px solid #3b82f6; }
+    .toast-icon { font-size: 17px; margin-top: 1px; }
+    .toast-notification.error .toast-icon { color: #ef4444; }
+    .toast-notification.success .toast-icon { color: #10b981; }
+    .toast-notification.info .toast-icon { color: #3b82f6; }
+    .toast-body { flex: 1; }
+    .toast-title { font-weight: 700; font-size: 13px; margin-bottom: 2px; color: #1e293b; }
+    .toast-message { font-size: 12px; color: #64748b; }
+    .toast-close-btn { background: none; border: none; font-size: 17px; color: #94a3b8; cursor: pointer; padding: 0; line-height: 1; }
+    .toast-close-btn:hover { color: #1e293b; }
+    @media (max-width: 600px) { .toast-notification { right: 50%; transform: translateX(50%) translateY(-10px); } .toast-notification.show { transform: translateX(50%) translateY(0); } }
+
+    .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); display: flex; justify-content: center; align-items: center; z-index: 10000; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+    .loading-overlay.active { opacity: 1; pointer-events: all; }
+    .loading-spinner-large { border: 6px solid #f0ebff; border-top: 6px solid #6C00BF; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+
+    #userProfileModal { padding: 20px; }
+    .user-profile-modal-content { background: white; border-radius: 20px; width: 100%; max-width: 420px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.22); position: relative; opacity: 0; transform: scale(0.94) translateY(8px); transition: opacity 0.28s ease, transform 0.28s ease; }
+    .modal-overlay.active .user-profile-modal-content { opacity: 1; transform: scale(1) translateY(0); }
+    .upm-banner { height: 54px; background: linear-gradient(135deg, #5b21b6, #7c3aed, #a78bfa); position: relative; flex-shrink: 0; }
+    .upm-avatar-wrap { position: absolute; bottom: -24px; left: 50%; transform: translateX(-50%); z-index: 1; }
+    .upm-avatar { width: 48px; height: 48px; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 4px 14px rgba(91,33,182,0.2); }
+    .upm-avatar i { font-size: 1.6em; color: #7c3aed; }
+    .upm-body { padding: 32px 20px 16px; text-align: center; }
+    .upm-username { font-size: 1.05em; font-weight: 800; color: #1e293b; margin-bottom: 2px; }
+    .upm-uid-row { display: flex; align-items: center; justify-content: center; gap: 7px; margin-bottom: 10px; }
+    .upm-uid-text { font-size: 0.72em; color: #94a3b8; font-family: monospace; letter-spacing: 0.5px; }
+    .upm-copy-btn { background: #f1f5f9; border: none; border-radius: 6px; width: 22px; height: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.72em; color: #64748b; transition: background 0.18s, color 0.18s; flex-shrink: 0; }
+    .upm-copy-btn:hover { background: #e2e8f0; color: #334155; }
+    .upm-copy-btn.copied { background: #d1fae5; color: #065f46; }
+
+    .email-modal-content { background: white; border-radius: 18px; width: 90%; max-width: 380px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.22); position: relative; opacity: 0; transform: scale(0.94) translateY(8px); transition: opacity 0.28s, transform 0.28s; }
+    .modal-overlay.active .email-modal-content { opacity: 1; transform: scale(1) translateY(0); }
+    .email-modal-header { background: linear-gradient(135deg, #5b21b6, #7c3aed); padding: 18px 20px 16px; color: white; text-align: center; position: relative; }
+    .email-modal-header .em-close { position: absolute; top: 10px; right: 12px; background: rgba(255,255,255,0.2); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 0.9em; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+    .email-modal-header .em-close:hover { background: rgba(255,255,255,0.36); }
+    .email-modal-header .em-avatar { width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; border: 2px solid rgba(255,255,255,0.4); }
+    .email-modal-header .em-avatar i { font-size: 1.5em; }
+    .email-modal-header h3 { font-size: 1em; font-weight: 800; margin-bottom: 2px; }
+    .email-modal-header .em-uid { font-size: 0.72em; opacity: 0.75; font-family: monospace; }
+    .email-modal-body { padding: 20px 22px 22px; text-align: center; }
+    .email-modal-label { font-size: 0.7em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
+    .email-modal-value { font-size: 0.92em; font-weight: 600; color: #1e293b; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 9px; padding: 10px 14px; word-break: break-all; }
+    .email-modal-note { font-size: 0.75em; color: #94a3b8; margin-top: 12px; line-height: 1.5; }
+    .em-close-footer { width: 100%; padding: 11px; border: none; border-radius: 10px; background: #f1f5f9; color: #475569; font-size: 0.88em; font-weight: 700; cursor: pointer; margin-top: 16px; transition: background 0.15s; }
+    .em-close-footer:hover { background: #e2e8f0; }
+    .upm-relation-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 0.72em; font-weight: 700; margin-bottom: 12px; }
+    .upm-relation-badge.friend { background: #d1fae5; color: #065f46; }
+    .upm-relation-badge.none { background: #f1f5f9; color: #64748b; }
+    .upm-relation-badge.pending { background: #fef3c7; color: #92400e; }
+    .upm-divider { height: 1px; background: #f1f5f9; margin: 10px 0; }
+    .upm-actions { display: flex; flex-direction: column; gap: 6px; }
+    .upm-btn { width: 100%; padding: 11px 14px; border: none; border-radius: 9px; font-size: 0.88em; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: opacity 0.2s, transform 0.15s; position: relative; }
+    .upm-btn:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
+    .upm-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .upm-btn-add { background: #10b981; color: white; }
+    .upm-btn-cancel { background: #f59e0b; color: white; }
+    .upm-btn-already { background: #e0f2fe; color: #0369a1; cursor: default; }
+    .upm-btn-remove { background: #fee2e2; color: #b91c1c; }
+    .upm-btn-history, .upm-btn-friends-list { background: #f5f3ff; color: #6C00BF; }
+    .upm-close-btn { position: absolute; top: 10px; right: 12px; background: rgba(255,255,255,0.25); border: none; color: white; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 0.85em; display: flex; align-items: center; justify-content: center; transition: background 0.15s; z-index: 2; }
+    .upm-close-btn:hover { background: rgba(255,255,255,0.42); }
+    .upm-btn.loading, .btn-sm.loading { color: transparent !important; pointer-events: none; }
+    .upm-btn.loading::after, .btn-sm.loading::after { content: ''; position: absolute; width: 15px; height: 15px; top: 50%; left: 50%; margin: -7.5px 0 0 -7.5px; border: 2px solid rgba(255,255,255,0.35); border-top-color: white; border-radius: 50%; animation: spinner 0.7s linear infinite; }
+    .btn-sm.loading::after { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; }
+    @keyframes spinner { to { transform: rotate(360deg); } }
+
+    .remove-friend-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.65); backdrop-filter: blur(3px); z-index: 5000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.25s; }
+    .remove-friend-overlay.active { display: flex; opacity: 1; }
+    .remove-friend-card { background: white; border-radius: 18px; padding: 32px 28px; max-width: 420px; width: 90%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.22); animation: rmCardIn 0.2s ease; }
+    @keyframes rmCardIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+    .remove-friend-card .rm-icon { width: 60px; height: 60px; border-radius: 50%; background: #fee2e2; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+    .remove-friend-card .rm-icon i { font-size: 1.6em; color: #ef4444; }
+    .remove-friend-card h3 { font-size: 1.1em; font-weight: 800; color: #1e293b; margin-bottom: 8px; }
+    .remove-friend-card p { font-size: 0.88em; color: #64748b; margin-bottom: 22px; line-height: 1.5; }
+    .rm-buttons { display: flex; gap: 10px; }
+    .rm-btn-confirm { flex: 1; padding: 12px; border: none; border-radius: 10px; background: #ef4444; color: white; font-weight: 700; font-size: 0.92em; cursor: pointer; transition: opacity 0.2s; }
+    .rm-btn-confirm:hover { opacity: 0.85; }
+    .rm-btn-cancel { flex: 1; padding: 12px; border: none; border-radius: 10px; background: #f1f5f9; color: #475569; font-weight: 700; font-size: 0.92em; cursor: pointer; transition: opacity 0.2s; }
+    .rm-btn-cancel:hover { opacity: 0.85; }
+
+    #inviteFriendsModal { z-index: 3000; padding: 20px; }
+    .invite-modal-content {
+      max-width: 440px;
+      width: 90%;
+      padding: 0;
+      overflow: hidden;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+      opacity: 0;
+      transform: scale(0.94) translateY(8px);
+      transition: opacity 0.28s ease, transform 0.28s ease;
+      display: flex;
+      flex-direction: column;
     }
-    launchBtn.style.background = '';
-
-    if (gameOrigin === 'room' && !matchup) {
-      roomIsSender = true;
-      gsBody.classList.remove('gs-receiver-mode');
-      if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Choose Your Piece';
-      launchBtn.innerHTML = '<i class="fas fa-user-plus"></i> Invite Friends';
-      launchBtn.disabled = false;
-    } else if (gameOrigin === 'room' && matchup) {
-      roomIsSender = matchup.isSender !== false;
-      receiverIsReady = true;
-
-      if (roomIsSender) {
-        gsBody.classList.remove('gs-receiver-mode');
-        if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Choose Your Piece';
-        launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
-        launchBtn.style.background = '';
-        launchBtn.disabled = false;
-        var notReadyEl = document.getElementById('gsOpponentNotReady');
-        if (notReadyEl) notReadyEl.style.display = 'none';
-        startRoomSyncPolling(matchup.inviteId, true);
-      } else {
-        gsBody.classList.add('gs-receiver-mode');
-        if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Your Piece';
-        var myColor = selectedColor === 'green' ? 'red' : 'green';
-        applyReceiverColor(myColor);
-        updateReceiverReadyBtn(true);
-        receiverIsReady = true;
-        launchBtn.disabled = false;
-        startRoomSyncPolling(matchup.inviteId, false);
-      }
-    } else {
-      roomIsSender = true;
-      gsBody.classList.remove('gs-receiver-mode');
-      if (gsSectionLabelPiece) gsSectionLabelPiece.textContent = 'Choose Your Piece';
-      launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
-      launchBtn.disabled = false;
+    .modal-overlay.active .invite-modal-content { opacity: 1; transform: scale(1) translateY(0); }
+    .invite-modal-header {
+      background: linear-gradient(135deg, #5b21b6, #7c3aed, #a78bfa);
+      padding: 15px 18px 14px; color: white;
+      display: flex; align-items: center; gap: 11px; flex-shrink: 0;
     }
+    .invite-modal-header-info { flex: 1; text-align: center; }
+    .invite-modal-header-title { font-size: 0.98em; font-weight: 800; margin-bottom: 1px; }
+    .invite-modal-header-sub { font-size: 0.72em; opacity: 0.75; }
+    .invite-modal-header-img { width: 40px; height: 40px; border-radius: 9px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+    .invite-modal-header-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; }
+    .invite-modal-header-img .ph { font-size: 1.3em; color: white; }
+    .invite-modal-back { background: rgba(255,255,255,0.18); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.9em; transition: background 0.15s; flex-shrink: 0; }
+    .invite-modal-back:hover { background: rgba(255,255,255,0.34); }
+    .invite-modal-spacer { width: 30px; flex-shrink: 0; }
+    .invite-modal-body { padding: 14px 18px 18px; overflow-y: auto; height: 208px; flex-shrink: 0; }
 
-    var backBtn = document.getElementById('gameSetupBackBtn');
-    if (backBtn) backBtn.classList.toggle('hidden', gameOrigin === 'room' && !!matchup && !roomIsSender);
-    var quitBtn = document.getElementById('gsQuitBtn');
-    if (quitBtn) quitBtn.classList.toggle('visible', gameOrigin === 'room' && !!matchup);
-    var bodyRow = document.getElementById('gsBodyRow');
-    var gsRoomFriends = document.getElementById('gsRoomFriends');
-    var gsChatWrap = document.getElementById('gsChatWrap');
-    var isRoom = (gameOrigin === 'room');
+    .invite-friend-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 13px; margin-bottom: 7px; background: #fafafa; border-radius: 10px; border: 1px solid #f0f0f0; transition: background 0.15s; }
+    .invite-friend-item:hover { background: #f5f0ff; }
+    .invite-friend-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+    .invite-friend-left .user-icon { color: #6C00BF; font-size: 1.2em; flex-shrink: 0; }
+    .invite-friend-left .username { font-weight: 700; color: #2d1b69; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    if (bodyRow) bodyRow.classList.toggle('room-active', isRoom);
+    .btn-invite { background: linear-gradient(to right, #5b21b6, #7c3aed); color: white; border: none; border-radius: 8px; padding: 7px 11px; font-size: 0.8em; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: opacity 0.2s, transform 0.15s; white-space: nowrap; flex-shrink: 0; position: relative; min-width: 72px; justify-content: center; }
+    .btn-invite:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
+    .btn-invite:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+    .btn-invite.counting { background: #f59e0b; }
+    .btn-invite.sent { background: #10b981; }
+    .invite-empty-state { text-align: center; padding: 30px 16px; }
+    .invite-empty-state i { font-size: 2.4em; opacity: 0.25; color: #6C00BF; display: block; margin-bottom: 10px; }
+    .invite-empty-state p { font-size: 0.88em; color: #64748b; line-height: 1.5; }
+    .invite-spinner { border: 3px solid #f0ebff; border-top: 3px solid #6C00BF; border-radius: 50%; width: 22px; height: 22px; animation: spin 0.8s linear infinite; margin: 24px auto; }
 
-    if (isRoom && !matchup) {
-      if (gsRoomFriends) { gsRoomFriends.style.display = 'flex'; loadRoomFriends(); }
-      if (gsChatWrap) gsChatWrap.style.display = 'none';
-      if (window._stopRoomChat) window._stopRoomChat();
-    } else if (isRoom && matchup) {
-      if (gsRoomFriends) gsRoomFriends.style.display = 'none';
-      if (gsChatWrap) gsChatWrap.style.display = 'flex';
-      if (window._initRoomChat && matchup.inviteId) window._initRoomChat(matchup.inviteId);
-    } else {
-      if (gsRoomFriends) gsRoomFriends.style.display = 'none';
-      if (gsChatWrap) gsChatWrap.style.display = 'none';
-      if (window._stopRoomChat) window._stopRoomChat();
+    .game-invite-notif {
+      position: fixed; top: 14px; right: 14px; width: 272px;
+      background: white; border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(91,33,182,0.2), 0 2px 8px rgba(0,0,0,0.08);
+      border: 1.5px solid #ede9f8; z-index: 99990; overflow: hidden;
+      opacity: 0; transform: translateX(110%);
+      transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
     }
+    .game-invite-notif.gin-visible { opacity: 1; transform: translateX(0); pointer-events: auto; }
+    .gin-progress-wrap { height: 3px; background: #f0ebff; overflow: hidden; }
+    .gin-progress-bar { height: 100%; width: 100%; background: linear-gradient(to right, #5b21b6, #a78bfa); transform-origin: left; transition: transform 1s linear; }
+    .gin-body { padding: 10px 12px 10px; }
+    .gin-row-top { display: flex; align-items: flex-start; gap: 9px; }
+    .gin-icon { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #5b21b6, #7c3aed); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+    .gin-icon i { color: white; font-size: 0.82em; }
+    .gin-text-wrap { flex: 1; min-width: 0; }
+    .gin-label { font-size: 0.65em; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px; }
+    .gin-msg { font-size: 0.82em; font-weight: 600; color: #1e293b; line-height: 1.35; }
+    .gin-username { color: #7c3aed; font-weight: 800; }
+    .gin-countdown-badge { font-size: 0.78em; font-weight: 800; color: #7c3aed; background: #f5f0ff; border-radius: 6px; padding: 2px 7px; flex-shrink: 0; align-self: flex-start; margin-top: 1px; line-height: 1.6; }
+    .gin-actions { display: flex; gap: 7px; max-height: 0; overflow: hidden; opacity: 0; transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease; margin-top: 0; }
+    .game-invite-notif.gin-expanded .gin-actions { max-height: 50px; opacity: 1; margin-top: 9px; }
+    .gin-btn-accept { flex: 1; padding: 7px 8px; border: none; border-radius: 9px; background: linear-gradient(to right, #5b21b6, #7c3aed); color: white; font-size: 0.8em; font-weight: 700; cursor: pointer; transition: opacity 0.18s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+    .gin-btn-accept:hover { opacity: 0.85; }
+    .gin-btn-decline { width: 34px; height: 34px; border: none; border-radius: 9px; background: #f1f5f9; color: #64748b; font-size: 0.95em; cursor: pointer; transition: background 0.18s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .gin-btn-decline:hover { background: #fee2e2; color: #ef4444; }
 
-    openModal(gameSetupModal);
-  }
-
-  function applyReceiverColor(color) {
-    document.querySelectorAll('.color-pick-btn').forEach(function (b) {
-      b.classList.toggle('selected', b.dataset.color === color);
-    });
-  }
-
-  function updateReceiverReadyBtn(isReady) {
-    var launchBtn = document.getElementById('gsLaunchBtn');
-    if (isReady) {
-      launchBtn.innerHTML = '<i class="fas fa-check-circle"></i> Ready';
-      launchBtn.style.background = 'linear-gradient(to right, #059669, #10b981)';
-    } else {
-      launchBtn.innerHTML = '<i class="fas fa-times-circle"></i> Not Ready';
-      launchBtn.style.background = 'linear-gradient(to right, #dc2626, #ef4444)';
+    @media (max-width: 768px) {
+      .game-options-container { flex-direction: column; gap: 15px; }
+      .game-option { max-width: 100%; min-height: 120px; }
+      .game-option i { font-size: 2.5em; }
+      .footer { padding: 0 10px; }
+      .footer-content { gap: 10px; }
+      .footer-button { font-size: 0.9em; padding: 12px 5px; }
+      #playersModal { padding: 0; }
+      #playersModal .modal-content { width: 100%; height: 100%; max-height: 100vh; border-radius: 0; }
+      .sidebar { width: 160px; }
+      .sidebar-item { padding: 11px 12px; font-size: 0.82em; }
+      .gs-launch-btn { padding: 10px 12px; font-size: 0.82em; }
+      #inviteFriendsModal { padding: 0; }
+      .invite-modal-content { max-width: 100%; border-radius: 0; }
+      .invite-modal-body { height: auto; max-height: calc(100vh - 70px); }
+      .game-invite-notif { width: calc(100vw - 24px); right: 12px; top: 12px; }
+      .game-setup-modal .modal-content { width: 94%; max-height: 92vh; }
+      .gs-body-chat { width: 120px; }
+      .color-pick-btn img, .color-pick-btn .cpb-img-ph { width: 38px; height: 38px; }
     }
-    launchBtn.disabled = false;
-  }
-
-  var receiverIsReady = true;
-
-  var _handledRoomEvents = new Set();
-
-  var roomFriendInviteTimers = {};
-  var roomFriendInviteIds = {};
-
-  async function loadRoomFriends() {
-    var list = document.getElementById('gsRoomFriendsList');
-    if (!list) return;
-    list.innerHTML = '<div class="gs-room-empty">Loading…</div>';
-    try {
-      var data = await callSessionApi('get-friends', { uid: currentUser.uid });
-      var online = (data.friends || []).filter(function(f) { return f.online; });
-      list.innerHTML = '';
-      if (!data.friends || data.friends.length === 0) {
-        list.innerHTML = '<div class="gs-room-empty">You have no friends yet.</div>';
-        return;
-      }
-      if (online.length === 0) {
-        list.innerHTML = '<div class="gs-room-empty">No friends online right now.</div>';
-        return;
-      }
-      online.forEach(function(friend) {
-        var item = document.createElement('div'); item.className = 'gs-room-friend-item';
-        var nameEl = document.createElement('div'); nameEl.className = 'gs-room-friend-name'; nameEl.textContent = friend.username;
-        var invBtn = document.createElement('button'); invBtn.className = 'gs-room-invite-btn'; invBtn.title = 'Invite ' + friend.username;
-        invBtn.innerHTML = '<i class="fas fa-gamepad"></i>';
-        if (roomFriendInviteTimers[friend.uid]) {
-          invBtn.disabled = true; invBtn.classList.add('counting');
-        }
-        invBtn.addEventListener('click', (function(btn, f) {
-          return function() {
-            if (roomFriendInviteTimers[f.uid] || btn.disabled) return;
-            startRoomFriendInvite(btn, f);
-          };
-        })(invBtn, friend));
-        item.appendChild(nameEl); item.appendChild(invBtn); list.appendChild(item);
-      });
-    } catch(e) {
-      list.innerHTML = '<div class="gs-room-empty">Failed to load.</div>';
+    @media (max-width: 400px) {
+      .game-setup-modal .modal-content { width: 98%; }
+      .gs-body-chat { width: 100px; }
+      .gs-matchup-name { font-size: 0.75em; }
+      .gs-launch-btn { padding: 9px 10px; font-size: 0.78em; }
     }
-  }
+  </style>
+</head>
+<body>
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner-large"></div>
+  </div>
 
-  async function startRoomFriendInvite(btn, friend) {
-    btn.disabled = true; btn.classList.add('counting');
-    var inviteId = null;
-    try {
-      var res = await callSessionApi('send-game-invite', {
-        uid: currentUser.uid, toUid: friend.uid,
-        game: selectedGame, color: selectedColor, minutes: selectedMinutes
-      });
-      inviteId = res.inviteId;
-      roomFriendInviteIds[friend.uid] = inviteId;
-    } catch(err) {
-      btn.disabled = false; btn.classList.remove('counting'); btn.innerHTML = '<i class="fas fa-gamepad"></i>';
-      showToast(err.message || 'Failed to send invitation.', 'error');
-      return;
-    }
-    var count = 10;
-    btn.innerHTML = ''; btn.textContent = count;
-    var btnIvl = setInterval(function() {
-      count--;
-      if (count <= 0) {
-        clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
-        btn.classList.remove('counting'); btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-gamepad"></i>';
-        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: inviteId }).catch(function(){});
-        if (roomFriendStatusTimers[inviteId]) { clearInterval(roomFriendStatusTimers[inviteId]); delete roomFriendStatusTimers[inviteId]; }
-        delete roomFriendInviteIds[friend.uid];
-      } else {
-        btn.textContent = count;
-      }
-    }, 1000);
-    roomFriendInviteTimers[friend.uid] = btnIvl;
-    // Polling accepté
-    var statusIvl = setInterval(async function() {
-      try {
-        var sRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
-        if (sRes.status === 'accepted') {
-          clearInterval(statusIvl); delete roomFriendStatusTimers[inviteId];
-          clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
-          delete roomFriendInviteIds[friend.uid];
-          selectedGame = sRes.game; selectedMinutes = sRes.minutes; selectedColor = sRes.color;
-          openGameSetup(selectedGame, {
-            senderUsername: sRes.senderUsername, receiverUsername: sRes.receiverUsername,
-            isSender: true, inviteId: inviteId
-          });
-        } else if (sRes.status === 'declined' || sRes.status === 'expired' || sRes.status === 'cancelled' || sRes.status === 'not_found') {
-          clearInterval(statusIvl); delete roomFriendStatusTimers[inviteId];
-          clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
-          delete roomFriendInviteIds[friend.uid];
-          btn.disabled = false; btn.classList.remove('counting'); btn.innerHTML = '<i class="fas fa-gamepad"></i>';
-          if (sRes.status === 'declined') showToast(friend.username + ' declined your invitation.', 'info');
-        }
-      } catch(e) {}
-    }, 2000);
-    roomFriendStatusTimers[inviteId] = statusIvl;
-  }
-  var roomFriendStatusTimers = {};
+  <div class="header">
+    <div class="user-info">
+      <div class="profile-box" id="profileBox">
+        <i class="fas fa-user-circle icon-user"></i>
+        <span class="name" id="UsernameDisplay">____</span>
+      </div>
+    </div>
+    <button class="settings-btn" id="settingsBtn"><i class="fas fa-cog"></i></button>
+  </div>
 
-  function startRoomSyncPolling(inviteId, isSender) {
-    if (!inviteId) return;
-    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-    var pollInterval = isSender ? 5000 : 3000;
-    roomSyncTimer = setInterval(async function() {
-      if (!gameSetupModal.classList.contains('active')) {
-        clearInterval(roomSyncTimer); roomSyncTimer = null; return;
-      }
-      try {
-        var res = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
-        if (res.status === 'accepted') {
-          if (isSender) {
-            var rReady = (res.receiverReady !== false);
-            receiverIsReady = rReady;
-            var launchBtn = document.getElementById('gsLaunchBtn');
-            var notReadyEl = document.getElementById('gsOpponentNotReady');
-            if (launchBtn) {
-              launchBtn.innerHTML = '<i class="fas fa-play"></i> Start Game';
-              launchBtn.disabled = !receiverIsReady;
-              launchBtn.style.background = receiverIsReady ? '' : 'linear-gradient(to right, #94a3b8, #64748b)';
-            }
-            if (notReadyEl) notReadyEl.style.display = receiverIsReady ? 'none' : 'inline';
-          } else {
-            var changed = false;
-            if (res.color && res.color !== selectedColor) {
-              selectedColor = res.color;
-              applyReceiverColor(selectedColor === 'green' ? 'red' : 'green');
-              changed = true;
-            }
-            if (res.minutes && res.minutes !== selectedMinutes) {
-              selectedMinutes = res.minutes;
-              document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
-              document.querySelectorAll('.gs-time-option').forEach(function(o) {
-                var sel = parseInt(o.dataset.minutes) === selectedMinutes;
-                o.classList.toggle('selected', sel);
-                var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none';
-              });
-            }
-            if (res.game && res.game !== selectedGame) {
-              selectedGame = res.game;
-              var label = gameLabels[selectedGame] || selectedGame;
-              var gsHeaderTitle = document.getElementById('gsHeaderTitle');
-              var gsHeaderImg = document.getElementById('gsHeaderImg');
-              if (gsHeaderTitle) gsHeaderTitle.textContent = label;
-              if (gsHeaderImg) {
-                gsHeaderImg.innerHTML = '';
-                var img = document.createElement('img');
-                img.src = gameImages[selectedGame] || '';
-                img.alt = label;
-                img.onerror = function() { gsHeaderImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
-                gsHeaderImg.appendChild(img);
-              }
-            }
-          }
-        } else if (res.status === 'started') {
+  <div class="main-content">
+    <div class="game-options-container">
+      <button class="game-option" id="searchAdversariesBtn"><i class="fas fa-search"></i><span>Create a Game</span></button>
+      <button class="game-option" id="roomBtn"><i class="fas fa-users"></i><span>Room</span></button>
+      <button class="game-option" id="tournamentBtn"><i class="fas fa-trophy"></i><span>Tournament</span></button>
+    </div>
+  </div>
 
-          clearInterval(roomSyncTimer); roomSyncTimer = null;
-          if (window._stopRoomChat) window._stopRoomChat();
-          var destPage2 = (selectedGame === 'fanorona') ? 'game-fanorona.html' : 'game-vela.html';
-          var senderCol2 = (res.color === 'red') ? 'mena' : 'maintso';
-          var receiverCol2 = (res.color === 'red') ? 'maintso' : 'mena';
-          var myCol2 = isSender ? senderCol2 : receiverCol2;
-          var url2 = destPage2
-            + '?gameId='   + encodeURIComponent(res.gameId || inviteId)
-            + '&color='    + encodeURIComponent(myCol2)
-            + '&inviteId=' + encodeURIComponent(inviteId);
-          if (selectedGame === 'both') url2 += '&source=both';
-          window.location.href = url2;
-        } else if (res.status === 'declined' && isSender) {
-          var evtKey = inviteId + ':declined';
-          if (_handledRoomEvents.has(evtKey)) return;
-          _handledRoomEvents.add(evtKey);
-          clearInterval(roomSyncTimer); roomSyncTimer = null;
-          if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
-          var receiverName = (matchupData && matchupData.receiverUsername) ? matchupData.receiverUsername : 'Opponent';
-          matchupData = null;
-          openGameSetup(selectedGame, null);
-          showToast(receiverName + ' has left the room.', 'info', '⚠ Player left');
-        } else if (res.status === 'cancelled' || res.status === 'not_found') {
-          clearInterval(roomSyncTimer); roomSyncTimer = null;
-          if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
-          if (!isSender) {
-            closeModal(gameSetupModal);
-            closeModal(gameSelectModal);
-            var senderName2 = (matchupData && matchupData.senderUsername) ? matchupData.senderUsername : 'The host';
-            showToast(senderName2 + ' has left the room.', 'info', '⚠ Room closed');
-            if (_receiverCameFromFriends) {
-              _receiverCameFromFriends = false;
-              var pm = document.getElementById('playersModal');
-              if (pm) { _friendsFirstLoad = true; openModal(pm); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); }
-            }
-          }
-          matchupData = null;
-        }
-      } catch(e) {}
-    }, pollInterval);
-  }
+  <div class="footer">
+    <div class="footer-content">
+      <button class="footer-button" id="chatFooterBtn"><i class="fas fa-comment-dots"></i><span>Chat</span></button>
+      <button class="footer-button" id="amisBtn" style="position:relative;">
+        <i class="fas fa-user-friends"></i><span>Friends</span>
+        <span id="footerRequestsBadge" style="display:none;position:absolute;top:6px;right:6px;background:#ef4444;color:white;border-radius:50%;width:17px;height:17px;font-size:0.65em;font-weight:700;align-items:center;justify-content:center;line-height:1;">0</span>
+      </button>
+      <button class="footer-button" id="contactBtn"><i class="fas fa-envelope" style="color:#FFD700!important;"></i><span>Contact</span></button>
+    </div>
+  </div>
 
-  var roomQuitOverlay = document.getElementById('roomQuitOverlay');
+  <div class="modal-overlay game-select-modal" id="gameSelectModal">
+    <div class="modal-content">
+      <div class="game-select-modal-header">
+        <div class="gm-title" id="gameSelectTitle"><i class="fas fa-gamepad" style="color:#7c3aed;"></i>Create a Game</div>
+        <button class="gm-close" id="gameSelectCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="gm-sub" id="gameSelectSub">Choose the game type you want to play</div>
+      <div class="game-type-grid">
+        <button class="game-type-btn" data-game="both">
+          <div class="game-type-img"><img src="img/fanorona&vela.png" alt="Fanorona &amp; Vela" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="placeholder-icon" style="display:none;"><i class="fas fa-chess-board"></i></span></div>
+          <div class="game-type-info"><div class="game-type-name">Fanorona &amp; Vela</div><div class="game-type-desc">Play both game variants combined</div></div>
+          <i class="fas fa-chevron-right game-type-arrow"></i>
+        </button>
+        <button class="game-type-btn" data-game="fanorona">
+          <div class="game-type-img"><img src="img/fanorona.png" alt="Fanorona" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="placeholder-icon" style="display:none;"><i class="fas fa-chess"></i></span></div>
+          <div class="game-type-info"><div class="game-type-name">Fanorona</div><div class="game-type-desc">Classic Malagasy strategy board game</div></div>
+          <i class="fas fa-chevron-right game-type-arrow"></i>
+        </button>
+        <button class="game-type-btn" data-game="vela">
+          <div class="game-type-img"><img src="img/vela.png" alt="Vela" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><span class="placeholder-icon" style="display:none;"><i class="fas fa-wind"></i></span></div>
+          <div class="game-type-info"><div class="game-type-name">Vela</div><div class="game-type-desc">Traditional Malagasy sailing game</div></div>
+          <i class="fas fa-chevron-right game-type-arrow"></i>
+        </button>
+      </div>
+    </div>
+  </div>
 
-  function openRoomQuitConfirm() {
-    var opponentName = '—';
-    if (matchupData) {
-      opponentName = roomIsSender ? matchupData.receiverUsername : matchupData.senderUsername;
-    }
-    document.getElementById('rqTitle').textContent = 'Leave the room?';
-    document.getElementById('rqMessage').textContent =
-      'Are you sure you want to leave the room with ' + opponentName + '? Your opponent will also be removed.';
-    roomQuitOverlay.classList.add('active');
-  }
+  <div class="modal-overlay game-setup-modal" id="gameSetupModal">
+    <div class="modal-content">
+      <div class="game-setup-header">
+        <button class="gsh-back" id="gameSetupBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="game-setup-header-img" id="gsHeaderImg"><span class="ph"><i class="fas fa-chess-board"></i></span></div>
+        <div class="game-setup-header-info">
+          <div class="game-setup-header-title" id="gsHeaderTitle">Game Setup</div>
+          <div class="game-setup-header-sub" id="gsHeaderSub">Configure your game settings</div>
+        </div>
+        <button class="gsh-quit" id="gsQuitBtn" aria-label="Quit room"><i class="fas fa-sign-out-alt"></i> Quit</button>
+      </div>
+      <div class="game-setup-body">
+        <div class="gs-body-row" id="gsBodyRow">
 
-  function closeRoomQuitConfirm() {
-    roomQuitOverlay.classList.remove('active');
-  }
+          <div class="gs-body-left" id="gsBodyLeft">
 
-  async function quitRoom() {
-    closeRoomQuitConfirm();
-    if (matchupData && matchupData.inviteId) {
-      try {
-        if (roomIsSender) {
-          await callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: matchupData.inviteId });
-        } else {
-          await callSessionApi('decline-game-invite', { uid: currentUser.uid, inviteId: matchupData.inviteId });
-        }
-      } catch(e) {}
-    }
-    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-    if (window._roomOfflineTimer) { clearTimeout(window._roomOfflineTimer); window._roomOfflineTimer = null; }
-    if (window._stopRoomChat) window._stopRoomChat();
-    closeGsDropdown();
-    closeModal(gameSetupModal);
-    closeModal(gameSelectModal);
-    var _wasFromFriends = _ctxInviteFromFriends;
-    matchupData = null;
-    _ctxInviteFromFriends = false;
-    if (_wasFromFriends && roomIsSender) {
-      var pm3 = document.getElementById('playersModal');
-      if (pm3) { _friendsFirstLoad = true; openModal(pm3); loadFriendsPanel(); loadRequestsBadge(); loadSentBadge(); }
-    }
-  }
+            <div class="gs-room-friends" id="gsRoomFriends">
+              <div class="gs-room-friends-label">Online friends</div>
+              <div class="gs-room-friends-list" id="gsRoomFriendsList">
+                <div class="gs-room-empty">Loading…</div>
+              </div>
+            </div>
 
-  document.getElementById('rqCancelBtn').addEventListener('click', closeRoomQuitConfirm);
-  document.getElementById('rqConfirmBtn').addEventListener('click', quitRoom);
-  roomQuitOverlay.addEventListener('click', function(e) { if (e.target === roomQuitOverlay) closeRoomQuitConfirm(); });
+            <div class="gs-body-chat" id="gsChatWrap">
+              <div class="gs-chat-messages" id="gsChatMessages">
+                <span class="gs-chat-placeholder">No messages yet…</span>
+              </div>
+              <div class="gs-chat-input-row">
+                <textarea class="gs-chat-input" id="gsChatInput" placeholder="Message…" rows="1"></textarea>
+                <button class="gs-chat-send" id="gsChatSendBtn" aria-label="Send"><i class="fas fa-paper-plane"></i></button>
+              </div>
+            </div>
 
-  document.getElementById('gsQuitBtn').addEventListener('click', function() {
-    openRoomQuitConfirm();
-  });
+          </div>
 
-  document.getElementById('gameSetupBackBtn').addEventListener('click', function () {
-    if (!roomIsSender) return;
-    closeGsDropdown();
-    if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-    closeModal(gameSetupModal);
-    gameOrigin = 'room';
-    if (!matchupData) openGameSelectModal('room');
-    else openGameSelectModal('room');
-  });
-  gameSetupModal.addEventListener('click', function (e) { if (e.target === gameSetupModal) closeGsDropdown(); });
+          <div class="gs-body-settings" id="gsBodySettings">
 
-  document.querySelectorAll('.color-pick-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      if (!roomIsSender && matchupData) return;
-      selectedColor = btn.dataset.color;
-      document.querySelectorAll('.color-pick-btn').forEach(function (b) { b.classList.toggle('selected', b.dataset.color === selectedColor); });
-      if (matchupData) document.getElementById('gsHeaderSub').textContent = 'Room · ' + selectedMinutes + ' min';
-      if (roomIsSender && matchupData && matchupData.inviteId) {
-        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
-      }
-    });
-  });
+            <div class="gs-matchup" id="gsMatchup">
+              <div class="gs-matchup-with" id="gsMatchupWith" style="display:none; align-items:center; width:100%; justify-content:center;">
+                <div class="gs-matchup-name" id="gsMatchupSender">—</div>
+                <i class="fas fa-times gs-matchup-vs-icon"></i>
+                <div class="gs-matchup-name" id="gsMatchupReceiver">—</div>
+              </div>
+              <div class="gs-matchup-pending" id="gsMatchupPending" style="display:none; width:100%; text-align:center;">
+                Invite a friend to play with you
+              </div>
+            </div>
+            <div class="gs-section-label" id="gsSectionLabelPiece">Choose Your Piece</div>
+            <div class="color-pick-row">
+              <button class="color-pick-btn selected" data-color="green" id="cpGreen">
+                <img src="img/button-green.png" alt="Green" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="cpb-img-ph green" style="display:none;"><i class="fas fa-circle"></i></div>
+                <span class="cpb-label">Green</span>
+              </button>
+              <button class="color-pick-btn" data-color="red" id="cpRed">
+                <img src="img/button-red.png" alt="Red" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="cpb-img-ph red" style="display:none;"><i class="fas fa-circle"></i></div>
+                <span class="cpb-label">Red</span>
+              </button>
+            </div>
+            <div class="gs-time-header-row">
+              <div class="gs-section-label" style="margin-bottom:0;">Time per player</div>
+              <span class="gs-opponent-not-ready" id="gsOpponentNotReady">Opponent not ready</span>
+            </div>
+            <div class="gs-time-row">
+              <button class="gs-time-trigger" id="gsTimeTrigger">
+                <span class="gs-time-val"><i class="fas fa-clock"></i><span id="gsTimeDisplay">5 min</span></span>
+                <i class="fas fa-chevron-down gs-time-chevron"></i>
+              </button>
+              <button class="gs-launch-btn" id="gsLaunchBtn"><i class="fas fa-play"></i> Start Game</button>
+            </div>
+          </div>
 
-  var gsTimeTrigger = document.getElementById('gsTimeTrigger');
-  var gsTimeDropdown = document.getElementById('gsTimeDropdown');
-  var gsTimeDropdownOverlay = document.getElementById('gsTimeDropdownOverlay');
+        </div>
+      </div>
+    </div>
+  </div>
 
-  function openGsDropdown() { gsDropdownOpen = true; gsTimeDropdownOverlay.classList.add('open'); gsTimeDropdown.classList.add('open'); gsTimeTrigger.classList.add('open'); }
-  function closeGsDropdown() { gsDropdownOpen = false; gsTimeDropdown.classList.remove('open'); gsTimeDropdownOverlay.classList.remove('open'); if (gsTimeTrigger) gsTimeTrigger.classList.remove('open'); }
+  <div class="modal-overlay" id="inviteFriendsModal">
+    <div class="invite-modal-content">
+      <div class="invite-modal-header">
+        <button class="invite-modal-back" id="inviteModalBackBtn" aria-label="Back"><i class="fas fa-arrow-left"></i></button>
+        <div class="invite-modal-header-img" id="inviteHeaderImg"><span class="ph"><i class="fas fa-chess-board"></i></span></div>
+        <div class="invite-modal-header-info">
+          <div class="invite-modal-header-title" id="inviteHeaderTitle">Invite Friends</div>
+          <div class="invite-modal-header-sub" id="inviteHeaderSub">Choose a friend to invite</div>
+        </div>
+        <div class="invite-modal-spacer"></div>
+      </div>
+      <div class="invite-modal-body" id="inviteFriendsList"></div>
+    </div>
+  </div>
 
-  gsTimeTrigger.addEventListener('click', function (e) { e.stopPropagation(); if (gsDropdownOpen) closeGsDropdown(); else openGsDropdown(); });
-  gsTimeDropdownOverlay.addEventListener('click', function (e) { if (e.target === gsTimeDropdownOverlay) closeGsDropdown(); });
-  document.querySelectorAll('.gs-time-option').forEach(function (opt) {
-    opt.addEventListener('click', function (e) {
-      e.stopPropagation(); selectedMinutes = parseInt(opt.dataset.minutes); document.getElementById('gsTimeDisplay').textContent = selectedMinutes + ' min';
-      document.querySelectorAll('.gs-time-option').forEach(function (o) { var sel = parseInt(o.dataset.minutes) === selectedMinutes; o.classList.toggle('selected', sel); var ck = o.querySelector('.gs-check'); if (ck) ck.style.display = sel ? '' : 'none'; });
-      closeGsDropdown();
-      if (roomIsSender && matchupData && matchupData.inviteId) {
-        callSessionApi('update-room-settings', { uid: currentUser.uid, inviteId: matchupData.inviteId, color: selectedColor, minutes: selectedMinutes, game: selectedGame }).catch(function(){});
-      }
-    });
-  });
-  document.addEventListener('click', function (e) { if (gsDropdownOpen && gsTimeDropdownOverlay && !gsTimeDropdownOverlay.contains(e.target)) closeGsDropdown(); });
+  <div class="game-invite-notif" id="gameInviteNotif">
+    <div class="gin-progress-wrap"><div class="gin-progress-bar" id="ginProgressBar"></div></div>
+    <div class="gin-body">
+      <div class="gin-row-top">
+        <div class="gin-icon"><i class="fas fa-gamepad"></i></div>
+        <div class="gin-text-wrap">
+          <div class="gin-label">Game Invitation</div>
+          <div class="gin-msg"><span class="gin-username" id="ginUsername">Player</span> invited you to play!</div>
+        </div>
+        <div class="gin-countdown-badge" id="ginCountdown">10</div>
+      </div>
+      <div class="gin-actions">
+        <button class="gin-btn-accept" id="ginAcceptBtn"><i class="fas fa-check"></i> Accept</button>
+        <button class="gin-btn-decline" id="ginDeclineBtn"><i class="fas fa-times"></i></button>
+      </div>
+    </div>
+  </div>
 
-  document.getElementById('gsLaunchBtn').addEventListener('click', function () {
-    if (gameOrigin === 'room' && !matchupData) {
-      closeGsDropdown(); closeModal(gameSetupModal); openInviteFriendsModal();
-    } else if (gameOrigin === 'room' && matchupData && !roomIsSender) {
-      receiverIsReady = !receiverIsReady;
-      updateReceiverReadyBtn(receiverIsReady);
-      if (matchupData && matchupData.inviteId) {
-        callSessionApi('update-room-ready', { uid: currentUser.uid, inviteId: matchupData.inviteId, ready: receiverIsReady }).catch(function(){});
-      }
-    } else {
-      if (!matchupData || !matchupData.inviteId) return;
-      var launchBtn = document.getElementById('gsLaunchBtn');
-      if (launchBtn) launchBtn.disabled = true;
-      callSessionApi('start-fanorona-game', {
-        uid:      currentUser.uid,
-        inviteId: matchupData.inviteId
-      }).then(function(res) {
-        if (res.success) {
-          if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
-          if (window._stopRoomChat) window._stopRoomChat();
-          var destPage = (selectedGame === 'fanorona') ? 'game-fanorona.html' : 'game-vela.html';
-          var senderColor = (selectedColor === 'red') ? 'mena' : 'maintso';
-          var url = destPage
-            + '?gameId='   + encodeURIComponent(res.gameId)
-            + '&color='    + encodeURIComponent(senderColor)
-            + '&inviteId=' + encodeURIComponent(matchupData.inviteId);
-          if (selectedGame === 'both') url += '&source=both';
-          window.location.href = url;
-        } else {
-          showToast('Failed to start game.', 'error');
-          if (launchBtn) launchBtn.disabled = false;
-        }
-      }).catch(function(err) {
-        showToast(err.message || 'Failed to start game.', 'error');
-        if (launchBtn) launchBtn.disabled = false;
-      });
-    }
-  });
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="userSettingModal">
+    <div class="modal-content">
+      <button class="modal-close-btn" id="settingModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
+      <h2 style="color:#6C00BF;margin-bottom:4px;"><i class="fas fa-cog"></i> Settings</h2>
+      <p style="color:#64748b;font-size:0.85em;margin-bottom:4px;">Manage your account preferences</p>
+      <div class="modal-actions">
+        <button class="modal-action-btn" id="renameBtn" style="background:#f5f3ff;color:#6C00BF;"><i class="fas fa-signature"></i> Change Username</button>
+        <button class="modal-action-btn" id="signOutBtn" style="background:#fee2e2;color:#b91c1c;"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
+      </div>
+    </div>
+  </div>
 
-  // INVITE FRIENDS MODAL
-  var inviteTimers = {};
-  var inviteStatusTimers = {};
-  var activeInviteIds = {};
+  <div class="modal-overlay" id="renameModal">
+    <div class="modal-content">
+      <button class="modal-close-btn" id="renameModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
+      <h2 style="color:#6C00BF;margin-bottom:16px;"><i class="fas fa-signature"></i> Change Username</h2>
+      <div class="rename-form">
+        <div class="input-group">
+          <label for="newNameInput">New Username</label>
+          <input type="text" id="newNameInput" placeholder="3–20 characters, letters, numbers, _" required>
+          <span class="error-message" id="UsernameError">This username is already taken.</span>
+        </div>
+        <div class="input-group">
+          <label for="passwordConfirmInput">Confirm with Password</label>
+          <input type="password" id="passwordConfirmInput" placeholder="Enter your current password" required>
+        </div>
+        <p class="password-error-message" id="passwordErrorMessage"></p>
+        <p class="success-message" id="renameSuccessMessage"><i class="fas fa-check-circle"></i> Username changed successfully!</p>
+        <div class="loading-spinner" id="renameLoadingSpinner"></div>
+        <button id="confirmRenameBtn" disabled>Confirm Change</button>
+      </div>
+    </div>
+  </div>
 
-  function openInviteFriendsModal() {
-    var label = gameLabels[selectedGame] || selectedGame || 'Game';
-    var headerImg = document.getElementById('inviteHeaderImg'); headerImg.innerHTML = '';
-    var img = document.createElement('img'); img.src = gameImages[selectedGame] || ''; img.alt = label;
-    img.onerror = function () { headerImg.innerHTML = '<span class="ph"><i class="fas fa-chess-board"></i></span>'; };
-    headerImg.appendChild(img);
-    document.getElementById('inviteHeaderTitle').textContent = 'Invite Friends';
-    document.getElementById('inviteHeaderSub').textContent = label + ' · ' + selectedMinutes + ' min';
-    // Reset timers
-    Object.keys(inviteTimers).forEach(function(uid) { clearInterval(inviteTimers[uid]); });
-    Object.keys(inviteStatusTimers).forEach(function(id) { clearInterval(inviteStatusTimers[id]); });
-    inviteTimers = {}; inviteStatusTimers = {}; activeInviteIds = {};
-    _handledRoomEvents.clear();
-    openModal(inviteFriendsModal);
-    loadOnlineFriendsForInvite();
-  }
+  <div class="modal-overlay" id="setUsernameModal">
+    <div class="modal-content">
+      <h2><i class="fas fa-signature"></i> Choose Your Username</h2>
+      <p style="margin-bottom:16px;color:#64748b;font-size:0.88em;">This name will be visible to other players.</p>
+      <div class="input-group">
+        <input type="text" id="setUsernameInput" placeholder="Username (3–20 characters, _ allowed)" required>
+        <span class="error-message" id="setUsernameError"></span>
+      </div>
+      <div class="loading-spinner" id="setUsernameLoadingSpinner"></div>
+      <button class="confirm-btn" id="confirmSetUsernameBtn" disabled>Confirm</button>
+    </div>
+  </div>
 
-  async function loadOnlineFriendsForInvite() {
-    var container = document.getElementById('inviteFriendsList');
-    container.innerHTML = '<div class="invite-spinner"></div>';
-    try {
-      var data = await callSessionApi('get-friends', { uid: currentUser.uid });
-      container.innerHTML = '';
-      var onlineFriends = (data.friends || []).filter(function(f) { return f.online; });
-      if (onlineFriends.length === 0) {
-        container.innerHTML = '<div class="invite-empty-state"><i class="fas fa-wifi"></i><p>No friends are online right now.<br>Invite them when they connect!</p></div>';
-        return;
-      }
-      onlineFriends.forEach(function(friend) {
-        var div = document.createElement('div'); div.className = 'invite-friend-item';
-        var leftDiv = document.createElement('div'); leftDiv.className = 'invite-friend-left';
-        leftDiv.innerHTML = '<i class="fas fa-user-circle user-icon"></i><span class="username">' + escapeHtml(friend.username) + '</span><span class="status-dot online"></span>';
-        var inviteBtn = document.createElement('button'); inviteBtn.className = 'btn-invite'; inviteBtn.dataset.uid = friend.uid;
-        inviteBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
-        inviteBtn.addEventListener('click', (function(btn, f) {
-          return function() {
-            if (inviteTimers[f.uid]) return;
-            startSendInvite(btn, f);
-          };
-        })(inviteBtn, friend));
-        div.appendChild(leftDiv); div.appendChild(inviteBtn); container.appendChild(div);
-      });
-    } catch(err) {
-      container.innerHTML = '<div class="invite-empty-state"><i class="fas fa-exclamation-circle"></i><p>Failed to load friends. Please try again.</p></div>';
-    }
-  }
+  <div class="modal-overlay" id="logoutConfirmModal">
+    <div class="modal-content">
+      <button class="modal-close-btn" id="logoutModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
+      <div style="width:56px;height:56px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+        <i class="fas fa-sign-out-alt" style="font-size:1.5em;color:#ef4444;"></i>
+      </div>
+      <h2 style="color:#1e293b;margin-bottom:8px;font-size:1.1em;">Sign Out</h2>
+      <p style="color:#64748b;font-size:0.88em;margin-bottom:4px;">Are you sure you want to sign out of your account?</p>
+      <div class="signout-actions">
+        <button id="cancelLogoutBtn">Cancel</button>
+        <button id="confirmLogoutBtn">Yes</button>
+      </div>
+    </div>
+  </div>
 
-  async function startSendInvite(btn, friend) {
-    btn.disabled = true; btn.classList.add('counting');
-    var inviteId = null;
-    try {
-      var res = await callSessionApi('send-game-invite', {
-        uid: currentUser.uid, toUid: friend.uid,
-        game: selectedGame, color: selectedColor, minutes: selectedMinutes
-      });
-      inviteId = res.inviteId;
-      activeInviteIds[friend.uid] = inviteId;
-    } catch(err) {
-      btn.disabled = false; btn.classList.remove('counting'); btn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
-      showToast(err.message || 'Failed to send invitation.', 'error');
-      return;
-    }
+  <div class="modal-overlay" id="playersModal">
+    <div class="modal-content">
+      <div class="players-modal-header">
+        <h2><i class="fas fa-user-friends"></i> Friends</h2>
+        <button class="modal-close-btn" id="playersModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="players-container">
+        <div class="sidebar">
+          <div class="sidebar-item active" data-panel="friends-panel"><i class="fas fa-users"></i> Friends <span class="friends-count" id="friendsCountBadge" style="display:none;">0</span></div>
+          <div class="sidebar-item" data-panel="search-panel"><i class="fas fa-user-plus"></i> Add Friend</div>
+          <div class="sidebar-item" data-panel="requests-panel"><i class="fas fa-handshake"></i> Requests <span class="badge" id="requestsBadge" style="display:none;">0</span></div>
+          <div class="sidebar-item" data-panel="sent-panel"><i class="fas fa-paper-plane"></i> Sent <span class="sent-count" id="sentCountBadge" style="display:none;">0</span></div>
+        </div>
+        <div class="main-panel">
+          <div id="friends-panel" class="content-panel active-panel">
+            <div class="panel-title"><i class="fas fa-users"></i> My Friends</div>
+            <div id="friendsListContainer"></div>
+          </div>
+          <div id="search-panel" class="content-panel">
+            <div class="panel-title"><i class="fas fa-user-plus"></i> Add a Friend</div>
+            <div class="search-bar-wrap">
+              <input type="text" id="searchUserInput" placeholder="Search by username or UID (min. 3 characters)">
+              <button id="searchUserBtn"><i class="fas fa-search"></i> Search</button>
+            </div>
+            <div id="searchLoadingSpinner" class="spinner-inline" style="display:none;"></div>
+            <div id="searchResultsContainer"></div>
+          </div>
+          <div id="requests-panel" class="content-panel">
+            <div class="panel-title"><i class="fas fa-handshake"></i> Requests Received</div>
+            <div id="requestsListContainer"></div>
+          </div>
+          <div id="sent-panel" class="content-panel">
+            <div class="panel-title"><i class="fas fa-paper-plane"></i> Requests Sent</div>
+            <div id="sentListContainer"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    var count = 10;
-    btn.textContent = count;
-    var btnIvl = setInterval(function() {
-      count--;
-      if (count <= 0) {
-        clearInterval(btnIvl); delete inviteTimers[friend.uid];
-        btn.classList.remove('counting'); btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
-        callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: inviteId }).catch(function(){});
-        if (inviteStatusTimers[inviteId]) { clearInterval(inviteStatusTimers[inviteId]); delete inviteStatusTimers[inviteId]; }
-        delete activeInviteIds[friend.uid];
-      } else {
-        btn.textContent = count;
-      }
-    }, 1000);
-    inviteTimers[friend.uid] = btnIvl;
+  <div id="friendCtxMenu" class="friend-ctx-menu">
+    <button id="ctxProfileBtn"><i class="fas fa-user"></i> View Profile</button>
+    <button id="ctxChatBtn"><i class="fas fa-comment-dots"></i> Send Message</button>
+    <button id="ctxPlayBtn"><i class="fas fa-gamepad"></i> Invite to Play <span id="ctxPlayCountdown" style="display:none;margin-left:auto;background:#f59e0b;color:white;border-radius:5px;padding:1px 6px;font-size:0.82em;font-weight:800;"></span></button>
+    <div class="ctx-divider"></div>
+    <button id="ctxRemoveBtn" class="ctx-remove"><i class="fas fa-user-times"></i> Remove Friend</button>
+  </div>
 
-    var statusIvl = setInterval(async function() {
-      try {
-        var statusRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
-        if (statusRes.status === 'accepted') {
-          clearInterval(statusIvl); delete inviteStatusTimers[inviteId];
-          clearInterval(btnIvl); delete inviteTimers[friend.uid];
-          delete activeInviteIds[friend.uid];
-          closeModal(inviteFriendsModal);
-          selectedGame = statusRes.game;
-          selectedMinutes = statusRes.minutes;
-          selectedColor = statusRes.color;
-          openGameSetup(statusRes.game, {
-            senderUsername: statusRes.senderUsername,
-            receiverUsername: statusRes.receiverUsername,
-            isSender: true,
-            inviteId: inviteId
-          });
-        } else if (statusRes.status === 'declined' || statusRes.status === 'expired' || statusRes.status === 'cancelled' || statusRes.status === 'not_found') {
-          clearInterval(statusIvl); delete inviteStatusTimers[inviteId];
-          clearInterval(btnIvl); delete inviteTimers[friend.uid];
-          delete activeInviteIds[friend.uid];
-          btn.classList.remove('counting'); btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-paper-plane"></i> Invite';
-          if (statusRes.status === 'declined') showToast(friend.username + ' declined your invitation.', 'info');
-        }
-      } catch(e) {}
-    }, 2000);
-    inviteStatusTimers[inviteId] = statusIvl;
-  }
+  <div class="modal-overlay" id="userProfileModal">
+    <div class="user-profile-modal-content">
+      <button class="upm-close-btn" id="upmCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
+      <div class="upm-banner"><div class="upm-avatar-wrap"><div class="upm-avatar"><i class="fas fa-user-circle"></i></div></div></div>
+      <div class="upm-body">
+        <div class="upm-username" id="upmUsername">—</div>
+        <div class="upm-uid-row"><span class="upm-uid-text" id="upmUid">UID: —</span><button class="upm-copy-btn" id="upmCopyUidBtn" title="Copy UID"><i class="fas fa-copy"></i></button></div>
+        <div class="upm-relation-badge none" id="upmRelationBadge"></div>
+        <div class="upm-divider"></div>
+        <div class="upm-actions" id="upmActions"></div>
+      </div>
+    </div>
+  </div>
 
-  document.getElementById('inviteModalBackBtn').addEventListener('click', function () {
-    Object.keys(inviteTimers).forEach(function(uid) { clearInterval(inviteTimers[uid]); });
-    Object.keys(inviteStatusTimers).forEach(function(id) { clearInterval(inviteStatusTimers[id]); });
-    Object.keys(activeInviteIds).forEach(function(uid) {
-      callSessionApi('cancel-game-invite', { uid: currentUser.uid, inviteId: activeInviteIds[uid] }).catch(function(){});
-    });
-    inviteTimers = {}; inviteStatusTimers = {}; activeInviteIds = {};
-    closeModal(inviteFriendsModal);
-    openGameSetup(selectedGame, null);
-  });
+  <div class="remove-friend-overlay" id="removeFriendOverlay">
+    <div class="remove-friend-card">
+      <div class="rm-icon"><i class="fas fa-user-times"></i></div>
+      <h3>Remove Friend</h3>
+      <p>Are you sure you want to remove <strong id="rmFriendName">this player</strong> from your friends list?</p>
+      <div class="rm-buttons">
+        <button class="rm-btn-cancel" id="rmCancelBtn">Cancel</button>
+        <button class="rm-btn-confirm" id="rmConfirmBtn">Remove</button>
+      </div>
+    </div>
+  </div>
 
-  var ginNotif = document.getElementById('gameInviteNotif');
-  var ginProgressBar = document.getElementById('ginProgressBar');
-  var ginCountdownEl = document.getElementById('ginCountdown');
-  var ginUsernameEl = document.getElementById('ginUsername');
-  var ginAcceptBtn = document.getElementById('ginAcceptBtn');
-  var ginDeclineBtn = document.getElementById('ginDeclineBtn');
-  var ginTimer = null;
-  var currentGinInviteId = null;
-  var ginPollingTimer = null;
-  var acceptedInviteIds = new Set();
+  <div id="toastNotification" class="toast-notification">
+    <span class="toast-icon" id="toastIcon"></span>
+    <div class="toast-body"><div class="toast-title" id="toastTitle"></div><div class="toast-message" id="toastMessage"></div></div>
+    <button class="toast-close-btn" id="toastClose" aria-label="Close">×</button>
+  </div>
 
-  function startGameInvitePolling() {
-    if (ginPollingTimer) return;
-    ginPollingTimer = setInterval(async function() {
-      if (!currentUser) return;
-      try {
-        var res = await callSessionApi('check-game-invite', { uid: currentUser.uid });
-        if (res.invite) {
-          var iid = res.invite.inviteId;
-          if (iid !== currentGinInviteId && !acceptedInviteIds.has(iid)) {
-            currentGinInviteId = null;
-            showGameInviteNotif(res.invite);
-          }
-        } else {
-          if (currentGinInviteId && ginNotif.classList.contains('gin-visible')) {
-            hideGameInviteNotif();
-          }
-        }
-      } catch(e) {}
-    }, 2500);
-  }
+  <div class="gs-time-dropdown-overlay" id="gsTimeDropdownOverlay">
+    <div class="gs-time-dropdown" id="gsTimeDropdown">
+      <div class="gs-time-dropdown-title">Time per player</div>
+      <div class="gs-time-option selected" data-minutes="5"><i class="fas fa-clock gs-time-opt-icon"></i> 5 min <i class="fas fa-check gs-check"></i></div>
+      <div class="gs-time-option" data-minutes="10"><i class="fas fa-clock gs-time-opt-icon"></i> 10 min</div>
+      <div class="gs-time-option" data-minutes="15"><i class="fas fa-clock gs-time-opt-icon"></i> 15 min</div>
+    </div>
+  </div>
 
-  function showGameInviteNotif(invite) {
-    if (ginTimer) { clearInterval(ginTimer); ginTimer = null; }
-    currentGinInviteId = invite.inviteId;
-    ginUsernameEl.textContent = invite.fromUsername;
-    ginCountdownEl.textContent = '10';
+  <div class="modal-overlay" id="emailModal">
+    <div class="email-modal-content">
+      <div class="email-modal-header">
+        <button class="em-close" id="emailModalCloseBtn" aria-label="Close"><i class="fas fa-times"></i></button>
+        <div class="em-avatar"><i class="fas fa-user-circle"></i></div>
+        <h3 id="emailModalUsername">—</h3>
+        <div class="em-uid" id="emailModalUid">UID: —</div>
+      </div>
+      <div class="email-modal-body">
+        <div class="email-modal-label">Email address</div>
+        <div class="email-modal-value" id="emailModalValue">—</div>
+        <p class="email-modal-note">This is the email address linked to your account. It is only visible to you.</p>
+        <button class="em-close-footer" id="emailModalCloseFooterBtn">Close</button>
+      </div>
+    </div>
+  </div>
 
-    ginNotif.classList.remove('gin-expanded', 'gin-visible');
-    ginProgressBar.style.transition = 'none';
-    ginProgressBar.style.transform = 'scaleX(1)';
+  <div class="room-quit-overlay" id="roomQuitOverlay">
+    <div class="room-quit-card">
+      <div class="rq-icon"><i class="fas fa-sign-out-alt"></i></div>
+      <h3 id="rqTitle">Leave the room?</h3>
+      <p id="rqMessage">Are you sure you want to leave the room?</p>
+      <div class="rq-buttons">
+        <button class="rq-btn-cancel" id="rqCancelBtn">Stay</button>
+        <button class="rq-btn-confirm" id="rqConfirmBtn">Leave</button>
+      </div>
+    </div>
+  </div>
 
-    void ginNotif.offsetHeight;
-
-    ginNotif.classList.add('gin-visible');
-
-    setTimeout(function() {
-      ginNotif.classList.add('gin-expanded');
-      void ginProgressBar.offsetHeight;
-      ginProgressBar.style.transition = 'transform 10s linear';
-      ginProgressBar.style.transform = 'scaleX(0)';
-    }, 300);
-
-    var count = 10;
-    ginTimer = setInterval(function() {
-      count--;
-      ginCountdownEl.textContent = count > 0 ? count : '0';
-      if (count <= 0) { clearInterval(ginTimer); ginTimer = null; hideGameInviteNotif(); }
-    }, 1000);
-  }
-
-  function hideGameInviteNotif() {
-    if (ginTimer) { clearInterval(ginTimer); ginTimer = null; }
-    ginNotif.classList.remove('gin-visible', 'gin-expanded');
-    ginProgressBar.style.transition = 'none';
-    ginProgressBar.style.transform = 'scaleX(1)';
-    currentGinInviteId = null;
-  }
-
-  var _receiverCameFromFriends = false;
-
-  ginAcceptBtn.addEventListener('click', async function() {
-    if (!currentGinInviteId) return;
-    var inviteId = currentGinInviteId;
-    acceptedInviteIds.add(inviteId);
-    hideGameInviteNotif();
-    _receiverCameFromFriends = document.getElementById('playersModal').classList.contains('active');
-    document.querySelectorAll('.modal-overlay.active').forEach(function(m) {
-      if (m.id !== 'gameSetupModal') closeModal(m);
-    });
-    if (document.getElementById('removeFriendOverlay').classList.contains('active')) {
-      document.getElementById('removeFriendOverlay').classList.remove('active');
-    }
-    try {
-      var res = await callSessionApi('accept-game-invite', { uid: currentUser.uid, inviteId: inviteId });
-      if (res.success) {
-        selectedGame = res.game;
-        selectedMinutes = res.minutes;
-        selectedColor = res.color;
-        gameOrigin = 'room';
-        openGameSetup(res.game, {
-          senderUsername: res.senderUsername,
-          receiverUsername: res.receiverUsername,
-          isSender: false,
-          inviteId: inviteId
-        });
-      }
-    } catch(err) {
-      showToast(err.message || 'Failed to accept invitation.', 'error');
-    }
-  });
-
-  ginDeclineBtn.addEventListener('click', async function() {
-    if (!currentGinInviteId) return;
-    var inviteId = currentGinInviteId;
-    acceptedInviteIds.add(inviteId);
-    hideGameInviteNotif();
-    try { await callSessionApi('decline-game-invite', { uid: currentUser.uid, inviteId: inviteId }); }
-    catch(e) {}
-  });
-
-  var upmCopyUidBtn = document.getElementById('upmCopyUidBtn');
-  if (upmCopyUidBtn) {
-    upmCopyUidBtn.addEventListener('click', function () {
-      var uidText = document.getElementById('upmUid').textContent.replace('UID: ', '').trim();
-      if (!uidText || uidText === '—') return;
-      navigator.clipboard.writeText(uidText).then(function () { upmCopyUidBtn.innerHTML = '<i class="fas fa-check"></i>'; upmCopyUidBtn.classList.add('copied'); setTimeout(function () { upmCopyUidBtn.innerHTML = '<i class="fas fa-copy"></i>'; upmCopyUidBtn.classList.remove('copied'); }, 2000); }).catch(function () { showToast('Copy failed.', 'error'); });
-    });
-  }
-
-  var emailModal = document.getElementById('emailModal');
-  function openEmailModal() {
-    if (!currentUser) return;
-    document.getElementById('emailModalUsername').textContent = currentUser.username || '____';
-    document.getElementById('emailModalUid').textContent = 'UID: ' + (currentUser.uid || '—');
-    document.getElementById('emailModalValue').textContent = currentUser.email || '—';
-    openModal(emailModal);
-  }
-  document.getElementById('emailModalCloseBtn').addEventListener('click', function () { closeModal(emailModal); });
-  document.getElementById('emailModalCloseFooterBtn').addEventListener('click', function () { closeModal(emailModal); });
-  emailModal.addEventListener('click', function (e) { if (e.target === emailModal) closeModal(emailModal); });
-
-  var GS_CHAT_MAX   = 30;
-  var GS_CHAT_LIMIT = 20;
-
-  var gsChatInput    = document.getElementById('gsChatInput');
-  var gsChatSendBtn  = document.getElementById('gsChatSendBtn');
-  var gsChatMessages = document.getElementById('gsChatMessages');
-
-  var _chatRoomId      = null;
-  var _chatPollTimer   = null;
-  var _chatLastMsgCount = -1;
-
-  function chatCharCount(val) { return Array.from(val).length; }
-
-  function initRoomChat(inviteId) {
-    _chatRoomId = inviteId;
-    _chatLastMsgCount = -1;
-    if (gsChatMessages) {
-      gsChatMessages.innerHTML = '<span class="gs-chat-placeholder">No messages yet\u2026</span>';
-    }
-    startChatPolling(inviteId);
-  }
-
-  function stopRoomChat() {
-    _chatRoomId = null;
-    if (_chatPollTimer) { clearInterval(_chatPollTimer); _chatPollTimer = null; }
-  }
-
-  function startChatPolling(inviteId) {
-    if (_chatPollTimer) { clearInterval(_chatPollTimer); _chatPollTimer = null; }
-    _chatPollTimer = setInterval(async function() {
-      if (!_chatRoomId || _chatRoomId !== inviteId) {
-        clearInterval(_chatPollTimer); _chatPollTimer = null; return;
-      }
-      try {
-        var res = await callSessionApi('get-chat-messages', { uid: currentUser.uid, inviteId: inviteId });
-        if (!res.success) return;
-        var msgs = res.messages || [];
-        if (msgs.length !== _chatLastMsgCount) {
-          _chatLastMsgCount = msgs.length;
-          renderChatMessages(msgs);
-        }
-      } catch(e) {}
-    }, 1500);
-  }
-
-  function renderChatMessages(msgs) {
-    if (!gsChatMessages) return;
-    if (!msgs || msgs.length === 0) {
-      gsChatMessages.innerHTML = '<span class="gs-chat-placeholder">No messages yet\u2026</span>';
-      return;
-    }
-    gsChatMessages.innerHTML = '';
-    var myUid = currentUser ? currentUser.uid : null;
-    msgs.forEach(function(msg) {
-      var isMine = msg.senderUid === myUid;
-      var wrap   = document.createElement('div');
-      wrap.className = 'gs-msg-wrap ' + (isMine ? 'gs-msg-mine' : 'gs-msg-theirs');
-      var bubble = document.createElement('div');
-      bubble.className = 'gs-msg-bubble';
-      bubble.textContent = msg.text;
-      wrap.appendChild(bubble);
-      gsChatMessages.appendChild(wrap);
-    });
-    gsChatMessages.scrollTop = gsChatMessages.scrollHeight;
-  }
-
-  async function sendChatMessage() {
-    if (!gsChatInput || !_chatRoomId || !currentUser) return;
-    var text = gsChatInput.value.trim();
-    if (!text || chatCharCount(text) === 0) return;
-    var chars = Array.from(text);
-    if (chars.length > GS_CHAT_MAX) text = chars.slice(0, GS_CHAT_MAX).join('');
-
-    gsChatInput.value = '';
-    gsChatInput.style.height = 'auto';
-
-    if (gsChatSendBtn) {
-      gsChatSendBtn.classList.add('loading');
-      gsChatSendBtn.disabled = true;
-    }
-
-    try {
-      await callSessionApi('send-chat-message', {
-        uid:      currentUser.uid,
-        inviteId: _chatRoomId,
-        text:     text
-      });
-      var res = await callSessionApi('get-chat-messages', { uid: currentUser.uid, inviteId: _chatRoomId });
-      if (res.success) {
-        _chatLastMsgCount = (res.messages || []).length;
-        renderChatMessages(res.messages || []);
-      }
-    } catch(e) {}
-    finally {
-      if (gsChatSendBtn) {
-        gsChatSendBtn.classList.remove('loading');
-        gsChatSendBtn.disabled = false;
-      }
-    }
-  }
-
-  if (gsChatInput) {
-    gsChatInput.addEventListener('input', function() {
-      if (chatCharCount(this.value) > GS_CHAT_MAX) {
-        var chars = Array.from(this.value);
-        this.value = chars.slice(0, GS_CHAT_MAX).join('');
-      }
-      this.style.height = 'auto';
-      var lineH = parseFloat(getComputedStyle(this).lineHeight) || 16;
-      var pad   = parseFloat(getComputedStyle(this).paddingTop) + parseFloat(getComputedStyle(this).paddingBottom);
-      var maxH  = Math.round(lineH * 2 + pad);
-      this.style.height = Math.min(this.scrollHeight, maxH) + 'px';
-    });
-
-    gsChatInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendChatMessage();
-        return;
-      }
-      var allowed = ['Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];
-      if (chatCharCount(this.value) >= GS_CHAT_MAX && !allowed.includes(e.key) && !e.ctrlKey && !e.metaKey) {
-        if (this.selectionStart === this.selectionEnd) e.preventDefault();
-      }
-    });
-  }
-
-  if (gsChatSendBtn) {
-    gsChatSendBtn.addEventListener('click', function() { sendChatMessage(); });
-  }
-
-  window._initRoomChat = initRoomChat;
-  window._stopRoomChat = stopRoomChat;
-
-  window.showToast = showToast;
-  loadSession();
-})();
+  <script src="script/dashboard.js"></script>
+</body>
+</html>
