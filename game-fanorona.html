@@ -4,340 +4,55 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fanorona</title>
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --accent: #f0b429;
-      --accent2: #ff6b6b;
-      --glass: rgba(255,255,255,0.08);
-      --glass-border: rgba(255,255,255,0.15);
-      --card-bg: rgba(15,20,40,0.75);
-      --text: #e8eaf6;
-      --text-dim: rgba(232,234,246,0.5);
-    }
-
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
     body {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: sans-serif;
       margin: 0; padding: 0;
       background: linear-gradient(135deg, #6e8efb, #a777e3);
       overflow: hidden;
       height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
     }
 
-    /* ─── PORTRAIT layout ─── */
-    #portrait-layout {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100vw;
-      height: 100vh;
-      justify-content: center;
-      gap: 0;
+    /* ── Bande joueurs ── */
+    #players-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      width: 95vw; max-width: 800px;
+      margin-bottom: 8px; padding: 8px 14px;
+      background: rgba(0,0,0,0.25); border-radius: 12px;
+      color: white; font-size: 1em; font-weight: 700; min-height: 44px;
     }
-
-    /* ─── TOP AREA (portrait) ─── */
-    #portrait-top {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      padding: 14px 16px 10px;
-      width: 100%;
-    }
-
-    /* ─── Player cards ─── */
-    .player-card {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 18px;
-      border-radius: 50px;
-      background: var(--card-bg);
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(12px);
-      color: var(--text);
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 1em;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
-      transition: box-shadow 0.3s, border-color 0.3s;
-    }
-    .player-card.active-card {
-      border-color: var(--accent);
-      box-shadow: 0 0 20px rgba(240,180,41,0.35), 0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
-    }
-
-    /* ─── Portrait top row: 2 cards side by side ─── */
-    #portrait-players-row {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-    }
-
-    /* ─── Portrait top row: utility bar ─── */
-    #portrait-utility-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      justify-content: center;
-    }
-
-    /* ─── BOARD CENTER ─── */
-    #board-wrapper {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex: 1;
-      width: 100%;
-    }
-
-    #game-board {
-      display: block;
-      border-radius: 18px;
-      overflow: visible;
-    }
-
-    /* portrait: board fills width */
-    @media (orientation: portrait) {
-      #game-board { width: 95vw; max-width: 600px; max-height: 62vh; }
-      #landscape-layout { display: none !important; }
-      #portrait-layout { display: flex !important; }
-    }
-
-    /* landscape: board fills height */
-    @media (orientation: landscape) {
-      #game-board { height: 88vh; max-height: 88vh; width: auto; }
-      #portrait-layout { display: none !important; }
-      #landscape-layout { display: flex !important; }
-    }
-
-    /* ─── BOTTOM AREA (portrait) ─── */
-    #portrait-bottom {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 16px 18px;
-      width: 100%;
-    }
-
-    #portrait-bottom-row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      justify-content: center;
-    }
-
-    /* ─── LANDSCAPE layout ─── */
-    #landscape-layout {
-      display: none;
-      flex-direction: row;
-      align-items: center;
-      justify-content: center;
-      width: 100vw;
-      height: 100vh;
-      gap: 0;
-    }
-
-    /* Left sidebar (landscape) */
-    #ls-left {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      width: 80px;
-      flex-shrink: 0;
-      height: 100%;
-    }
-
-    /* Right sidebar (landscape) */
-    #ls-right {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      width: 80px;
-      flex-shrink: 0;
-      height: 100%;
-    }
-
-    /* Landscape player cards (fixed, short) */
-    .ls-player-card {
-      position: fixed;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-      padding: 10px 14px;
-      border-radius: 14px;
-      background: var(--card-bg);
-      border: 1px solid var(--glass-border);
-      backdrop-filter: blur(12px);
-      color: var(--text);
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 0.88em;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
-      transition: box-shadow 0.3s, border-color 0.3s;
-      z-index: 10;
-      min-width: 64px;
-      max-width: 70px;
-      text-align: center;
-    }
-    .ls-player-card.active-card {
-      border-color: var(--accent);
-      box-shadow: 0 0 18px rgba(240,180,41,0.4);
-    }
-    #ls-p1-card { left: 6px; top: 50%; transform: translateY(-50%); }
-    #ls-p2-card { right: 6px; top: 50%; transform: translateY(-50%); }
-
-    /* OK button (landscape: right center) */
-    #ls-ok-btn {
-      position: fixed;
-      right: 82px;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 20;
-    }
-
-    /* ─── Player dot ─── */
-    .player-dot {
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      border: 2px solid rgba(255,255,255,0.5);
-      flex-shrink: 0;
-      transition: box-shadow 0.3s;
-    }
+    .player-info { display: flex; align-items: center; gap: 8px; }
+    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
     .dot-maintso { background: #22c55e; }
     .dot-mena    { background: #ef4444; }
-    .player-dot.active-turn {
-      box-shadow: 0 0 0 3px var(--accent), 0 0 10px 3px rgba(240,180,41,0.5);
-    }
+    .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
+    .player-name  { font-size: 0.95em; }
+    .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
 
-    /* ─── Timer display ─── */
-    .timer-box {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1px;
-      padding: 5px 12px;
-      border-radius: 10px;
-      background: var(--card-bg);
-      border: 1px solid var(--glass-border);
-      color: var(--text);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.85em;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-    }
-    .timer-label { font-size: 0.55em; opacity: 0.5; font-family: 'Rajdhani', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; }
-    .timer-val { color: var(--accent); font-size: 1em; }
+    /* ── Plateau ── */
+#game-board {
+  background-image: url('img/table-game.jpg');
+  background-size: cover;
+  border-radius: 20px;
+  width: 95vw;
+  max-width: 800px;
+  aspect-ratio: 440 / 240;
+  display: block;
+  touch-action: none;
+}
 
-    /* Shared timer (2 players combined) */
-    .shared-timer {
-      padding: 5px 14px;
-      border-radius: 50px;
-      background: var(--card-bg);
-      border: 1px solid var(--glass-border);
-      color: var(--accent);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.82em;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
-    .shared-timer .inf-sym { font-size: 1.1em; }
+@media (orientation: landscape) {
+  #game-board {
+    width: auto;
+    height: 85vh;
+    aspect-ratio: 440 / 240;
+  }
+}
 
-    /* ─── Utility buttons ─── */
-    .util-btn {
-      width: 38px; height: 38px;
-      border-radius: 12px;
-      background: var(--card-bg);
-      border: 1px solid var(--glass-border);
-      color: var(--text);
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      font-size: 1.1em;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      transition: background 0.2s, border-color 0.2s, transform 0.15s;
-      flex-shrink: 0;
-    }
-    .util-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); transform: scale(1.08); }
-    .util-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-    /* Ping indicator */
-    .ping-box {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      padding: 5px 11px;
-      border-radius: 50px;
-      background: var(--card-bg);
-      border: 1px solid var(--glass-border);
-      color: var(--text);
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.7em;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    }
-    .ping-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: #22c55e;
-      box-shadow: 0 0 6px #22c55e;
-      animation: ping-pulse 1.8s ease-in-out infinite;
-    }
-    @keyframes ping-pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(0.75); }
-    }
-
-    /* ─── OK / Stop button ─── */
-    #stop-move-btn {
-      width: 52px; height: 52px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #f0b429, #ff8c00);
-      color: #1a1a2e;
-      border: none;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 0.75em;
-      font-weight: 900;
-      cursor: pointer;
-      opacity: 0.25;
-      transition: opacity 0.3s, transform 0.3s, box-shadow 0.3s;
-      pointer-events: none;
-      box-shadow: 0 4px 20px rgba(240,180,41,0.3);
-      letter-spacing: 0.05em;
-      flex-shrink: 0;
-    }
-    #stop-move-btn.active {
-      opacity: 1;
-      pointer-events: all;
-      transform: scale(1.08);
-      box-shadow: 0 0 24px rgba(240,180,41,0.6), 0 4px 20px rgba(240,180,41,0.4);
-    }
-
-    /* ─── SVG Board ─── */
-    .grid-line { stroke: rgba(255,255,255,0.25); stroke-width: 1.5; }
-
-    /* ─── Pièces & interactions ─── */
+    /* ── Pièces & interactions ── */
     .flipped { transform: rotate(180deg); }
     .piece-group { transition: transform 0.22s ease-in-out; }
     .piece-group.no-transition { transition: none; }
@@ -355,244 +70,69 @@
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
 
-    /* ─── Board image background via filter trick ─── */
-    .board-bg-rect {
-      fill: url(#board-bg-pat);
-      rx: 18; ry: 18;
+    /* ── Bouton Stop ── */
+    #stop-move-btn {
+      width: 60px; height: 60px; border-radius: 50%;
+      background: #f44336; color: white; border: 4px solid white;
+      font-size: 30px; font-weight: bold; cursor: pointer;
+      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none;
+    }
+    #stop-move-btn.active {
+      opacity: 1; transform: scale(1.1);
+      box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all;
     }
 
-    /* ─── Loading ─── */
+    /* ── Loading ── */
     #loading-overlay {
-      position: fixed; inset: 0;
-      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      position: fixed; inset: 0; background: #0092FF;
       display: flex; justify-content: center; align-items: center;
-      z-index: 100; color: white;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1em; font-weight: 700;
-      flex-direction: column; gap: 20px;
+      z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
+      flex-direction: column; gap: 16px;
     }
     #loading-overlay.hidden { display: none; }
     .spinner {
-      width: 40px; height: 40px;
-      border: 3px solid rgba(255,255,255,0.2);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+      width: 36px; height: 36px;
+      border: 4px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ─── Error ─── */
-    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; font-family: 'Rajdhani', sans-serif; }
-
-    /* ─── "demande" text button ─── */
-    .demande-btn {
-      padding: 5px 13px;
-      border-radius: 50px;
-      background: var(--card-bg);
-      border: 1px solid var(--glass-border);
-      color: var(--text);
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 0.8em;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      cursor: pointer;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-      transition: background 0.2s, border-color 0.2s;
-      text-transform: uppercase;
-    }
-    .demande-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }
+    /* ── Erreur ── */
+    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
   </style>
 </head>
 <body>
 
-  <div id="loading-overlay"><div class="spinner"></div><span>Fananganana ny lalao…</span></div>
+  <div id="loading-overlay"><div class="spinner"></div></div>
 
-  <!-- ════════════ PORTRAIT LAYOUT ════════════ -->
-  <div id="portrait-layout" style="display:none;">
+  <div id="players-bar" style="display:none;"></div>
 
-    <!-- TOP: two player cards + utility row -->
-    <div id="portrait-top">
-      <div id="portrait-players-row">
-        <!-- Opp card (left) -->
-        <div class="player-card" id="port-opp-card">
-          <div class="player-dot" id="port-opp-dot"></div>
-          <span id="port-opp-name" style="font-size:0.95em;">???</span>
-          <div class="timer-box" style="margin-left:4px;">
-            <span class="timer-label">temps</span>
-            <span class="timer-val">∞</span>
-          </div>
-        </div>
-        <!-- My card (right) -->
-        <div class="player-card" id="port-my-card">
-          <div class="timer-box" style="margin-right:4px;">
-            <span class="timer-label">temps</span>
-            <span class="timer-val">∞</span>
-          </div>
-          <span id="port-my-name" style="font-size:0.95em;">Moi</span>
-          <div class="player-dot" id="port-my-dot"></div>
-        </div>
-      </div>
+  <svg id="game-board" viewBox="-20 -20 440 240" style="display: none;">
+    <defs>
+      <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+        <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
+      </pattern>
+      <pattern id="maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+        <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
+      </pattern>
+    </defs>
+    <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
+      M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
+      M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
+      M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
+      M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
+      M300 0 L400 100 M400 0 L200 200
+      M0 100 L100 200 M400 100 L300 200"/>
+    <g id="guides-group"></g>
+    <g id="pieces-group"></g>
+    <g id="spots-group"></g>
+  </svg>
 
-      <!-- Utility: shared timer, ping, message, settings, demande -->
-      <div id="portrait-utility-row">
-        <div class="shared-timer">
-          <span class="inf-sym">∞</span>
-        </div>
-        <div class="ping-box"><div class="ping-dot"></div><span>--</span></div>
-        <!-- Message -->
-        <button class="util-btn" title="Message">
-          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-        </button>
-        <!-- Settings -->
-        <button class="util-btn" title="Paramètres">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        </button>
-        <!-- Demande -->
-        <button class="demande-btn">Demande</button>
-      </div>
-    </div>
-
-    <!-- CENTER: board -->
-    <div id="board-wrapper">
-      <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
-        <defs>
-          <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-            <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
-          </pattern>
-          <pattern id="maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-            <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
-          </pattern>
-          <pattern id="board-bg-pat" x="0" y="0" width="1" height="1">
-            <image href="img/table-gray.png" x="-50" y="-50" width="500" height="300" preserveAspectRatio="xMidYMid slice"/>
-          </pattern>
-        </defs>
-        <!-- Board background image with border-radius -->
-        <rect x="-50" y="-50" width="500" height="300" rx="22" ry="22" fill="url(#board-bg-pat)"/>
-        <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
-          M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
-          M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
-          M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
-          M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
-          M300 0 L400 100 M400 0 L200 200
-          M0 100 L100 200 M400 100 L300 200"/>
-        <g id="guides-group"></g>
-        <g id="pieces-group"></g>
-        <g id="spots-group"></g>
-      </svg>
-    </div>
-
-    <!-- BOTTOM: OK button -->
-    <div id="portrait-bottom">
-      <div id="portrait-bottom-row">
-        <button id="stop-move-btn" style="display:none;">OK</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ════════════ LANDSCAPE LAYOUT ════════════ -->
-  <div id="landscape-layout" style="display:none;">
-
-    <!-- Left sidebar -->
-    <div id="ls-left">
-      <!-- Player 1 card (fixed) -->
-      <div class="ls-player-card" id="ls-p1-card">
-        <div class="player-dot" id="ls-opp-dot"></div>
-        <span id="ls-opp-name" style="word-break:break-all;">???</span>
-        <div class="timer-box" style="padding:3px 8px;">
-          <span class="timer-label">temps</span>
-          <span class="timer-val" style="font-size:0.9em;">∞</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Center: board + bottom elements -->
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;height:100vh;">
-      <svg id="game-board-ls" viewBox="-50 -50 500 300" style="display:none;">
-        <defs>
-          <pattern id="mena-pat-ls" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-            <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
-          </pattern>
-          <pattern id="maintso-pat-ls" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-            <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
-          </pattern>
-          <pattern id="board-bg-pat-ls" x="0" y="0" width="1" height="1">
-            <image href="img/table-gray.png" x="-50" y="-50" width="500" height="300" preserveAspectRatio="xMidYMid slice"/>
-          </pattern>
-        </defs>
-        <rect x="-50" y="-50" width="500" height="300" rx="22" ry="22" fill="url(#board-bg-pat-ls)"/>
-        <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
-          M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
-          M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
-          M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
-          M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
-          M300 0 L400 100 M400 0 L200 200
-          M0 100 L100 200 M400 100 L300 200"/>
-        <g id="guides-group-ls"></g>
-        <g id="pieces-group-ls"></g>
-        <g id="spots-group-ls"></g>
-      </svg>
-    </div>
-
-    <!-- Right sidebar -->
-    <div id="ls-right">
-      <!-- Player 2 card (fixed) -->
-      <div class="ls-player-card" id="ls-p2-card">
-        <div class="player-dot" id="ls-my-dot"></div>
-        <span id="ls-my-name" style="word-break:break-all;">Moi</span>
-        <div class="timer-box" style="padding:3px 8px;">
-          <span class="timer-label">temps</span>
-          <span class="timer-val" style="font-size:0.9em;">∞</span>
-        </div>
-      </div>
-
-      <!-- OK button fixed right-center -->
-      <div id="ls-ok-btn">
-        <button id="stop-move-btn-ls" style="display:none;">OK</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Shared utility overlay for landscape (fixed top-right cluster) -->
-  <div id="ls-utility" style="display:none;position:fixed;top:12px;right:88px;display:flex;gap:8px;align-items:center;z-index:30;">
-    <div class="shared-timer"><span class="inf-sym">∞</span></div>
-    <div class="ping-box"><div class="ping-dot"></div><span>--</span></div>
-    <button class="util-btn" title="Message">
-      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-    </button>
-    <button class="util-btn" title="Paramètres">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-    </button>
-    <button class="demande-btn">Demande</button>
-  </div>
-
+  <button id="stop-move-btn" style="display:none;">OK</button>
   <div id="error-msg"></div>
 
   <script>
   (function () {
-
-    // ── Orientation detection ──
-    function isPortrait() {
-      return window.innerHeight >= window.innerWidth;
-    }
-
-    function applyLayout() {
-      var port = document.getElementById('portrait-layout');
-      var land = document.getElementById('landscape-layout');
-      var lsUtil = document.getElementById('ls-utility');
-      if (isPortrait()) {
-        port.style.display = 'flex';
-        land.style.display = 'none';
-        if (lsUtil) lsUtil.style.display = 'none';
-      } else {
-        port.style.display = 'none';
-        land.style.display = 'flex';
-        if (lsUtil) lsUtil.style.display = 'flex';
-      }
-    }
-
-    applyLayout();
-    window.addEventListener('resize', applyLayout);
-    window.addEventListener('orientationchange', function() { setTimeout(applyLayout, 100); });
 
     //  SECTION 1 — Config & helpers
     var SESSION_API_URL = '/api/session';
@@ -611,14 +151,11 @@
 
     var gameOverTriggered = false;
     function disableBoardCompletely() {
-      var boards = [document.getElementById('game-board'), document.getElementById('game-board-ls')];
-      boards.forEach(function(b){ if(b) b.classList.add('lock-board'); });
-      [document.getElementById('stop-move-btn'), document.getElementById('stop-move-btn-ls')].forEach(function(btn){
-        if(btn){ btn.classList.remove('active'); btn.style.pointerEvents = 'none'; }
-      });
-      ['guides-group','guides-group-ls'].forEach(function(id){
-        var g = document.getElementById(id); if(g) g.innerHTML='';
-      });
+      var board = document.getElementById('game-board');
+      if (board) board.classList.add('lock-board');
+      var stopBtn = document.getElementById('stop-move-btn');
+      if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = 'none'; }
+      document.getElementById('guides-group').innerHTML = '';
       document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el) {
         el.removeAttribute('class');
       });
@@ -628,22 +165,45 @@
     function showGameOverAlert(winnerColor, delayMs) {
       if (gameOverTriggered) return;
       gameOverTriggered = true;
+
       disableBoardCompletely();
+
       var delay = (typeof delayMs === 'number') ? delayMs : 2000;
+
       setTimeout(function() {
         var overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;justify-content:center;align-items:center;z-index:9999;flex-direction:column;gap:0;';
+        overlay.style.cssText = [
+          'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
+          'display:flex','justify-content:center','align-items:center',
+          'z-index:9999','flex-direction:column','gap:0'
+        ].join(';');
+
         var box = document.createElement('div');
-        box.style.cssText = 'background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:20px;padding:36px 44px;text-align:center;color:white;font-family:"Rajdhani",sans-serif;box-shadow:0 8px 50px rgba(0,0,0,0.7),0 0 0 1px rgba(255,255,255,0.08);max-width:320px;width:88vw;';
-        var iWon = (winnerColor === myColor);
-        var myMsg = iWon ? '🏆 You win!' : '😔 You lose!';
+        box.style.cssText = [
+          'background:#1a3a5c','border-radius:18px','padding:36px 40px',
+          'text-align:center','color:white','font-family:sans-serif',
+          'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
+        ].join(';');
+
+        var iWon  = (winnerColor === myColor);
+        var myMsg = iWon ? '&#127942; You win!' : '&#128532; You lose!';
+
         var title = document.createElement('div');
-        title.style.cssText = 'font-size:1.8em;font-weight:800;margin-bottom:28px;font-family:"Orbitron",sans-serif;';
+        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
         title.textContent = myMsg;
+
         var btn = document.createElement('button');
         btn.textContent = 'OK';
-        btn.style.cssText = 'background:linear-gradient(135deg,#f0b429,#ff8c00);color:#1a1a2e;border:none;border-radius:50px;padding:13px 52px;font-size:1em;font-weight:800;cursor:pointer;font-family:"Orbitron",sans-serif;letter-spacing:0.1em;box-shadow:0 4px 20px rgba(240,180,41,0.4);';
-        btn.onclick = function() { window.location.href = 'dashboard.html'; };
+        btn.style.cssText = [
+          'background:#0092FF','color:white','border:none',
+          'border-radius:10px','padding:12px 48px',
+          'font-size:1.1em','font-weight:700','cursor:pointer',
+          'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
+        ].join(';');
+        btn.onclick = function() {
+          window.location.href = 'dashboard.html';
+        };
+
         box.appendChild(title);
         box.appendChild(btn);
         overlay.appendChild(box);
@@ -693,28 +253,28 @@
     var myOppColor = null;
     var gameId     = null;
     var myUid      = null;
+
     var localState = null;
+
     var selectedSpot    = null;
     var lastBlockedSpot = null;
     var canChangePiece  = true;
     var pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+
     var piecesOnBoard = {};
+
     var moveQueue       = [];
     var movingInProgress = false;
+
     var lastSeenHistKey   = null;
+
     var reconcileTimer = null;
 
-    // Multi-board refs
-    var activeBoardId      = 'game-board';
-    var activeGuidesId     = 'guides-group';
-    var activePiecesId     = 'pieces-group';
-    var activeSpotsId      = 'spots-group';
-
-    function getActiveBoard()  { return document.getElementById(activeBoardId); }
-    function getGuidesGroup()  { return document.getElementById(activeGuidesId); }
-    function getPiecesGroup()  { return document.getElementById(activePiecesId); }
+    var myDotEl  = null;
+    var oppDotEl = null;
 
     //  SECTION 4 — Init
+
     var params   = new URLSearchParams(window.location.search);
     var gameId_p = params.get('gameId');
     var color_p  = params.get('color');
@@ -740,30 +300,17 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
-        var myName  = localUser.username || localUser.uid;
-        var oppName = data.opponentUsername || '???';
+        renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
 
-        renderPlayersBar(myColor, myName, oppName);
+        if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
 
-        // Show boards (both; CSS hides one)
         document.getElementById('game-board').style.display    = 'block';
-        document.getElementById('game-board-ls').style.display = 'block';
         document.getElementById('stop-move-btn').style.display = 'block';
-        document.getElementById('stop-move-btn-ls').style.display = 'block';
-
-        if (myColor === 'mena') {
-          document.getElementById('game-board').classList.add('flipped');
-          document.getElementById('game-board-ls').classList.add('flipped');
-        }
-
         document.getElementById('loading-overlay').classList.add('hidden');
-        applyLayout();
 
-        drawBoardSpots('spots-group', 'pieces-group');
-        drawBoardSpots('spots-group-ls', 'pieces-group-ls');
+        drawBoardSpots();
 
-        document.getElementById('stop-move-btn').onclick    = function() { handleStopBtn(); };
-        document.getElementById('stop-move-btn-ls').onclick = function() { handleStopBtn(); };
+        document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
 
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
@@ -777,79 +324,44 @@
     }
 
     //  SECTION 5 — Players bar
+
     function renderPlayersBar(myCol, myUsername, oppUsername) {
+      var bar = document.getElementById('players-bar');
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-
-      // Portrait
-      var portMyDot  = document.getElementById('port-my-dot');
-      var portOppDot = document.getElementById('port-opp-dot');
-      if (portMyDot)  { portMyDot.className  = 'player-dot ' + myDotClass; }
-      if (portOppDot) { portOppDot.className = 'player-dot ' + oppDotClass; }
-      var portMyName  = document.getElementById('port-my-name');
-      var portOppName = document.getElementById('port-opp-name');
-      if (portMyName)  portMyName.textContent  = escapeHtml(myUsername);
-      if (portOppName) portOppName.textContent = escapeHtml(oppUsername);
-
-      // Landscape
-      var lsMyDot  = document.getElementById('ls-my-dot');
-      var lsOppDot = document.getElementById('ls-opp-dot');
-      if (lsMyDot)  { lsMyDot.className  = 'player-dot ' + myDotClass; }
-      if (lsOppDot) { lsOppDot.className = 'player-dot ' + oppDotClass; }
-      var lsMyName  = document.getElementById('ls-my-name');
-      var lsOppName = document.getElementById('ls-opp-name');
-      if (lsMyName)  lsMyName.textContent  = escapeHtml(myUsername);
-      if (lsOppName) lsOppName.textContent = escapeHtml(oppUsername);
+      bar.innerHTML =
+        '<div class="player-info">' +
+          '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
+          '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
+        '</div>' +
+        '<span class="vs-sep">VS</span>' +
+        '<div class="player-info">' +
+          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
+          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
+        '</div>';
+      bar.style.display = 'flex';
+      myDotEl  = document.getElementById('my-dot');
+      oppDotEl = document.getElementById('opp-dot');
     }
 
     function updateTurnIndicator(turn) {
-      var isMyTurn = (turn === myColor);
-
-      // Portrait dots
-      var portMyDot  = document.getElementById('port-my-dot');
-      var portOppDot = document.getElementById('port-opp-dot');
-      var portMyCard  = document.getElementById('port-my-card');
-      var portOppCard = document.getElementById('port-opp-card');
-      if (portMyDot && portOppDot) {
-        portMyDot.classList.toggle('active-turn', isMyTurn);
-        portOppDot.classList.toggle('active-turn', !isMyTurn);
-      }
-      if (portMyCard && portOppCard) {
-        portMyCard.classList.toggle('active-card', isMyTurn);
-        portOppCard.classList.toggle('active-card', !isMyTurn);
-      }
-
-      // Landscape dots
-      var lsMyDot  = document.getElementById('ls-my-dot');
-      var lsOppDot = document.getElementById('ls-opp-dot');
-      var lsMyCard  = document.getElementById('ls-p2-card');
-      var lsOppCard = document.getElementById('ls-p1-card');
-      if (lsMyDot && lsOppDot) {
-        lsMyDot.classList.toggle('active-turn', isMyTurn);
-        lsOppDot.classList.toggle('active-turn', !isMyTurn);
-      }
-      if (lsMyCard && lsOppCard) {
-        lsMyCard.classList.toggle('active-card', isMyTurn);
-        lsOppCard.classList.toggle('active-card', !isMyTurn);
+      if (!myDotEl || !oppDotEl) return;
+      if (turn === myColor) {
+        myDotEl.classList.add('active-turn'); oppDotEl.classList.remove('active-turn');
+      } else {
+        oppDotEl.classList.add('active-turn'); myDotEl.classList.remove('active-turn');
       }
     }
 
-    function setStopBtnActive(active) {
-      var btns = [document.getElementById('stop-move-btn'), document.getElementById('stop-move-btn-ls')];
-      btns.forEach(function(btn) {
-        if (!btn) return;
-        if (active) { btn.classList.add('active'); btn.style.pointerEvents = 'all'; }
-        else { btn.classList.remove('active'); btn.style.pointerEvents = 'none'; }
-      });
-    }
-
-    //  SECTION 6 — Polling
+    //  SECTION 6 — Polling adversaire UNIQUEMENT
     async function pollAdversaire() {
       try {
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
         var serverTurn = d.game.turn;
+
         if (movingInProgress) return;
+
         if (serverTurn !== myColor) {
           if (localState) {
             localState.pieces = Object.assign({}, d.game.pieces);
@@ -858,24 +370,31 @@
           }
           return;
         }
+
         if (selectedSpot || (localState && localState.movingPiece)) return;
+
         var histColor = d.game.lastTurnColor || '';
         var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
-        var histKey   = histColor + '|' + history.length + '|' + (history.length > 0 ? history[history.length - 1].target : '');
+        var histKey   = histColor + '|' + history.length + '|' +
+                        (history.length > 0 ? history[history.length - 1].target : '');
+
         if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
           lastSeenHistKey = histKey;
         }
+
         var serverPiecesStr = JSON.stringify(d.game.pieces);
         var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
         if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
+
         localState      = copyState(d.game);
         canChangePiece  = true;
         selectedSpot    = null;
         lastBlockedSpot = null;
         pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-        clearAllGuides();
-        setStopBtnActive(false);
+        document.getElementById('guides-group').innerHTML = '';
+        document.getElementById('stop-move-btn').classList.remove('active');
         applyLocalState();
+
         var myPieceCountPoll  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
         var oppPieceCountPoll = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
         if (myPieceCountPoll === 0) {
@@ -883,6 +402,7 @@
         } else if (oppPieceCountPoll === 0) {
           showGameOverAlert(myColor, 2000);
         }
+
       } catch(e) { console.warn('poll error', e); }
     }
 
@@ -898,10 +418,11 @@
 
     function applyLocalState() {
       updateTurnIndicator(localState.turn);
+      var stopBtn = document.getElementById('stop-move-btn');
       if (localState.turn === myColor && localState.movingPiece) {
-        setStopBtnActive(true);
+        stopBtn.classList.add('active');
       } else if (!movingInProgress) {
-        setStopBtnActive(false);
+        stopBtn.classList.remove('active');
       }
       renderPieces(localState.pieces, localState);
       if (selectedSpot && localState.turn === myColor) {
@@ -909,10 +430,9 @@
       }
     }
 
-    //  SECTION 7 — Spots cliquables (both boards)
-    function drawBoardSpots(spotsGrpId, piecesGrpId) {
-      var spotsGrp = document.getElementById(spotsGrpId);
-      if (!spotsGrp) return;
+    //  SECTION 7 — Spots cliquables
+    function drawBoardSpots() {
+      var spotsGrp = document.getElementById('spots-group');
       spotsGrp.innerHTML = '';
       rows.forEach(function(r, ri) {
         cols.forEach(function(c, ci) {
@@ -931,7 +451,9 @@
     function handleSpotClick(spotID) {
       if (!localState || localState.turn !== myColor) return;
       if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
+
       var pieces = localState.pieces;
+
       if (canChangePiece && pieces[spotID] === myColor) {
         if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
           selectedSpot    = spotID;
@@ -944,22 +466,27 @@
         renderPieces(pieces, localState);
         return;
       }
+
       if (!selectedSpot) return;
       if ((allowedMoves[selectedSpot] || []).indexOf(spotID) === -1) return;
       if (pieces[spotID]) return;
       if (localState.visited && localState.visited.indexOf(spotID) !== -1) return;
+
       var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
       var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
       if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+
       var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
       var r2 = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
       var dir = (r2-r1) + ',' + (c2-c1);
       if (!canChangePiece && localState.lastDir === dir) return;
+
       var origin     = selectedSpot;
       var newPieces  = Object.assign({}, pieces);
       delete newPieces[origin];
       newPieces[spotID] = myColor;
       var newVisited = (localState.visited || []).concat([origin]);
+
       if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
         pendingCaptures = {
           approach:   caps.approach,
@@ -970,9 +497,11 @@
         localState.visited = newVisited;
         selectedSpot = spotID;
         renderPieces(newPieces, localState);
-        clearAllGuides();
+        // Guides vides pendant le choix
+        document.getElementById('guides-group').innerHTML = '';
         return;
       }
+
       var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
       doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
     }
@@ -988,16 +517,19 @@
 
     function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
       capturedSpots.forEach(function(s) { delete newPieces[s]; });
+
       var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
+
       movingInProgress = true;
       localState.pieces = newPieces;
+
       if (canContinue) {
         localState.movingPiece = target;
         localState.visited     = newVisited;
         localState.lastDir     = dir;
         selectedSpot   = target;
         canChangePiece = false;
-        setStopBtnActive(true);
+        document.getElementById('stop-move-btn').classList.add('active');
       } else {
         localState.turn        = myOppColor;
         localState.movingPiece = '';
@@ -1006,17 +538,24 @@
         selectedSpot    = null;
         lastBlockedSpot = null;
         canChangePiece  = true;
-        setStopBtnActive(false);
+        document.getElementById('stop-move-btn').classList.remove('active');
       }
+
       if (canContinue && selectedSpot) {
         renderGuides(selectedSpot, localState);
       } else {
-        clearAllGuides();
+        document.getElementById('guides-group').innerHTML = '';
       }
+
       updateTurnIndicator(localState.turn);
       renderPieces(localState.pieces, localState);
+
       sendMoveToBackend(origin, target, capturedSpots, dir);
-      if (!canContinue) { scheduleReconcile(); }
+
+      if (!canContinue) {
+        scheduleReconcile();
+      }
+
       if (!canContinue) {
         var myPieceCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
         var oppPieceCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
@@ -1031,6 +570,7 @@
     function handleStopBtn() {
       if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
       var piecesSnapshot = Object.assign({}, localState.pieces);
+
       movingInProgress = true;
       localState.turn        = myOppColor;
       localState.movingPiece = '';
@@ -1039,13 +579,16 @@
       selectedSpot    = null;
       lastBlockedSpot = null;
       canChangePiece  = true;
-      setStopBtnActive(false);
-      clearAllGuides();
+      document.getElementById('stop-move-btn').classList.remove('active');
+      document.getElementById('guides-group').innerHTML = '';
       updateTurnIndicator(localState.turn);
       renderPieces(localState.pieces, localState);
+
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('stop-move error', e); });
+
       scheduleReconcile();
+
       var myPieceCountS  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPieceCountS = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
       if (oppPieceCountS === 0) {
@@ -1055,26 +598,34 @@
       }
     }
 
-    // ── Backend & reconcile
+    //  Envoi backend & réconciliation
     function sendMoveToBackend(origin, target, capturedSpots, dir) {
       callApi(GAME_API_URL, 'make-move', {
         uid: myUid, gameId: gameId,
         origin: origin, target: target,
         capturedSpots: capturedSpots, dir: dir
-      }).catch(function(e) { console.warn('make-move backend error:', e); });
+      }).catch(function(e) {
+        console.warn('make-move backend error (non-blocking):', e);
+      });
     }
 
     function scheduleReconcile() {
       if (reconcileTimer) clearTimeout(reconcileTimer);
-      reconcileTimer = setTimeout(function() { reconcileTimer = null; doReconcile(); }, RECONCILE_DELAY);
+      reconcileTimer = setTimeout(function() {
+        reconcileTimer = null;
+        doReconcile();
+      }, RECONCILE_DELAY);
     }
 
     async function doReconcile() {
       try {
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
+
         movingInProgress = false;
+
         var serverTurn = d.game.turn;
+
         if (serverTurn !== myColor) {
           if (localState.turn !== myColor) return;
           localState = copyState(d.game);
@@ -1082,16 +633,19 @@
           lastBlockedSpot = null;
           canChangePiece  = true;
           pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          clearAllGuides();
-          setStopBtnActive(false);
+          document.getElementById('guides-group').innerHTML = '';
+          document.getElementById('stop-move-btn').classList.remove('active');
           applyLocalState();
+
         } else {
           var serverMoving = d.game.movingPiece || '';
           if (serverMoving) {
             selectedSpot   = localState.movingPiece || serverMoving;
             canChangePiece = false;
-            setStopBtnActive(true);
+            localState.movingPiece = selectedSpot;
+            document.getElementById('stop-move-btn').classList.add('active');
           }
+          // Rerender avec le state actuel (pas de rollback)
           if (selectedSpot) renderGuides(selectedSpot, localState);
           renderPieces(localState.pieces, localState);
           updateTurnIndicator(localState.turn);
@@ -1102,57 +656,27 @@
       }
     }
 
-    // ── Helpers guides/pieces
-    function clearAllGuides() {
-      ['guides-group','guides-group-ls'].forEach(function(id){
-        var g = document.getElementById(id); if(g) g.innerHTML='';
-      });
-    }
-
-    //  SECTION 10 — renderPieces (both boards)
+    //  SECTION 10
     function renderPieces(pieces, stateData) {
-      ['pieces-group','pieces-group-ls'].forEach(function(grpId){
-        renderPiecesInGroup(grpId, pieces, stateData);
-      });
-      // Lock/unlock both boards
-      var isMyTurn = stateData.turn === myColor;
-      var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
-      ['game-board','game-board-ls'].forEach(function(bid){
-        var b = document.getElementById(bid); if(!b) return;
-        if (!isMyTurn || hasPending) b.classList.add('lock-board');
-        else b.classList.remove('lock-board');
-      });
-    }
-
-    var piecesOnBoardMap = { 'pieces-group': {}, 'pieces-group-ls': {} };
-
-    function renderPiecesInGroup(grpId, pieces, stateData) {
-      var grp = document.getElementById(grpId);
-      if (!grp) return;
-
-      var piecesOnBoardLocal = piecesOnBoardMap[grpId] || {};
+      var grp           = document.getElementById('pieces-group');
       var isMyTurn      = stateData.turn === myColor;
       var globalCapture = playerHasAnyCapture(pieces, myColor);
 
-      var suffix = grpId === 'pieces-group-ls' ? '-ls' : '';
-      var menaPatId    = 'mena-pat' + suffix;
-      var maintsoPatId = 'maintso-pat' + suffix;
-
       var newPiecesOnBoard = {};
-      var vanished = Object.keys(piecesOnBoardLocal).filter(function(k) { return !pieces[k]; });
-      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoardLocal[k]; });
+      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
+      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
 
       vanished.forEach(function(vKey) {
-        var color  = piecesOnBoardLocal[vKey].color;
+        var color  = piecesOnBoard[vKey].color;
         var target = null;
         for (var i = 0; i < appeared.length; i++) {
           if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
         }
         if (target) {
-          newPiecesOnBoard[target] = piecesOnBoardLocal[vKey];
+          newPiecesOnBoard[target] = piecesOnBoard[vKey];
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
-          piecesOnBoardLocal[vKey].el.remove();
+          piecesOnBoard[vKey].el.remove();
         }
       });
 
@@ -1167,25 +691,23 @@
       });
 
       Object.keys(pieces).forEach(function(k) {
-        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoardLocal[k];
+        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
       });
-      piecesOnBoardMap[grpId] = newPiecesOnBoard;
+      piecesOnBoard = newPiecesOnBoard;
 
       var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
 
       Object.keys(pieces).forEach(function(spot) {
         var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
         if (ri < 0 || ci < 0) return;
-        var entry = newPiecesOnBoard[spot];
+        var entry = piecesOnBoard[spot];
         if (!entry) return;
         var g = entry.el, circle = g.querySelector('circle');
 
         var svgX = ci * 50;
         var svgY = ri * 50;
         g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
-
-        var patId = pieces[spot] === 'mena' ? menaPatId : maintsoPatId;
-        circle.setAttribute('fill', 'url(#' + patId + ')');
+        circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
         circle.style.pointerEvents = 'all';
         circle.onclick = (function(s) {
@@ -1216,6 +738,10 @@
           g.appendChild(createCross(5,-5,-5,5));
         }
       });
+
+      var board = document.getElementById('game-board');
+      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+      else board.classList.remove('lock-board');
     }
 
     function createCross(x1,y1,x2,y2) {
@@ -1226,34 +752,33 @@
       return l;
     }
 
-    // ── Guides (both boards)
+    //— Guides
     function renderGuides(startSpot, stateData) {
-      ['guides-group','guides-group-ls'].forEach(function(grpId){
-        renderGuidesInGroup(grpId, startSpot, stateData);
-      });
-    }
-
-    function renderGuidesInGroup(grpId, startSpot, stateData) {
-      var grp = document.getElementById(grpId);
+      var grp = document.getElementById('guides-group');
       if (!grp) return;
       grp.innerHTML = '';
       if (!startSpot) return;
+
       var pieces  = stateData.pieces;
       var visited = stateData.visited  || [];
       var lastDir = stateData.lastDir  || '';
       var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
       var moves = allowedMoves[startSpot] || [];
+
       moves.forEach(function(target) {
         if (pieces[target] || visited.indexOf(target) !== -1) return;
         var caps = getCaptures(pieces, startSpot, target, myColor);
         var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
         if (globalCapturePossible && !isCaptureMove) return;
+
         var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
         var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
         var dir = (r2-r1) + ',' + (c2-c1);
         if (!canChangePiece && lastDir === dir) return;
+
         var svgX = c2 * 50;
         var svgY = r2 * 50;
+
         var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         dot.setAttribute('cx', svgX); dot.setAttribute('cy', svgY);
         dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
@@ -1261,7 +786,7 @@
       });
     }
 
-    //  SECTION 12 — Game logic
+    //  SECTION 12
     function getCaptures(pieces, s, e, color) {
       var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
       var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
