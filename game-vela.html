@@ -3,18 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fanorona</title>
+  <title>Vela</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
       font-family: sans-serif;
       margin: 0; padding: 0;
-      background: #0092FF;
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
       overflow: hidden;
       height: 100vh;
       display: flex; flex-direction: column;
       justify-content: center; align-items: center;
     }
+
+    /* ── Bande joueurs ── */
     #players-bar {
       display: flex; justify-content: space-between; align-items: center;
       width: 95vw; max-width: 800px;
@@ -29,8 +32,29 @@
     .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
     .player-name  { font-size: 0.95em; }
     .vs-sep { font-size: 0.85em; opacity: 0.6; font-weight: 400; }
-    #game-board { width: 95vw; max-width: 800px; max-height: 68vh; display: block; }
+
+    /* ── Plateau ── */
+#game-board {
+  background-image: url('img/table-game.jpg');
+  background-size: cover;
+  border-radius: 20px;
+  width: 95vw;
+  max-width: 800px;
+  aspect-ratio: 440 / 240;
+  display: block;
+  touch-action: none;
+}
+
+@media (orientation: landscape) {
+  #game-board {
+    width: auto;
+    height: 85vh;
+    aspect-ratio: 440 / 240;
+  }
+}
     .grid-line { stroke: #333; stroke-width: 2; }
+
+    /* ── Pièces & interactions ── */
     .flipped { transform: rotate(180deg); }
     .piece-group { transition: transform 0.22s ease-in-out; }
     .piece-group.no-transition { transition: none; }
@@ -47,16 +71,18 @@
     .lock-board .spot { pointer-events: none !important; }
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
+
+    /* ── Bouton Stop ── */
     #stop-move-btn {
-      width: 60px; height: 60px; border-radius: 50%;
-      background: #f44336; color: white; border: 4px solid white;
+      width: 60px; height: 60px;
       font-size: 30px; font-weight: bold; cursor: pointer;
-      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none;
+      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none; border: none; background-color: transparent; color: white;
     }
     #stop-move-btn.active {
-      opacity: 1; transform: scale(1.1);
-      box-shadow: 0 0 15px rgba(255,255,255,0.5); pointer-events: all;
+      opacity: 1; transform: scale(1.1); pointer-events: all;
     }
+
+    /* ── Loading ── */
     #loading-overlay {
       position: fixed; inset: 0; background: #0092FF;
       display: flex; justify-content: center; align-items: center;
@@ -70,13 +96,18 @@
       border-radius: 50%; animation: spin 0.7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Erreur ── */
     #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
   </style>
 </head>
 <body>
-  <div id="loading-overlay"><div class="spinner"></div><span>Fananganana ny lalao…</span></div>
+
+  <div id="loading-overlay"><div class="spinner"></div></div>
+
   <div id="players-bar" style="display:none;"></div>
-  <svg id="game-board" viewBox="-50 -50 500 300" style="display:none;">
+
+  <svg id="game-board" viewBox="-20 -20 440 240" style="display: none;">
     <defs>
       <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
         <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
@@ -96,7 +127,10 @@
     <g id="pieces-group"></g>
     <g id="spots-group"></g>
   </svg>
-  <button id="stop-move-btn" style="display:none;">OK</button>
+
+  <button id="stop-move-btn" style="display:none;">
+    <i class="fas fa-times"></i>
+  </button>
   <div id="error-msg"></div>
 
   <script>
