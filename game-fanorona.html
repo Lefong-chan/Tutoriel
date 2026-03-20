@@ -2,246 +2,147 @@
 <html lang="mg">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fanorona</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;700;900&display=swap');
-
-    :root {
-      --cyan: #00e5ff;
-      --glass: rgba(0,0,0,0.30);
-      --glass-border: rgba(255,255,255,0.13);
-      --r: 13px;
-    }
-    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
-
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
-      font-family:'Rajdhani',sans-serif;
-      background: linear-gradient(135deg,#6e8efb 0%,#a777e3 100%);
-      overflow:hidden;
-      height:100dvh; width:100vw;
+      font-family: sans-serif;
+      margin: 0; padding: 0;
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      overflow: hidden;
+      height: 100vh;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
     }
 
-    /* ═══════════════════════════════════════
-       PORTRAIT  —  3 rows: top | board | bottom
-    ═══════════════════════════════════════ */
-    #port {
-      display:flex; flex-direction:column;
-      height:100dvh; width:100vw;
-      padding:10px 10px 8px;
-      gap:7px;
+    /* ── Bande joueurs ── */
+    #players-bar-top,
+    #players-bar-bottom {
+      display: flex; align-items: center;
+      width: 95vw; max-width: 800px;
+      gap: 8px;
+      color: white; font-size: 1em; font-weight: 700; min-height: 44px;
+    }
+    #players-bar-top    { justify-content: flex-start; margin-bottom: 8px; }
+    #players-bar-bottom { justify-content: flex-start; margin-top: 8px; }
+    .player-info {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px;
+      background: rgba(0,0,0,0.25); border-radius: 12px;
+    }
+    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
+    .dot-maintso { background: #22c55e; }
+    .dot-mena    { background: #ef4444; }
+    .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
+    .player-name  { font-size: 0.95em; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Plateau ── */
+#game-board {
+  background-image: url('img/table-game.jpg');
+  background-size: cover;
+  border-radius: 20px;
+  width: 95vw;
+  max-width: 800px;
+  aspect-ratio: 440 / 240;
+  display: block;
+  touch-action: none;
+}
+
+@media (orientation: landscape) {
+  #game-board {
+    width: auto;
+    height: 85vh;
+    aspect-ratio: 440 / 240;
+  }
+}
+    .grid-line { stroke: #333; stroke-width: 2; }
+
+    /* ── Pièces & interactions ── */
+    .flipped { transform: rotate(180deg); }
+    .piece-group { transition: transform 0.22s ease-in-out; }
+    .piece-group.no-transition { transition: none; }
+    .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
+    .movable-piece  { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
+    .blocked-piece  { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
+    .capture-target {
+      stroke: darkorange; stroke-width: 5px; cursor: pointer;
+      pointer-events: all !important; stroke-dasharray: 5;
+      animation: dash 1s linear infinite;
+    }
+    @keyframes dash { to { stroke-dashoffset: 10; } }
+    .spot { cursor: pointer; pointer-events: all; }
+    .lock-board .spot { pointer-events: none !important; }
+    .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+    .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
+
+    /* ── Bouton Stop ── */
+    #stop-move-btn {
+      width: 60px; height: 60px;
+      font-size: 30px; font-weight: bold; cursor: pointer;
+      margin-top: 20px; opacity: 0.3; transition: 0.3s; pointer-events: none; border: none; background-color: transparent; color: white;
+      position: absolute;
+      right: 0;
+    }
+    #stop-move-btn.active {
+      opacity: 1; transform: scale(1.1); pointer-events: all;
     }
 
-    #port-top {
-      display:flex; align-items:center; justify-content:space-between;
-      gap:7px; flex-shrink:0; width:100%;
-    }
-
-    #port-board {
-      flex:1 1 0; min-height:0;
-      display:flex; align-items:center; justify-content:center;
-    }
-
-    #game-board {
-      background-image:url('img/table-game.jpg');
-      background-size:cover;
-      border-radius:18px;
-      display:block; touch-action:none;
-      width:100%; max-width:100%; max-height:100%;
-      aspect-ratio:440/240;
-    }
-
-    #port-bot {
-      display:flex; align-items:center; justify-content:center;
-      gap:7px; flex-shrink:0; flex-wrap:nowrap; width:100%;
-    }
-
-    /* ═══════════════════════════════════════
-       LANDSCAPE  —  left | board | right
-    ═══════════════════════════════════════ */
-    #land {
-      display:none;
-      height:100dvh; width:100vw;
-      align-items:center; justify-content:center;
-      padding:8px 10px; gap:10px;
-    }
-    #land-left, #land-right {
-      display:flex; flex-direction:column; align-items:center; justify-content:center;
-      gap:9px; flex-shrink:0;
-      width:clamp(86px,10vw,126px); height:100%;
-    }
-    #game-board-ls {
-      background-image:url('img/table-game.jpg');
-      background-size:cover;
-      border-radius:18px;
-      display:block; touch-action:none;
-      height:calc(100dvh - 16px);
-      aspect-ratio:440/240;
-      max-width:100%; flex-shrink:0;
-    }
-
-    /* ═══════════════════════════════════════
-       ORIENTATION SWITCH
-    ═══════════════════════════════════════ */
-    @media (orientation:portrait)  { #port{display:flex;} #land{display:none!important;} }
-    @media (orientation:landscape) { #port{display:none!important;} #land{display:flex;} }
-
-    /* ═══════════════════════════════════════
-       COMPONENTS
-    ═══════════════════════════════════════ */
-
-    /* Glass widget */
-    .hud {
-      display:flex; align-items:center; justify-content:center; gap:6px;
-      background:var(--glass); border:1px solid var(--glass-border);
-      border-radius:var(--r); padding:6px 11px; color:#fff;
-      backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-      font-family:'Rajdhani',sans-serif; font-weight:600; flex-shrink:0;
-    }
-    .hud.col { flex-direction:column; gap:7px; width:100%; padding:9px 8px; }
-
-    /* Player card */
-    .pcrd {
-      display:flex; align-items:center; gap:7px;
-      padding:7px 12px;
-      background:var(--glass); border:1px solid var(--glass-border);
-      border-radius:var(--r); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-      color:#fff; min-width:0; flex-shrink:0;
-    }
-    .pcrd.col { flex-direction:column; gap:4px; text-align:center; width:100%; padding:9px 6px; }
-    .pdot {
-      width:13px; height:13px; border-radius:50%; flex-shrink:0;
-      border:2px solid rgba(255,255,255,0.4); transition:box-shadow .3s;
-    }
-    .dot-m { background:#22c55e; }
-    .dot-r { background:#ef4444; }
-    .pdot.on { box-shadow:0 0 0 3px #fff, 0 0 10px 3px rgba(255,255,255,.6); }
-    .pname {
-      font-size:.87em; letter-spacing:.04em; font-weight:600;
-      max-width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-    }
-
-    /* Timer */
-    .tblk { display:flex; flex-direction:column; align-items:center; line-height:1; gap:1px; }
-    .tlbl { font-size:.58em; opacity:.48; letter-spacing:.1em; text-transform:uppercase; }
-    .tval { font-family:'Orbitron',sans-serif; font-size:.98em; font-weight:700; letter-spacing:.04em; }
-    .tsep { font-family:'Orbitron',sans-serif; font-size:.95em; opacity:.28; align-self:center; }
-
-    /* Ping */
-    .pbars { display:flex; align-items:flex-end; gap:2px; height:13px; }
-    .pbar  { width:3px; border-radius:2px; background:rgba(255,255,255,.18); transition:background .4s; }
-    .pbar:nth-child(1){height:4px;} .pbar:nth-child(2){height:7px;}
-    .pbar:nth-child(3){height:10px;} .pbar:nth-child(4){height:13px;}
-    .pbar.on { background:var(--cyan); }
-    .pval { font-family:'Orbitron',sans-serif; font-size:.6em; color:var(--cyan); opacity:.7; white-space:nowrap; }
-
-    /* Infinity */
-    .isym { font-family:'Orbitron',sans-serif; font-size:1.25em; opacity:.8; }
-
-    /* Action buttons */
-    .abtn {
-      display:flex; align-items:center; justify-content:center;
-      width:42px; height:42px; border-radius:12px;
-      background:var(--glass); border:1px solid var(--glass-border);
-      color:rgba(255,255,255,.68); font-size:1em; cursor:pointer;
-      transition:background .2s,color .2s,border-color .2s;
-      backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); flex-shrink:0;
-    }
-    .abtn:hover,.abtn:active { background:rgba(124,77,255,.28); border-color:rgba(124,77,255,.5); color:#fff; }
-    .dbtn {
-      font-family:'Rajdhani',sans-serif; font-size:.65em; font-weight:700;
-      letter-spacing:.09em; text-transform:uppercase;
-      width:auto; padding:0 9px; min-width:52px; height:42px;
-    }
-    .abtn.wide { width:100%; border-radius:11px; }
-    .dbtn.wide { width:100%; height:38px; }
-
-    /* SVG pieces */
-    .flipped { transform:rotate(180deg); }
-    .piece-group { transition:transform .22s ease-in-out; }
-    .piece-group.no-transition { transition:none; }
-    .selected-piece { stroke:#FFF700; stroke-width:5px; paint-order:stroke; filter:drop-shadow(0 0 8px yellow); }
-    .movable-piece  { stroke:#ADFF2F; stroke-width:5px; paint-order:stroke; }
-    .blocked-piece  { stroke:#FF4500; stroke-width:5px; paint-order:stroke; }
-    .capture-target { stroke:darkorange; stroke-width:5px; cursor:pointer; pointer-events:all!important; stroke-dasharray:5; animation:dash 1s linear infinite; }
-    @keyframes dash { to{stroke-dashoffset:10;} }
-    .spot { cursor:pointer; pointer-events:all; }
-    .lock-board .spot { pointer-events:none!important; }
-    .cross-line { stroke:white; stroke-width:2; stroke-linecap:round; pointer-events:none; }
-    .guide-dot  { fill:#FFF700; opacity:.8; pointer-events:none; }
-    .grid-line  { stroke:#333; stroke-width:2; }
-
-    /* Loading */
+    /* ── Loading ── */
     #loading-overlay {
-      position:fixed; inset:0;
-      background:rgba(0,100,200,.45); backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px);
-      display:flex; justify-content:center; align-items:center;
-      z-index:200; color:white; flex-direction:column; gap:16px;
+      position: fixed; inset: 0;
+      background: rgba(0, 146, 255, 0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
+      flex-direction: column; gap: 16px;
+      transition: opacity 0.4s ease;
     }
-    #loading-overlay.hidden { display:none; }
-    .spinner { width:32px; height:32px; border:4px solid rgba(255,255,255,.25); border-top-color:white; border-radius:50%; animation:spin .7s linear infinite; }
-    @keyframes spin { to{transform:rotate(360deg);} }
-    #error-msg { display:none; position:fixed; bottom:56px; left:0; right:0; color:#fef08a; font-size:1em; text-align:center; z-index:300; }
+    #loading-overlay.hidden { display: none; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 4px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Erreur ── */
+    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
   </style>
 </head>
 <body>
 
-<!-- LOADING -->
-<div id="loading-overlay">
-  <div class="spinner"></div>
-  <div style="text-align:center;line-height:1.6;">
-    <div style="font-size:1.05em;font-weight:800;letter-spacing:.03em;">Waiting for opponent</div>
-    <div style="font-size:.82em;opacity:.7;font-weight:400;margin-top:3px;">Miandry ny adversaire…</div>
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div style="text-align:center;line-height:1.6;">
+      <div style="font-size:1.1em;font-weight:800;letter-spacing:0.03em;">Waiting for opponent</div>
+      <div style="font-size:0.85em;opacity:0.75;font-weight:400;margin-top:4px;">Waiting for opponent</div>
+    </div>
   </div>
-</div>
 
-<!-- ════════════ PORTRAIT ════════════ -->
-<div id="port">
-
-  <!-- TOP ROW -->
-  <div id="port-top">
-
-    <!-- Opponent (left) -->
-    <div class="pcrd" id="p-opp-card">
-      <div class="pdot" id="p-opp-dot" style="background:rgba(255,255,255,.18);"></div>
-      <span class="pname" id="p-opp-name" style="opacity:.4;">---</span>
+  <div id="players-bar-top">
+    <div class="player-info">
+      <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+      <span class="player-name" style="opacity:0.4;">---</span>
     </div>
-
-    <!-- Center HUDs -->
-    <div style="display:flex;align-items:center;gap:6px;flex:1;justify-content:center;min-width:0;">
-      <!-- Timer -->
-      <div class="hud" style="gap:9px;padding:5px 10px;">
-        <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
-        <span class="tsep">|</span>
-        <div class="tblk"><span class="tlbl">YOU</span><span class="tval">∞</span></div>
-      </div>
-      <!-- Ping -->
-      <div class="hud" style="padding:5px 9px;gap:5px;">
-        <div class="pbars" id="p-ping-bars">
-          <div class="pbar on"></div><div class="pbar on"></div>
-          <div class="pbar on"></div><div class="pbar"></div>
-        </div>
-        <span class="pval" id="p-ping-val">—</span>
-      </div>
+  </div>
+  
+  <div id="players-bar-bottom">
+    <div class="player-info">
+      <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+      <span class="player-name" style="opacity:0.4;">---</span>
     </div>
+  </div>
 
-    <!-- Me (right) -->
-    <div class="pcrd" id="p-my-card" style="flex-direction:row-reverse;">
-      <div class="pdot" id="p-my-dot" style="background:rgba(255,255,255,.18);"></div>
-      <span class="pname" id="p-my-name" style="opacity:.4;text-align:right;">---</span>
-    </div>
-
-  </div><!-- /#port-top -->
-
-  <!-- BOARD -->
   <svg id="game-board" viewBox="-20 -20 440 240">
     <defs>
       <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-        <image href="img/button-red.png" x="0" y="0" width="100" height="100" />
+        <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
       </pattern>
       <pattern id="maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-        <image href="img/button-green.png" x="0" y="0" width="100" height="100" />
+        <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
       </pattern>
     </defs>
     <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
@@ -250,86 +151,17 @@
       M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
       M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
       M300 0 L400 100 M400 0 L200 200
-      M0 100 L100 200 M400 100 L300 200" />
+      M0 100 L100 200 M400 100 L300 200"/>
     <g id="guides-group"></g>
     <g id="pieces-group"></g>
     <g id="spots-group"></g>
   </svg>
 
-  <!-- BOTTOM ROW -->
-  <div id="port-bot">
+  <button id="stop-move-btn">
+    <i class="fas fa-times"></i>
+  </button>
 
-    <!-- OK -->
-    <button class="abtn dbtn" id="stop-move-btn">OK</button>
-    <!-- Message -->
-    <button class="abtn"><i class="fas fa-comment-dots"></i></button>
-    <!-- Settings -->
-    <button class="abtn"><i class="fas fa-sliders-h"></i></button>
-    <!-- Demande -->
-    <button class="abtn dbtn">DEMANDE</button>
-  </div>
-
-</div>
-
-
-<!-- ════════════ LANDSCAPE ════════════ -->
-<div id="land">
-
-  <!-- LEFT -->
-  <div id="land-left">
-    <div class="pcrd col" id="l-opp-card">
-      <div class="pdot" id="l-opp-dot" style="background:rgba(255,255,255,.18);"></div>
-      <span class="pname" id="l-opp-name" style="opacity:.4;">---</span>
-    </div>
-    <div class="hud col">
-      <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
-    </div>
-    
-    <button class="abtn dbtn wide">DEMANDE</button>
-    <button class="abtn wide"><i class="fas fa-comment-dots"></i></button>
-  </div>
-
-  <!-- BOARD LS -->
-  <div style="display:flex;align-items:center;justify-content:center;flex-shrink:0;height:100%;">
-    <svg id="game-board-ls" viewBox="-20 -20 440 240">
-      <defs>
-        <pattern id="mena-pat-ls" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-          <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
-        </pattern>
-        <pattern id="maintso-pat-ls" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
-          <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
-        </pattern>
-      </defs>
-      <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
-        M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
-        M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
-        M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
-        M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
-        M300 0 L400 100 M400 0 L200 200
-        M0 100 L100 200 M400 100 L300 200"/>
-      <g id="guides-group-ls"></g>
-      <g id="pieces-group-ls"></g>
-      <g id="spots-group-ls"></g>
-    </svg>
-  </div>
-
-  <!-- RIGHT -->
-  <div id="land-right">
-    <div class="pcrd col" id="l-my-card">
-      <div class="pdot" id="l-my-dot" style="background:rgba(255,255,255,.18);"></div>
-      <span class="pname" id="l-my-name" style="opacity:.4;">---</span>
-    </div>
-    <div class="hud col">
-      <div class="tblk"><span class="tlbl">YOU</span><span class="tval">∞</span></div>
-    </div>
-    <button class="abtn dbtn wide" id="stop-move-btn">OK</button>
-
-    <button class="abtn wide"><i class="fas fa-sliders-h"></i></button>
-  </div>
-
-</div><!-- /#land -->
-
-<div id="error-msg"></div>
+  <div id="error-msg"></div>
 
   <script>
   (function () {
@@ -527,20 +359,24 @@
     //  SECTION 5 — Players bar
 
     function renderPlayersBar(myCol, myUsername, oppUsername) {
-      var bar = document.getElementById('players-bar');
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-      bar.innerHTML =
-        // Adversaire (gauche)
+
+      // Adversaire → players-bar-top
+      var barTop = document.getElementById('players-bar-top');
+      barTop.innerHTML =
         '<div class="player-info">' +
           '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
           '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
-        '</div>' +
-        // Moi (droite)
-        '<div class="player-info">' +
-          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
-          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
         '</div>';
+
+      var barBottom = document.getElementById('players-bar-bottom');
+      barBottom.innerHTML =
+        '<div class="player-info">' +
+          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
+          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
+        '</div>';
+
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
     }
