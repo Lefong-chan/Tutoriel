@@ -18,12 +18,15 @@
     }
 
     /* ── Bande joueurs ── */
-    #players-bar {
-      display: flex; justify-content: space-between; align-items: center;
+    #players-bar-top,
+    #players-bar-bottom {
+      display: flex; align-items: center;
       width: 95vw; max-width: 800px;
-      margin-bottom: 8px; gap: 8px;
+      gap: 8px;
       color: white; font-size: 1em; font-weight: 700; min-height: 44px;
     }
+    #players-bar-top    { justify-content: flex-start; margin-bottom: 8px; }
+    #players-bar-bottom { justify-content: flex-start; margin-top: 8px; }
     .player-info {
       display: flex; align-items: center; gap: 8px;
       padding: 8px 14px;
@@ -119,14 +122,17 @@
     </div>
   </div>
 
-  <div id="players-bar">
+  <div id="players-bar-top">
     <div class="player-info">
       <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
       <span class="player-name" style="opacity:0.4;">---</span>
     </div>
+  </div>
+  
+  <div id="players-bar-bottom">
     <div class="player-info">
-      <span class="player-name" style="opacity:0.4;">---</span>
       <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+      <span class="player-name" style="opacity:0.4;">---</span>
     </div>
   </div>
 
@@ -154,6 +160,7 @@
   <button id="stop-move-btn">
     <i class="fas fa-times"></i>
   </button>
+
   <div id="error-msg"></div>
 
   <script>
@@ -367,18 +374,25 @@
 
     //  PLAYERS BAR (commun)
     function renderPlayersBar(myCol, myUsername, oppUsername) {
-      var bar = document.getElementById('players-bar');
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-      bar.innerHTML =
+
+      // Adversaire → players-bar-top
+      var barTop = document.getElementById('players-bar-top');
+      barTop.innerHTML =
         '<div class="player-info">' +
           '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
           '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
-        '</div>' +
-        '<div class="player-info">' +
-          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
-          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
         '</div>';
+
+      // Moi → players-bar-bottom
+      var barBottom = document.getElementById('players-bar-bottom');
+      barBottom.innerHTML =
+        '<div class="player-info">' +
+          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
+          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
+        '</div>';
+
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
     }
