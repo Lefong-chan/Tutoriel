@@ -16,6 +16,10 @@
       display: flex; flex-direction: column;
       justify-content: center; align-items: center;
     }
+    
+    .container {
+      display: flex;
+    }
 
     /* ── Bande joueurs ── */
     #players-bar-top,
@@ -24,6 +28,7 @@
       width: 95vw; max-width: 800px;
       gap: 8px;
       color: white; font-size: 1em; font-weight: 700; min-height: 44px;
+      width: 15%;
     }
     #players-bar-top    { justify-content: flex-start; margin-bottom: 8px; }
     #players-bar-bottom { justify-content: flex-start; margin-top: 8px; }
@@ -43,7 +48,7 @@
   background-image: url('img/table-game.jpg');
   background-size: cover;
   border-radius: 20px;
-  width: 95vw;
+  width: 70%;
   max-width: 800px;
   aspect-ratio: 440 / 240;
   display: block;
@@ -109,11 +114,13 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Erreur ── */
-    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; }
+    #error-msg { display: none; color: #fef08a; font-size: 1em; margin-top: 10px; text-align: center; position: fixed; }
   </style>
 </head>
 <body>
 
+
+<div class="container">
   <div id="loading-overlay">
     <div class="spinner"></div>
     <div style="text-align:center;line-height:1.6;">
@@ -121,15 +128,8 @@
       <div style="font-size:0.85em;opacity:0.75;font-weight:400;margin-top:4px;">Waiting for opponent</div>
     </div>
   </div>
-
-  <div id="players-bar-top">
-    <div class="player-info">
-      <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
-      <span class="player-name" style="opacity:0.4;">---</span>
-    </div>
-  </div>
   
-  <div id="players-bar-bottom">
+  <div id="players-bar-top">
     <div class="player-info">
       <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
       <span class="player-name" style="opacity:0.4;">---</span>
@@ -156,13 +156,20 @@
     <g id="pieces-group"></g>
     <g id="spots-group"></g>
   </svg>
-
+  
+  <div id="players-bar-bottom">
+    <div class="player-info">
+      <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+      <span class="player-name" style="opacity:0.4;">---</span>
+    </div>
+  </div>
+  
   <button id="stop-move-btn">
     <i class="fas fa-times"></i>
   </button>
 
   <div id="error-msg"></div>
-
+</div>
   <script>
   (function () {
 
