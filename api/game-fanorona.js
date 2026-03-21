@@ -104,8 +104,23 @@ async function handleMakeMove(body, res) {
 
   const canContinue = wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
-  const prevHistory    = Array.isArray(game.moveHistory)   ? game.moveHistory   : [];
+  const prevHistory     = Array.isArray(game.moveHistory) ? game.moveHistory : [];
   const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
+  const nowMs           = Date.now();
+
+  function timerUpdateForTurn(nextTurn) {
+    const upd = { timerRunning: nextTurn, timerLastTick: nowMs };
+    if (game.timerRunning && game.timerLastTick) {
+      const elapsed = Math.max(0, nowMs - game.timerLastTick);
+      if (game.timerRunning === "maintso") {
+        upd.timerMaintso = Math.max(0, (game.timerMaintso || 0) - elapsed);
+      } else {
+        upd.timerMena = Math.max(0, (game.timerMena || 0) - elapsed);
+      }
+    }
+    return upd;
+  }
+
   if (canContinue) {
     await gameRef.update({
       pieces,
@@ -116,7 +131,7 @@ async function handleMakeMove(body, res) {
     });
     return res.status(200).json({ success: true, continuing: true });
   } else {
-    const nextColor = myColor === "maintso" ? "mena" : "maintso";
+    const nextColor   = myColor === "maintso" ? "mena" : "maintso";
     const fullHistory = [...prevHistory, newHistoryEntry];
     await gameRef.update({
       pieces,
@@ -126,7 +141,8 @@ async function handleMakeMove(body, res) {
       lastDir:         "",
       moveHistory:     [],
       lastTurnHistory: fullHistory,
-      lastTurnColor:   myColor
+      lastTurnColor:   myColor,
+      ...timerUpdateForTurn(nextColor),
     });
     return res.status(200).json({ success: true, continuing: false });
   }
@@ -146,8 +162,18 @@ async function handleStopMove(body, res) {
   if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (!game.movingPiece)     return res.status(400).json({ error: "Tsy misy movingPiece." });
 
-  const nextColor = myColor === "maintso" ? "mena" : "maintso";
+  const nextColor   = myColor === "maintso" ? "mena" : "maintso";
   const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
+  const stopNow     = Date.now();
+  const stopTimerUpd = { timerRunning: nextColor, timerLastTick: stopNow };
+  if (game.timerRunning && game.timerLastTick) {
+    const elapsed = Math.max(0, stopNow - game.timerLastTick);
+    if (game.timerRunning === "maintso") {
+      stopTimerUpd.timerMaintso = Math.max(0, (game.timerMaintso || 0) - elapsed);
+    } else {
+      stopTimerUpd.timerMena = Math.max(0, (game.timerMena || 0) - elapsed);
+    }
+  }
   await gameRef.update({
     pieces,
     turn:            nextColor,
@@ -156,7 +182,8 @@ async function handleStopMove(body, res) {
     lastDir:         "",
     moveHistory:     [],
     lastTurnHistory: stopHistory,
-    lastTurnColor:   myColor
+    lastTurnColor:   myColor,
+    ...stopTimerUpd,
   });
   return res.status(200).json({ success: true });
 }
