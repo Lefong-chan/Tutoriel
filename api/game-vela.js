@@ -42,6 +42,7 @@ export default async function handler(req, res) {
       case "make-move":          return await handleMakeMove(payload, res);
       case "stop-move":          return await handleStopMove(payload, res);
       case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
+      case "declare-winner":     return await handleDeclareWinner(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -145,18 +146,27 @@ async function handleMakeMove(body, res) {
       return res.status(200).json({ success: true, continuing: true });
     } else {
       const nextColor = myColor === "maintso" ? "mena" : "maintso";
-      await gameRef.update({
+      const nowMs2    = Date.now();
+      const timerUpd2 = { timerRunning: nextColor, timerLastTick: nowMs2 };
+      if (game.timerRunning && game.timerLastTick) {
+        const el2 = Math.max(0, nowMs2 - game.timerLastTick);
+        if (game.timerRunning === "maintso") timerUpd2.timerMaintso = Math.max(0, (game.timerMaintso||0)-el2);
+        else timerUpd2.timerMena = Math.max(0, (game.timerMena||0)-el2);
+      }
+      const winner2 = checkGameOver(
         pieces,
-        turn:            nextColor,
-        movingPiece:     "",
-        visited:         [],
-        lastDir:         "",
-        moveHistory:     [],
-        lastTurnHistory: [...prevHistory, histEntry],
-        lastTurnColor:   myColor,
-        firstMover,
-      });
-      return res.status(200).json({ success: true, continuing: false });
+        timerUpd2.timerMaintso !== undefined ? timerUpd2.timerMaintso : (game.timerMaintso||0),
+        timerUpd2.timerMena    !== undefined ? timerUpd2.timerMena    : (game.timerMena||0),
+        game.minutes
+      );
+      const payload2 = {
+        pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
+        moveHistory: [], lastTurnHistory: [...prevHistory, histEntry],
+        lastTurnColor: myColor, firstMover, ...timerUpd2,
+      };
+      if (winner2) payload2.winner = winner2;
+      await gameRef.update(payload2);
+      return res.status(200).json({ success: true, continuing: false, winner: winner2||null });
     }
 
   } else {
@@ -203,19 +213,29 @@ async function handleMakeMove(body, res) {
       return res.status(200).json({ success: true, continuing: true });
     } else {
       const nextColor = myColor === "maintso" ? "mena" : "maintso";
-      await gameRef.update({
+      const nowMs1    = Date.now();
+      const timerUpd1 = { timerRunning: nextColor, timerLastTick: nowMs1 };
+      if (game.timerRunning && game.timerLastTick) {
+        const el1 = Math.max(0, nowMs1 - game.timerLastTick);
+        if (game.timerRunning === "maintso") timerUpd1.timerMaintso = Math.max(0, (game.timerMaintso||0)-el1);
+        else timerUpd1.timerMena = Math.max(0, (game.timerMena||0)-el1);
+      }
+      const winner1 = checkGameOver(
         pieces,
-        turn:                      nextColor,
-        movingPiece:               "",
-        visited:                   [],
-        lastDir:                   "",
-        moveHistory:               [],
-        lastTurnHistory:           [...prevHistory, histEntry],
-        lastTurnColor:             myColor,
-        firstMover,
+        timerUpd1.timerMaintso !== undefined ? timerUpd1.timerMaintso : (game.timerMaintso||0),
+        timerUpd1.timerMena    !== undefined ? timerUpd1.timerMena    : (game.timerMena||0),
+        game.minutes
+      );
+      const payload1 = {
+        pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
+        moveHistory: [], lastTurnHistory: [...prevHistory, histEntry],
+        lastTurnColor: myColor, firstMover,
         nonFirstMoverHasContinued: nfmHasCont,
-      });
-      return res.status(200).json({ success: true, continuing: false });
+        ...timerUpd1,
+      };
+      if (winner1) payload1.winner = winner1;
+      await gameRef.update(payload1);
+      return res.status(200).json({ success: true, continuing: false, winner: winner1||null });
     }
   }
 }
@@ -235,19 +255,66 @@ async function handleStopMove(body, res) {
 
   const nextColor   = myColor === "maintso" ? "mena" : "maintso";
   const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  await gameRef.update({
+  const stopNow     = Date.now();
+  const stopTimerUpd = { timerRunning: nextColor, timerLastTick: stopNow };
+  if (game.timerRunning && game.timerLastTick) {
+    const elapsed = Math.max(0, stopNow - game.timerLastTick);
+    if (game.timerRunning === "maintso") stopTimerUpd.timerMaintso = Math.max(0, (game.timerMaintso||0)-elapsed);
+    else stopTimerUpd.timerMena = Math.max(0, (game.timerMena||0)-elapsed);
+  }
+  const stopWinner = checkGameOver(
     pieces,
-    turn:            nextColor,
-    movingPiece:     "",
-    visited:         [],
-    lastDir:         "",
-    moveHistory:     [],
-    lastTurnHistory: stopHistory,
-    lastTurnColor:   myColor,
-    firstMover:      game.firstMover || null,
+    stopTimerUpd.timerMaintso !== undefined ? stopTimerUpd.timerMaintso : (game.timerMaintso||0),
+    stopTimerUpd.timerMena    !== undefined ? stopTimerUpd.timerMena    : (game.timerMena||0),
+    game.minutes
+  );
+  const stopPayload = {
+    pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
+    moveHistory: [], lastTurnHistory: stopHistory,
+    lastTurnColor: myColor,
+    firstMover: game.firstMover || null,
     nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
-  });
-  return res.status(200).json({ success: true });
+    ...stopTimerUpd,
+  };
+  if (stopWinner) stopPayload.winner = stopWinner;
+  await gameRef.update(stopPayload);
+  return res.status(200).json({ success: true, winner: stopWinner||null });
+}
+
+// ── Vérifie fin de partie — retourne winner ("maintso"/"mena") ou null ──
+function checkGameOver(pieces, timerMaintso, timerMena, minutes) {
+  const maintsoCount = Object.values(pieces).filter(v => v === "maintso").length;
+  const menaCount    = Object.values(pieces).filter(v => v === "mena").length;
+  if (maintsoCount === 0) return "mena";
+  if (menaCount    === 0) return "maintso";
+  if (minutes) {
+    if ((timerMaintso || 0) <= 0) return "mena";
+    if ((timerMena    || 0) <= 0) return "maintso";
+  }
+  return null;
+}
+
+// ── Declare winner (timer expiry from client) ──
+async function handleDeclareWinner(body, res) {
+  const { uid, gameId, winner } = body;
+  if (!uid || !gameId || !winner) return res.status(400).json({ error: "uid, gameId, winner required." });
+  if (winner !== "maintso" && winner !== "mena") return res.status(400).json({ error: "Invalid winner." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  if (game.winner) return res.status(200).json({ success: true, winner: game.winner });
+  if (game.minutes) {
+    const loser      = winner === "maintso" ? "mena" : "maintso";
+    const loserMs    = loser === "maintso" ? (game.timerMaintso || 0) : (game.timerMena || 0);
+    const lastTick   = game.timerLastTick || 0;
+    const elapsed    = Math.max(0, Date.now() - lastTick);
+    const actualLeft = Math.max(0, loserMs - elapsed);
+    if (actualLeft > 2000) return res.status(400).json({ error: "Timer not expired yet." });
+  }
+  await gameRef.update({ winner });
+  return res.status(200).json({ success: true, winner });
 }
 
 // ── Helpers board (communs aux deux phases) ──
