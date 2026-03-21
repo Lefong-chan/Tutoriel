@@ -300,6 +300,22 @@
       white-space: nowrap;
       line-height: 1;
     }
+
+    /* ── Timer countdown dans #opp-timer-ls (Phase 2 uniquement) ── */
+    #opp-timer-ls {
+      font-size: 1em;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.85);
+      transition: color 0.2s;
+    }
+    #opp-timer-ls.timer-active {
+      color: #fff;
+    }
+    #opp-timer-ls.timer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 10px rgba(255,100,100,0.6);
+    }
   </style>
 </head>
 <body>
@@ -337,7 +353,8 @@
       <span class="ping-ms" id="l-ping-ms">— ms</span>
     </div>
 
-    <div class="abtn" id="opp-timer-ls">∞</div>
+    <!-- Timer 2s : visible uniquement pour le joueur local en Phase 2, move multiple -->
+    <div class="abtn" id="opp-timer-ls">--</div>
     <button class="abtn"><i class="fas fa-comment-dots"></i></button>
   </div>
 
@@ -444,6 +461,72 @@
     setInterval(measurePing, 4000);
     measurePing();
 
+    // ════════════════════════════════════════════════════════════
+    //  TIMER 2s — countdown local, Phase 2 uniquement (frontend only)
+    //
+    //  Règles :
+    //  - Visible uniquement pour le joueur LOCAL en Phase 2,
+    //    quand il est en move multiple (canChangePiece === false,
+    //    i.e. il a déjà bougé au moins une fois dans ce tour).
+    //  - "--" quand c'est le tour de l'adversaire ou en Phase 1.
+    //  - Démarre (reset à 2.0s) à chaque déplacement réel d'une pièce.
+    //    (pas au simple clic de sélection)
+    //  - À 0 : stop automatique (comme si on appuyait sur ×).
+    //  - Côté adversaire : ils voient toujours "--".
+    // ════════════════════════════════════════════════════════════
+    var MOVE_TIMER_DURATION = 2.0;
+    var moveTimerRaf    = null;
+    var moveTimerEnd    = null;
+    var moveTimerActive = false;
+
+    var timerEl = document.getElementById('opp-timer-ls');
+
+    function setTimerDisplay(val) {
+      timerEl.textContent = val;
+      if (val === '--') {
+        timerEl.classList.remove('timer-active', 'timer-urgent');
+      } else {
+        timerEl.classList.add('timer-active');
+        var num = parseFloat(val);
+        if (num <= 0.5) timerEl.classList.add('timer-urgent');
+        else            timerEl.classList.remove('timer-urgent');
+      }
+    }
+
+    function stopMoveTimer() {
+      if (moveTimerRaf) {
+        cancelAnimationFrame(moveTimerRaf);
+        moveTimerRaf = null;
+      }
+      moveTimerActive = false;
+      moveTimerEnd    = null;
+      setTimerDisplay('--');
+    }
+
+    function startMoveTimer() {
+      if (moveTimerRaf) cancelAnimationFrame(moveTimerRaf);
+      moveTimerActive = true;
+      moveTimerEnd    = Date.now() + MOVE_TIMER_DURATION * 1000;
+
+      function tick() {
+        if (!moveTimerActive) return;
+        var remaining = (moveTimerEnd - Date.now()) / 1000;
+        if (remaining <= 0) {
+          setTimerDisplay('0.0');
+          moveTimerActive = false;
+          moveTimerRaf    = null;
+          // ── Auto-stop : déclenche le stop comme si on appuyait sur × ──
+          ph2HandleStopBtn();
+          return;
+        }
+        setTimerDisplay(remaining.toFixed(1));
+        moveTimerRaf = requestAnimationFrame(tick);
+      }
+      moveTimerRaf = requestAnimationFrame(tick);
+    }
+
+    // ════════════════════════════════════════════════════════════
+
     var gameOverTriggered = false;
     function disableBoardCompletely() {
       var board = document.getElementById('game-board');
@@ -455,6 +538,7 @@
         el.removeAttribute('class');
       });
       document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
+      stopMoveTimer();
     }
 
     function showGameOverAlert(winnerColor, delayMs) {
@@ -1165,6 +1249,8 @@
       updateTurnIndicator(ph2_localState.turn);
 
       if (game.turn !== myColor) {
+        // ── Tour adversaire : stopper le timer local ──
+        stopMoveTimer();
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
 
         var myPCadv = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
@@ -1185,6 +1271,8 @@
       ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
       document.getElementById('guides-group').innerHTML = '';
       document.getElementById('stop-move-btn').classList.remove('active');
+      // L'adversaire vient de finir → stopper le timer (nouveau tour, pas encore de move)
+      stopMoveTimer();
       ph2ApplyLocalState();
 
       var myPCph2  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
@@ -1302,6 +1390,8 @@
         ph2_selectedSpot   = target;
         ph2_canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
+        // ── Démarrer / relancer le timer 2s après chaque déplacement réel ──
+        startMoveTimer();
       } else {
         ph2_localState.turn        = myOppColor;
         ph2_localState.movingPiece = '';
@@ -1311,6 +1401,8 @@
         ph2_lastBlockedSpot = null;
         ph2_canChangePiece  = true;
         document.getElementById('stop-move-btn').classList.remove('active');
+        // ── Fin de tour : stopper le timer ──
+        stopMoveTimer();
       }
 
       if (canContinue && ph2_selectedSpot) {
@@ -1337,6 +1429,9 @@
     function ph2HandleStopBtn() {
       if (!ph2_localState || ph2_localState.turn !== myColor || !ph2_localState.movingPiece) return;
       var piecesSnapshot = Object.assign({}, ph2_localState.pieces);
+
+      // ── Stopper le timer immédiatement ──
+      stopMoveTimer();
 
       ph2_movingInProgress       = true;
       ph2_localState.turn        = myOppColor;
