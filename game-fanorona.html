@@ -660,11 +660,6 @@
     function playReplaySteps(steps, startPieces, oppColor, onDone) {
       replayRunning = true;
 
-      // Reconstruire l'état des pièces au début du turn adverse
-      // (avant toute capture de ce tour — on le reconstruit depuis steps)
-      // On commence par l'état server actuel APRÈS le tour complet,
-      // et on rejoue visuellement step by step.
-
       // Pour le replay : on repart de startPieces et on applique step par step
       var replayPieces = Object.assign({}, startPieces);
       var stepIndex = 0;
@@ -1051,18 +1046,19 @@
           document.getElementById('guides-group').innerHTML = '';
           document.getElementById('stop-move-btn').classList.remove('active');
           applyLocalState();
-        } else {
-          var serverMoving = d.game.movingPiece || '';
-          if (serverMoving) {
-            selectedSpot   = localState.movingPiece || serverMoving;
-            canChangePiece = false;
-            localState.movingPiece = selectedSpot;
-            document.getElementById('stop-move-btn').classList.add('active');
-          }
-          if (selectedSpot) renderGuides(selectedSpot, localState);
-          renderPieces(localState.pieces, localState);
-          updateTurnIndicator(localState.turn);
+          return;
         }
+
+        var serverMoving = d.game.movingPiece || '';
+        if (serverMoving) {
+          selectedSpot   = localState.movingPiece || serverMoving;
+          canChangePiece = false;
+          localState.movingPiece = selectedSpot;
+          document.getElementById('stop-move-btn').classList.add('active');
+        }
+        if (selectedSpot) renderGuides(selectedSpot, localState);
+        renderPieces(localState.pieces, localState);
+        updateTurnIndicator(localState.turn);
       } catch(e) {
         movingInProgress = false;
         console.warn('reconcile error', e);
@@ -1079,6 +1075,10 @@
       var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
       var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
 
+      // --- FIX: tsaroana ny pièces nifindra toerana mba haha-animated azy ireo ihany ---
+      // movedSpots = Set ny toerana "target" nahazo piece nifindra avy amin'ny vanished
+      var movedSpots = {};
+
       vanished.forEach(function(vKey) {
         var color  = piecesOnBoard[vKey].color;
         var target = null;
@@ -1087,6 +1087,7 @@
         }
         if (target) {
           newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          movedSpots[target] = true; // nifindra → animated
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
           piecesOnBoard[vKey].el.remove();
@@ -1101,6 +1102,7 @@
         g.appendChild(c);
         grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+        movedSpots[aKey] = true; // nouvelle pièce → animated
       });
 
       Object.keys(pieces).forEach(function(k) {
@@ -1119,6 +1121,16 @@
 
         var svgX = ci * 50;
         var svgY = ri * 50;
+
+        // --- FIX: raha tsy nifindra ilay piece, esory ny transition mba tsy hiverina ---
+        if (movedSpots[spot]) {
+          // Nifindra toerana → alefa ny transition (animation)
+          g.classList.remove('no-transition');
+        } else {
+          // Tsy nifindra → no-transition mba tsy hisy animation diso
+          g.classList.add('no-transition');
+        }
+
         g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
