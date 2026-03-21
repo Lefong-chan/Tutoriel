@@ -42,6 +42,7 @@ export default async function handler(req, res) {
       case "get-state":    return await handleGetState(payload, res);
       case "make-move":    return await handleMakeMove(payload, res);
       case "stop-move":    return await handleStopMove(payload, res);
+      case "ack-replay":   return await handleAckReplay(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -102,9 +103,11 @@ async function handleMakeMove(body, res) {
 
   const canContinue = wasCapture && checkAvailableCaptures(pieces, target, newVisited, dir, myColor);
 
-  const prevHistory    = Array.isArray(game.moveHistory)   ? game.moveHistory   : [];
+  const prevHistory    = Array.isArray(game.moveHistory) ? game.moveHistory : [];
   const newHistoryEntry = { origin, target, capturedSpots: capturedSpots || [] };
+
   if (canContinue) {
+    // Turn mbola mitohy: tsangana moveHistory fa tsy mametraka oppMoveQueue mbola
     await gameRef.update({
       pieces,
       movingPiece: target,
@@ -114,17 +117,21 @@ async function handleMakeMove(body, res) {
     });
     return res.status(200).json({ success: true, continuing: true });
   } else {
-    const nextColor = myColor === "maintso" ? "mena" : "maintso";
+    // Turn vita: ampidiro ao oppMoveQueue ny dingana rehetra
     const fullHistory = [...prevHistory, newHistoryEntry];
+    const nextColor   = myColor === "maintso" ? "mena" : "maintso";
+
+    // oppMoveQueue: lisy ny dingana haseho amin'ny adversaire (replay)
+    // Tsangana io mba heverin'ny frontend adversaire
     await gameRef.update({
       pieces,
-      turn:            nextColor,
-      movingPiece:     "",
-      visited:         [],
-      lastDir:         "",
-      moveHistory:     [],
-      lastTurnHistory: fullHistory,
-      lastTurnColor:   myColor
+      turn:         nextColor,
+      movingPiece:  "",
+      visited:      [],
+      lastDir:      "",
+      moveHistory:  [],
+      oppMoveQueue: fullHistory,   // <-- vaovao: ny dingana hireplay amin'ny adversaire
+      oppMoveColor: myColor        // <-- vaovao: loko nandanin'ny olona nanao hetsika
     });
     return res.status(200).json({ success: true, continuing: false });
   }
@@ -144,17 +151,36 @@ async function handleStopMove(body, res) {
   if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (!game.movingPiece)     return res.status(400).json({ error: "Tsy misy movingPiece." });
 
-  const nextColor = myColor === "maintso" ? "mena" : "maintso";
+  const nextColor   = myColor === "maintso" ? "mena" : "maintso";
   const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
+
   await gameRef.update({
     pieces,
-    turn:            nextColor,
-    movingPiece:     "",
-    visited:         [],
-    lastDir:         "",
-    moveHistory:     [],
-    lastTurnHistory: stopHistory,
-    lastTurnColor:   myColor
+    turn:         nextColor,
+    movingPiece:  "",
+    visited:      [],
+    lastDir:      "",
+    moveHistory:  [],
+    oppMoveQueue: stopHistory,   // <-- vaovao: ny dingana hireplay amin'ny adversaire
+    oppMoveColor: myColor        // <-- vaovao: loko nandanin'ny olona nanao hetsika
+  });
+  return res.status(200).json({ success: true });
+}
+
+// Rehefa vita ny replay amin'ny frontend adversaire dia miantso ity mba hamafa oppMoveQueue
+async function handleAckReplay(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  await gameRef.update({
+    oppMoveQueue: null,
+    oppMoveColor: null
   });
   return res.status(200).json({ success: true });
 }
