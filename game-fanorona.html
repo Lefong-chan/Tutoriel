@@ -55,7 +55,6 @@
       aspect-ratio: 440 / 240;
       display: block;
       touch-action: none;
-      /* SVG CSS non modifié au-delà */
     }
 
     /* ── Bande joueurs ── */
@@ -73,7 +72,6 @@
     .player-info {
       display: flex; align-items: center; gap: 8px;
       padding: 8px 14px;
-      background: rgba(0,0,0,0.25); border-radius: 12px;
       width: 100%;
       justify-content: center;
     }
@@ -103,12 +101,6 @@
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
 
     /* ── Bouton Stop ── */
-    #stop-move-btn {
-      width: 60px; height: 60px;
-      font-size: 30px; font-weight: bold; cursor: pointer;
-      opacity: 0.3; transition: 0.3s; pointer-events: none;
-      border: none; background-color: transparent; color: white;
-    }
     #stop-move-btn.active {
       opacity: 1; transform: scale(1.1); pointer-events: all;
     }
@@ -147,6 +139,73 @@
       padding: 12px 24px;
       border-radius: 10px;
     }
+
+    /* ── abtn : bouton de base ── */
+    .abtn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;         /* même largeur que les autres éléments du groupe */
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.25);
+      color: rgba(255,255,255,0.68);
+      font-size: 1em;
+      cursor: pointer;
+      transition: background .2s, color .2s;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      flex-shrink: 0;
+      border: none;
+    }
+
+    /* ── abtn colonne (contient player-info + tdiv + tblk) ── */
+    .abtn.col {
+      flex-direction: column;
+      height: auto;            /* s'adapte au contenu */
+      padding: 10px 12px;
+      align-items: stretch;    /* les enfants prennent toute la largeur */
+      gap: 8px;
+    }
+
+    /* ── Séparateur visible ── */
+    .tdiv {
+      width: 100%;
+      height: 1px;
+      background: rgba(255,255,255,0.35);
+      flex-shrink: 0;
+    }
+
+    /* ── Bloc timer ── */
+    .tblk {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1;
+      gap: 1px;
+    }
+    .tlbl {
+      font-size: 0.6em;
+      opacity: 0.55;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: white;
+    }
+    .tval {
+      font-size: 1em;
+      font-weight: 700;
+      color: white;
+    }
+
+    /* ── dbtn (DEMANDE) ── */
+    .dbtn {
+      font-family: sans-serif;
+      font-size: 0.65em;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      padding: 0 9px;
+    }
   </style>
 </head>
 <body>
@@ -160,14 +219,21 @@
     </div>
   </div>
 
-  <!-- COLONNE GAUCHE : adversaire (en haut), puis éléments additionnels -->
+  <!-- COLONNE GAUCHE -->
   <div class="left-group">
-    <div id="players-bar-top">
-      <div class="player-info">
-        <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
-        <span class="player-name" style="opacity:0.4;">---</span>
+    <div class="abtn col">
+      <div id="players-bar-top">
+        <div class="player-info">
+          <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+          <span class="player-name" style="opacity:0.4;">---</span>
+        </div>
       </div>
+      <div class="tdiv"></div>
+      <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
     </div>
+
+    <button class="abtn"><i class="fas fa-comment-dots"></i></button>
+    <button class="abtn"><i class="fas fa-sliders-h"></i></button>
   </div>
 
   <!-- SVG BOARD : 70vw -->
@@ -192,18 +258,21 @@
     <g id="spots-group"></g>
   </svg>
 
-  <!-- COLONNE DROITE : moi (en haut), bouton stop, éléments additionnels -->
+  <!-- COLONNE DROITE -->
   <div class="right-group">
-    <div id="players-bar-bottom">
-      <div class="player-info">
-        <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
-        <span class="player-name" style="opacity:0.4;">---</span>
+    <div class="abtn col">
+      <div id="players-bar-bottom">
+        <div class="player-info">
+          <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+          <span class="player-name" style="opacity:0.4;">---</span>
+        </div>
       </div>
+      <div class="tdiv"></div>
+      <div class="tblk"><span class="tlbl">YOU</span><span class="tval">∞</span></div>
     </div>
 
-    <button id="stop-move-btn">
-      <i class="fas fa-times"></i>
-    </button>
+    <button id="stop-move-btn" class="abtn"><i class="fas fa-times"></i></button>
+    <button class="abtn dbtn">DEMANDE</button>
   </div>
 
   <div id="error-msg"></div>
@@ -407,7 +476,6 @@
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
 
-      // Adversaire → players-bar-top
       var barTop = document.getElementById('players-bar-top');
       barTop.innerHTML =
         '<div class="player-info">' +
