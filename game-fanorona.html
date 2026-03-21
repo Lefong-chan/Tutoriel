@@ -622,8 +622,7 @@
 
       var myPCA  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPCA = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      if (oppPCA === 0) showGameOverAlert(myColor, 2000);
-      else if (myPCA === 0) showGameOverAlert(myOppColor, 2000);
+      // fin de partie gérée via game.winner (Firebase WebSocket)
     }
 
     function stopAllTimers() {
@@ -724,17 +723,12 @@
         renderPlayerTimers(curMyMs, curOppMs);
 
         // Expiration : izay lany fotoana no resy
+        // Expiration timer : stop RAF — game.winner sera écrit par le backend
         if (timerRunningColor === myColor && curMyMs <= 0) {
-          // Mon chrono est à 0 : je perds
-          stopPlayerTimerRaf();
-          if (!gameOverTriggered) showGameOverAlert(myOppColor, 0);
-          return;
+          stopPlayerTimerRaf(); return;
         }
         if (timerRunningColor === myOppColor && curOppMs <= 0) {
-          // Le chrono de l'adversaire est à 0 : je gagne
-          stopPlayerTimerRaf();
-          if (!gameOverTriggered) showGameOverAlert(myColor, 0);
-          return;
+          stopPlayerTimerRaf(); return;
         }
 
         playerTimerRaf = requestAnimationFrame(tick);
@@ -767,13 +761,7 @@
 
       // Vérification d'expiration immédiate (serveur déjà à 0)
       if (!gameOverTriggered) {
-        if (myMs <= 0 && timerRunningColor === myColor) {
-          // Mon temps est épuisé : je perds
-          showGameOverAlert(myOppColor, 0);
-        } else if (oppMs <= 0 && timerRunningColor === myOppColor) {
-          // Le temps de l'adversaire est épuisé : je gagne
-          showGameOverAlert(myColor, 0);
-        }
+        // Expiration immédiate : game.winner sera reçu via Firebase WebSocket
       }
     }
 
@@ -1033,14 +1021,20 @@
         // ── Mettre à jour les timers joueur depuis Firebase ──
         onPlayerTimersUpdate(game);
 
+        // ── Fin de partie : source unique = game.winner écrit par le backend ──
+        // Les deux joueurs reçoivent le même push Firebase → modal garanti pour les deux
+        if (game.winner) {
+          stopAllTimers();
+          stopPlayerTimerRaf();
+          renderPieces(localState.pieces, localState);
+          showGameOverAlert(game.winner, 0);
+          return;
+        }
+
         if (game.turn !== myColor) {
           // ── Tour adversaire : afficher le mouvement reçu ──
-          // Stopper tous les timers (c'est maintenant au tour de l'adversaire)
           stopAllTimers();
           renderPieces(localState.pieces, localState);
-
-          var myPCadv = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-          if (myPCadv === 0) showGameOverAlert(myOppColor, 2000);
           return;
         }
 
@@ -1060,14 +1054,6 @@
         document.getElementById('stop-move-btn').classList.remove('active');
         stopAllTimers();
         applyLocalState();
-
-        var myPC  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-        var oppPC = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        if (myPC === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        } else if (oppPC === 0) {
-          showGameOverAlert(myColor, 2000);
-        }
       });
     }
 
@@ -1250,13 +1236,7 @@
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('stop-move error', e); });
 
-      var myPieceCountS  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-      var oppPieceCountS = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      if (oppPieceCountS === 0) {
-        showGameOverAlert(myColor, 2000);
-      } else if (myPieceCountS === 0) {
-        showGameOverAlert(myOppColor, 2000);
-      }
+      // fin de partie gérée via game.winner (Firebase WebSocket)
     }
 
     function sendMoveToBackend(origin, target, capturedSpots, dir) {
