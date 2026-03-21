@@ -658,21 +658,8 @@
         var serverTurn = d.game.turn;
 
         // ── Cas : c'est le tour de l'adversaire (il est encore en train de jouer) ──
-        if (serverTurn !== myColor) {
-          // Pendant que l'adversaire joue en multi-étapes (movingPiece actif),
-          // on met à jour les pièces progressivement à chaque poll
-          if (!localState) return;
-          var serverMoving = d.game.movingPiece || '';
-          if (serverMoving) {
-            // L'adversaire est en train de faire une série de captures : on affiche l'état actuel
-            localState.pieces      = Object.assign({}, d.game.pieces);
-            localState.turn        = d.game.turn;
-            localState.movingPiece = serverMoving;
-            renderPieces(localState.pieces, localState);
-            updateTurnIndicator(localState.turn);
-          }
-          return;
-        }
+        // On n'affiche rien ici : on laisse uniquement le replay gérer l'affichage
+        if (serverTurn !== myColor) return;
 
         // ── Cas : c'est maintenant notre tour ──
         // Calculer la clé de l'historique reçu
