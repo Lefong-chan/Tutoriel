@@ -87,7 +87,6 @@
 
     /* ── Nom du joueur : taille s'adapte selon la longueur ── */
     .player-name {
-      /* taille par défaut pour noms courts (≤10 lettres) */
       font-size: 0.95em;
       white-space: nowrap;
       overflow: hidden;
@@ -99,7 +98,7 @@
       transition: font-size 0.15s;
     }
 
-    /* ── SVG — pièces & interactions (inchangé) ── */
+    /* ── SVG — pièces & interactions ── */
     .grid-line { stroke: darkgray; stroke-width: 2; }
     .flipped { transform: rotate(180deg); }
     .piece-group { transition: transform 0.22s ease-in-out; }
@@ -137,7 +136,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Erreur : centrée horizontalement et verticalement ── */
+    /* ── Erreur ── */
     #error-msg {
       display: none;
       position: fixed;
@@ -164,7 +163,7 @@
       background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
       border: 1px solid rgba(255,255,255,0.18);
       color: rgba(255,255,255,0.85);
-      font-size: 1.35em;       /* icône plus grande */
+      font-size: 1.35em;
       cursor: pointer;
       transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.12s;
       backdrop-filter: blur(12px);
@@ -284,12 +283,10 @@
       background: rgba(255,255,255,0.18);
       transition: background 0.4s;
     }
-    /* hauteurs croissantes — proportionnelles à la hauteur du conteneur */
     .pbar:nth-child(1) { height: 6px;  }
     .pbar:nth-child(2) { height: 10px; }
     .pbar:nth-child(3) { height: 15px; }
     .pbar:nth-child(4) { height: 20px; }
-    /* couleurs selon état ping */
     .pbar.on.ping-bad   { background: #ef4444; }
     .pbar.on.ping-mid   { background: #ffd600; }
     .pbar.on.ping-good  { background: #22c55e; }
@@ -302,6 +299,22 @@
       letter-spacing: 0.04em;
       white-space: nowrap;
       line-height: 1;
+    }
+
+    /* ── Timer countdown dans #opp-timer-ls ── */
+    #opp-timer-ls {
+      font-size: 1em;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.85);
+      transition: color 0.2s;
+    }
+    #opp-timer-ls.timer-active {
+      color: #fff;
+    }
+    #opp-timer-ls.timer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 10px rgba(255,100,100,0.6);
     }
   </style>
 </head>
@@ -329,7 +342,7 @@
       <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
     </div>
 
-    <!-- Ping widget : row [bars | ms], même height que les autres abtn -->
+    <!-- Ping widget -->
     <div class="abtn" style="gap:8px;">
       <div class="pbars" id="l-ping-bars">
         <div class="pbar on ping-great"></div>
@@ -340,7 +353,8 @@
       <span class="ping-ms" id="l-ping-ms">— ms</span>
     </div>
 
-    <div class="abtn" id="opp-timer-ls">∞</div>
+    <!-- Timer 2s : visible uniquement pour le joueur local en cours de move multiple -->
+    <div class="abtn" id="opp-timer-ls">--</div>
     <button class="abtn"><i class="fas fa-comment-dots"></i></button>
   </div>
 
@@ -411,7 +425,6 @@
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // ── Taille du nom selon longueur (max 10 lettres lisibles) ──
     function updateNameFontSize(spanEl, name) {
       var len = name.length;
       var size;
@@ -427,32 +440,18 @@
       var barsEl = document.getElementById('l-ping-bars');
       var msEl   = document.getElementById('l-ping-ms');
       if (!barsEl || !msEl) return;
-
       var bars = barsEl.querySelectorAll('.pbar');
-
-      // Niveau 1-4 selon la valeur
       var level, colorClass;
-      if (ms < 60) {
-        level = 4; colorClass = 'ping-great';   // bleu cyan — excellente
-      } else if (ms < 150) {
-        level = 3; colorClass = 'ping-good';    // vert — bonne
-      } else if (ms < 300) {
-        level = 2; colorClass = 'ping-mid';     // jaune — moyenne
-      } else {
-        level = 1; colorClass = 'ping-bad';     // rouge — mauvaise
-      }
-
+      if (ms < 60)       { level = 4; colorClass = 'ping-great'; }
+      else if (ms < 150) { level = 3; colorClass = 'ping-good';  }
+      else if (ms < 300) { level = 2; colorClass = 'ping-mid';   }
+      else               { level = 1; colorClass = 'ping-bad';   }
       bars.forEach(function(bar, i) {
         bar.classList.remove('on', 'ping-bad', 'ping-mid', 'ping-good', 'ping-great');
-        if (i < level) {
-          bar.classList.add('on', colorClass);
-        }
+        if (i < level) bar.classList.add('on', colorClass);
       });
-
       msEl.textContent = ms + ' ms';
     }
-
-    // Mesure ping réelle via timing HEAD
     function measurePing() {
       var t0 = Date.now();
       fetch('/api/session', { method: 'HEAD' })
@@ -461,6 +460,73 @@
     }
     setInterval(measurePing, 4000);
     measurePing();
+
+    // ════════════════════════════════════════════════════════════
+    //  TIMER 2s — countdown local uniquement (frontend only)
+    //
+    //  Règles :
+    //  - Visible uniquement pour le joueur LOCAL quand il est
+    //    en cours de move multiple (canChangePiece === false,
+    //    i.e. il a déjà bougé au moins une fois dans ce tour).
+    //  - "-- " quand c'est le tour de l'adversaire (attente).
+    //  - Démarre (reset à 2.0s) à chaque nouveau déplacement réel
+    //    d'une pièce (pas au simple clic de sélection).
+    //  - À 0 : stop automatique (comme si on appuyait sur ×).
+    //  - Côté adversaire : ils voient toujours "--" pour ce timer.
+    // ════════════════════════════════════════════════════════════
+    var MOVE_TIMER_DURATION = 2.0;   // secondes
+    var moveTimerRaf    = null;      // requestAnimationFrame handle
+    var moveTimerEnd    = null;      // timestamp de fin
+    var moveTimerActive = false;
+
+    var timerEl = document.getElementById('opp-timer-ls');
+
+    function setTimerDisplay(val) {
+      timerEl.textContent = val;
+      if (val === '--') {
+        timerEl.classList.remove('timer-active', 'timer-urgent');
+      } else {
+        timerEl.classList.add('timer-active');
+        var num = parseFloat(val);
+        if (num <= 0.5) timerEl.classList.add('timer-urgent');
+        else            timerEl.classList.remove('timer-urgent');
+      }
+    }
+
+    function stopMoveTimer() {
+      if (moveTimerRaf) {
+        cancelAnimationFrame(moveTimerRaf);
+        moveTimerRaf = null;
+      }
+      moveTimerActive = false;
+      moveTimerEnd    = null;
+      setTimerDisplay('--');
+    }
+
+    function startMoveTimer() {
+      // Annuler le timer précédent s'il tournait
+      if (moveTimerRaf) cancelAnimationFrame(moveTimerRaf);
+      moveTimerActive = true;
+      moveTimerEnd    = Date.now() + MOVE_TIMER_DURATION * 1000;
+
+      function tick() {
+        if (!moveTimerActive) return;
+        var remaining = (moveTimerEnd - Date.now()) / 1000;
+        if (remaining <= 0) {
+          setTimerDisplay('0.0');
+          moveTimerActive = false;
+          moveTimerRaf    = null;
+          // ── Auto-stop : déclenche le stop comme si on appuyait sur × ──
+          handleStopBtn();
+          return;
+        }
+        setTimerDisplay(remaining.toFixed(1));
+        moveTimerRaf = requestAnimationFrame(tick);
+      }
+      moveTimerRaf = requestAnimationFrame(tick);
+    }
+
+    // ════════════════════════════════════════════════════════════
 
     var gameOverTriggered = false;
     function disableBoardCompletely() {
@@ -473,6 +539,7 @@
         el.removeAttribute('class');
       });
       document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
+      stopMoveTimer();
     }
 
     function showGameOverAlert(winnerColor, delayMs) {
@@ -513,9 +580,7 @@
           'font-size:1.1em','font-weight:700','cursor:pointer',
           'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
         ].join(';');
-        btn.onclick = function() {
-          window.location.href = 'dashboard.html';
-        };
+        btn.onclick = function() { window.location.href = 'dashboard.html'; };
 
         box.appendChild(title);
         box.appendChild(btn);
@@ -576,14 +641,13 @@
 
     var piecesOnBoard = {};
 
-    var moveQueue       = [];
+    var moveQueue        = [];
     var movingInProgress = false;
 
     var myDotEl  = null;
     var oppDotEl = null;
 
     //  SECTION 4 — Init
-
     var params   = new URLSearchParams(window.location.search);
     var gameId_p = params.get('gameId');
     var color_p  = params.get('color');
@@ -635,7 +699,6 @@
     }
 
     //  SECTION 5 — Players bar
-
     function renderPlayersBar(myCol, myUsername, oppUsername) {
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
@@ -657,7 +720,6 @@
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
 
-      // Ajuster la taille des noms
       updateNameFontSize(document.getElementById('opp-name-span'), oppUsername);
       updateNameFontSize(document.getElementById('my-name-span'),  myUsername);
     }
@@ -672,24 +734,12 @@
     }
 
     //  SECTION 6 — WebSocket temps réel (Firebase RTDB onValue)
-    //
-    //  Bugs corrigés vs version précédente :
-    //  1. "tour adversaire" faisait un update PARTIEL (pieces+turn seulement)
-    //     → certains moves ne s'affichaient pas car localState désynchronisé
-    //  2. Guard "serverPiecesStr === localPiecesStr" pouvait bloquer le rendu
-    //     si Firebase livrait le state final avant que localState soit mis à jour
-    //  3. movingInProgress pouvait rester true trop longtemps et bloquer les updates
-    //
-    //  Fix : copyState(game) SYSTÉMATIQUE → localState toujours en sync avec serveur
-
     var opponentReadyChecked = false;
 
     async function startRealtimeListener() {
-      // 1. Obtenir un custom token Firebase pour s'authentifier côté client
       var tokenData = await callApi(GAME_API_URL, 'get-firebase-token', { uid: myUid, gameId: gameId });
       await firebase.auth().signInWithCustomToken(tokenData.token);
 
-      // 2. Écouter le document du jeu en temps réel (WebSocket sous le capot)
       firebase.database().ref('games/' + gameId).on('value', function(snapshot) {
         var game = snapshot.val();
         if (!game) return;
@@ -708,7 +758,7 @@
                     data.opponentUsername);
                   document.getElementById('loading-overlay').classList.add('hidden');
                 } else {
-                  opponentReadyChecked = false; // réessayer au prochain push
+                  opponentReadyChecked = false;
                 }
               }).catch(function() { opponentReadyChecked = false; });
           }
@@ -717,51 +767,45 @@
         // ── Filtrage echo de mon propre mouvement en cours ──
         if (movingInProgress) {
           if (game.turn !== myColor) {
-            // Mon move a été confirmé par le serveur → tour passé à l'adversaire
             movingInProgress = false;
-            // On continue vers la mise à jour complète ci-dessous
           } else {
-            // Toujours mon tour (capture multiple en cours) → ignorer cet echo
             return;
           }
         }
 
-        // ── SYNC COMPLÈTE : copyState systématique (jamais de patch partiel) ──
+        // ── SYNC COMPLÈTE ──
         var prevTurn = localState ? localState.turn : null;
         localState = copyState(game);
         updateTurnIndicator(localState.turn);
 
         if (game.turn !== myColor) {
           // ── Tour adversaire : afficher le mouvement reçu ──
+          // Stopper le timer local (c'est maintenant au tour de l'adversaire)
+          stopMoveTimer();
           renderPieces(localState.pieces, localState);
 
-          // Vérifier fin de partie (adversaire capture toutes mes pièces)
           var myPCadv = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
           if (myPCadv === 0) showGameOverAlert(myOppColor, 2000);
           return;
         }
 
         // ── Notre tour ──
-
-        // Si c'était déjà notre tour et qu'on est en train de sélectionner
-        // (ex : Firebase echo d'un sous-état en cours de capture multiple)
-        // → re-render sans casser la sélection
         if (prevTurn === myColor && (selectedSpot || localState.movingPiece)) {
           renderPieces(localState.pieces, localState);
           if (selectedSpot) renderGuides(selectedSpot, localState);
           return;
         }
 
-        // L'adversaire vient de finir son tour → reset UI complet et activation de notre tour
+        // L'adversaire vient de finir son tour → reset UI complet
         canChangePiece  = true;
         selectedSpot    = null;
         lastBlockedSpot = null;
         pendingCaptures = { approach: [], withdrawal: [], moveData: null };
         document.getElementById('guides-group').innerHTML = '';
         document.getElementById('stop-move-btn').classList.remove('active');
+        stopMoveTimer();
         applyLocalState();
 
-        // Vérifier fin de partie
         var myPC  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
         var oppPC = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
         if (myPC === 0) {
@@ -820,6 +864,7 @@
 
       var pieces = localState.pieces;
 
+      // ── Sélection d'une pièce (pas encore de déplacement réel) ──
       if (canChangePiece && pieces[spotID] === myColor) {
         if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
           selectedSpot    = spotID;
@@ -828,6 +873,7 @@
           selectedSpot    = null;
           lastBlockedSpot = spotID;
         }
+        // Pas de timer ici : c'est juste une sélection, pas un vrai déplacement
         renderGuides(selectedSpot || '', localState);
         renderPieces(pieces, localState);
         return;
@@ -895,6 +941,8 @@
         selectedSpot   = target;
         canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
+        // ── Démarrer / relancer le timer 2s après chaque déplacement réel ──
+        startMoveTimer();
       } else {
         localState.turn        = myOppColor;
         localState.movingPiece = '';
@@ -904,6 +952,8 @@
         lastBlockedSpot = null;
         canChangePiece  = true;
         document.getElementById('stop-move-btn').classList.remove('active');
+        // ── Fin de tour : stopper le timer ──
+        stopMoveTimer();
       }
 
       if (canContinue && selectedSpot) {
@@ -932,6 +982,9 @@
       if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
       var piecesSnapshot = Object.assign({}, localState.pieces);
 
+      // ── Stopper le timer immédiatement ──
+      stopMoveTimer();
+
       movingInProgress = true;
       localState.turn        = myOppColor;
       localState.movingPiece = '';
@@ -957,7 +1010,6 @@
       }
     }
 
-    //  Envoi backend (fire-and-forget — Firebase push confirmera le résultat)
     function sendMoveToBackend(origin, target, capturedSpots, dir) {
       callApi(GAME_API_URL, 'make-move', {
         uid: myUid, gameId: gameId,
@@ -968,7 +1020,7 @@
       });
     }
 
-    //  SECTION 10
+    //  SECTION 10 — renderPieces
     function renderPieces(pieces, stateData) {
       var grp           = document.getElementById('pieces-group');
       var isMyTurn      = stateData.turn === myColor;
@@ -1064,7 +1116,7 @@
       return l;
     }
 
-    //— Guides
+    // ── Guides ──
     function renderGuides(startSpot, stateData) {
       var grp = document.getElementById('guides-group');
       if (!grp) return;
@@ -1098,7 +1150,7 @@
       });
     }
 
-    //  SECTION 12
+    //  SECTION 12 — Helpers
     function getCaptures(pieces, s, e, color) {
       var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
       var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
