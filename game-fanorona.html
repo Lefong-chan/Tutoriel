@@ -566,10 +566,13 @@
 
     var piecesOnBoard = {};
 
-    var moveQueue       = [];
+    var moveQueue        = [];
     var movingInProgress = false;
 
-    var lastSeenHistKey   = null;
+    // Clé du dernier replay déjà exécuté — évite de rejouer deux fois le même tour
+    var lastReplayedTurnKey = null;
+    // Vrai pendant qu'un replay adversaire est en cours — bloque le poll
+    var replayInProgress    = false;
 
     var reconcileTimer = null;
 
@@ -663,15 +666,26 @@
       }
     }
 
-    //  SECTION 6 — Polling adversaire UNIQUEMENT
+    //  SECTION 6 — Polling + Replay adversaire
     async function pollAdversaire() {
       try {
+        // Bloqué pendant un replay ou un mouvement local en cours
+        if (replayInProgress || movingInProgress) return;
+
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
-        var serverTurn = d.game.turn;
 
-        if (movingInProgress) return;
+        var serverTurn  = d.game.turn;
+        var histColor   = d.game.lastTurnColor || '';
+        var history     = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
 
+        // Clé unique identifiant ce tour adversaire (couleur + dernier target)
+        var turnKey = history.length > 0
+          ? (histColor + '|' + history[history.length - 1].target)
+          : null;
+
+        // ── Cas 1 : c'est encore le tour de l'adversaire (il n'a pas fini) ──
+        // On affiche juste son état courant sans replay
         if (serverTurn !== myColor) {
           if (localState) {
             localState.pieces = Object.assign({}, d.game.pieces);
@@ -681,39 +695,108 @@
           return;
         }
 
-        if (selectedSpot || (localState && localState.movingPiece)) return;
+        // ── Cas 2 : c'est notre tour ──
+        // Vérifie si l'adversaire vient de finir un nouveau tour avec un historique à rejouer
+        if (histColor === myOppColor && history.length > 0 && turnKey && turnKey !== lastReplayedTurnKey) {
+          // Marque ce tour comme rejoué AVANT de lancer le replay (évite double-replay)
+          lastReplayedTurnKey = turnKey;
 
-        var histColor = d.game.lastTurnColor || '';
-        var history   = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
-        var histKey   = histColor + '|' + history.length + '|' +
-                        (history.length > 0 ? history[history.length - 1].target : '');
-
-        if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
-          lastSeenHistKey = histKey;
+          // Lance le replay en partant du state avant les mouvements adversaires
+          // On reconstruit le state de départ depuis les pièces actuelles du serveur
+          // en "annulant" les captures pour partir d'un état cohérent avec history[0].origin
+          var finalServerState = copyState(d.game);
+          startOppReplay(history, finalServerState);
+          return;
         }
+
+        // ── Cas 3 : tour déjà connu (rien de nouveau à rejouer) ──
+        if (selectedSpot || (localState && localState.movingPiece)) return;
 
         var serverPiecesStr = JSON.stringify(d.game.pieces);
         var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
         if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
 
-        localState      = copyState(d.game);
-        canChangePiece  = true;
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-        document.getElementById('guides-group').innerHTML = '';
-        document.getElementById('stop-move-btn').classList.remove('active');
-        applyLocalState();
+        localState      = finalApplyState(d.game);
+      } catch(e) { console.warn('poll error', e); }
+    }
 
-        var myPieceCountPoll  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-        var oppPieceCountPoll = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        if (myPieceCountPoll === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        } else if (oppPieceCountPoll === 0) {
-          showGameOverAlert(myColor, 2000);
+    // ── Applique le state final et déclenche les vérifications ──
+    function finalApplyState(game) {
+      var st = copyState(game);
+      localState      = st;
+      canChangePiece  = true;
+      selectedSpot    = null;
+      lastBlockedSpot = null;
+      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      document.getElementById('guides-group').innerHTML = '';
+      document.getElementById('stop-move-btn').classList.remove('active');
+      applyLocalState();
+
+      var myC  = Object.keys(st.pieces).filter(function(s){ return st.pieces[s]===myColor; }).length;
+      var oppC = Object.keys(st.pieces).filter(function(s){ return st.pieces[s]===myOppColor; }).length;
+      if (myC  === 0) showGameOverAlert(myOppColor, 1500);
+      else if (oppC === 0) showGameOverAlert(myColor, 1500);
+      return st;
+    }
+
+    // ── Replay des hetsika adversaire, étape par étape (300ms/step) ──
+    // history = [{origin, target, capturedSpots}]  (dans l'ordre chronologique)
+    // finalState = state final déjà calculé par le serveur (on l'applique à la fin)
+    function startOppReplay(history, finalState) {
+      if (!history || history.length === 0) {
+        finalApplyState(finalState);
+        return;
+      }
+
+      replayInProgress = true;
+
+      // On a besoin d'un state de départ pour animer : on reconstitue
+      // l'état AVANT le premier mouvement en repartant du state local actuel
+      // (l'adversaire jouait — les pièces locales sont donc celles d'avant son tour)
+      var replayPieces = localState ? Object.assign({}, localState.pieces) : Object.assign({}, finalState.pieces);
+
+      // Verrou board pendant replay
+      var board = document.getElementById('game-board');
+      if (board) board.classList.add('lock-board');
+
+      var stepIndex = 0;
+
+      function playStep() {
+        if (stepIndex >= history.length) {
+          // Tous les steps joués — applique l'état final officiel
+          replayInProgress = false;
+          finalApplyState(finalState);
+          return;
         }
 
-      } catch(e) { console.warn('poll error', e); }
+        var step = history[stepIndex];
+        stepIndex++;
+
+        // Applique ce step sur replayPieces
+        var origin        = step.origin;
+        var target        = step.target;
+        var capturedSpots = Array.isArray(step.capturedSpots) ? step.capturedSpots : [];
+
+        delete replayPieces[origin];
+        replayPieces[target] = myOppColor;
+        capturedSpots.forEach(function(s) { delete replayPieces[s]; });
+
+        // Rendu temporaire (state neutre — pas de tour actif, juste affichage)
+        var replayState = {
+          pieces:      replayPieces,
+          turn:        myOppColor,   // adversaire "joue" visuellement
+          movingPiece: '',
+          visited:     [],
+          lastDir:     ''
+        };
+        renderPieces(Object.assign({}, replayPieces), replayState);
+
+        // Prochain step dans 300ms
+        setTimeout(playStep, 300);
+      }
+
+      // Premier step après un court délai de 100ms
+      setTimeout(playStep, 100);
     }
 
     function copyState(game) {
@@ -937,6 +1020,7 @@
 
         if (serverTurn !== myColor) {
           if (localState.turn !== myColor) return;
+          // Adversaire joue encore — applique juste son état courant
           localState = copyState(d.game);
           selectedSpot    = null;
           lastBlockedSpot = null;
