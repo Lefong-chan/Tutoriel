@@ -133,7 +133,14 @@ async function handleMakeMove(body, res) {
   } else {
     const nextColor   = myColor === "maintso" ? "mena" : "maintso";
     const fullHistory = [...prevHistory, newHistoryEntry];
-    await gameRef.update({
+    const timerUpd    = timerUpdateForTurn(nextColor);
+    const winner = checkGameOver(
+      pieces,
+      timerUpd.timerMaintso !== undefined ? timerUpd.timerMaintso : (game.timerMaintso || 0),
+      timerUpd.timerMena    !== undefined ? timerUpd.timerMena    : (game.timerMena    || 0),
+      game.minutes
+    );
+    const updatePayload = {
       pieces,
       turn:            nextColor,
       movingPiece:     "",
@@ -142,9 +149,11 @@ async function handleMakeMove(body, res) {
       moveHistory:     [],
       lastTurnHistory: fullHistory,
       lastTurnColor:   myColor,
-      ...timerUpdateForTurn(nextColor),
-    });
-    return res.status(200).json({ success: true, continuing: false });
+      ...timerUpd,
+    };
+    if (winner) updatePayload.winner = winner;
+    await gameRef.update(updatePayload);
+    return res.status(200).json({ success: true, continuing: false, winner: winner || null });
   }
 }
 
@@ -174,7 +183,13 @@ async function handleStopMove(body, res) {
       stopTimerUpd.timerMena = Math.max(0, (game.timerMena || 0) - elapsed);
     }
   }
-  await gameRef.update({
+  const stopWinner = checkGameOver(
+    pieces,
+    stopTimerUpd.timerMaintso !== undefined ? stopTimerUpd.timerMaintso : (game.timerMaintso || 0),
+    stopTimerUpd.timerMena    !== undefined ? stopTimerUpd.timerMena    : (game.timerMena    || 0),
+    game.minutes
+  );
+  const stopPayload = {
     pieces,
     turn:            nextColor,
     movingPiece:     "",
@@ -184,8 +199,10 @@ async function handleStopMove(body, res) {
     lastTurnHistory: stopHistory,
     lastTurnColor:   myColor,
     ...stopTimerUpd,
-  });
-  return res.status(200).json({ success: true });
+  };
+  if (stopWinner) stopPayload.winner = stopWinner;
+  await gameRef.update(stopPayload);
+  return res.status(200).json({ success: true, winner: stopWinner || null });
 }
 
 // ── Timer update : met à jour les timers dans RTDB après chaque changement de tour ──
@@ -269,6 +286,25 @@ function getCaptures(pieces, s, e, color) {
     return res;
   };
   return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+}
+
+// ── Vérifie fin de partie et retourne le winner ou null ──
+// winner = couleur gagnante ("maintso" ou "mena"), null si pas encore terminé
+function checkGameOver(pieces, timerMaintso, timerMena, minutes) {
+  const maintsoCount = Object.values(pieces).filter(v => v === "maintso").length;
+  const menaCount    = Object.values(pieces).filter(v => v === "mena").length;
+
+  // Plus de pièces
+  if (maintsoCount === 0) return "mena";
+  if (menaCount    === 0) return "maintso";
+
+  // Timer épuisé (seulement si le jeu a des timers configurés)
+  if (minutes) {
+    if ((timerMaintso || 0) <= 0) return "mena";
+    if ((timerMena    || 0) <= 0) return "maintso";
+  }
+
+  return null;
 }
 
 // ── Génère un custom token Firebase pour le client (WebSocket auth) ──
