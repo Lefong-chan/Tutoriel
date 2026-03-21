@@ -38,9 +38,10 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
-      case "get-state": return await handleGetState(payload, res);
-      case "make-move": return await handleMakeMove(payload, res);
-      case "stop-move": return await handleStopMove(payload, res);
+      case "get-state":          return await handleGetState(payload, res);
+      case "make-move":          return await handleMakeMove(payload, res);
+      case "stop-move":          return await handleStopMove(payload, res);
+      case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -65,6 +66,22 @@ async function handleGetState(body, res) {
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
   return res.status(200).json({ success: true, game });
+}
+
+// ── Génère un custom token Firebase pour le client (WebSocket auth) ──
+async function handleGetFirebaseToken(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId)
+    return res.status(400).json({ error: "uid and gameId required." });
+
+  const game = await rtdbGet(gamesRef.child(gameId));
+  if (!game)
+    return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  const token = await admin.auth().createCustomToken(uid);
+  return res.status(200).json({ success: true, token });
 }
 
 function isPhase2(game) {
@@ -138,7 +155,7 @@ async function handleMakeMove(body, res) {
     }
 
   } else {
-    const canCapture       = firstMover === myColor;
+    const canCapture        = firstMover === myColor;
     const effectiveCaptured = canCapture && Array.isArray(capturedSpots) ? capturedSpots : [];
 
     if (effectiveCaptured.length > 0) {
