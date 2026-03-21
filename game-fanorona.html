@@ -723,12 +723,26 @@
         renderPlayerTimers(curMyMs, curOppMs);
 
         // Expiration : izay lany fotoana no resy
-        // Expiration timer : stop RAF — game.winner sera écrit par le backend
+        // Expiration timer : mampiseho modal avy hatrany + alefa declare-winner
         if (timerRunningColor === myColor && curMyMs <= 0) {
-          stopPlayerTimerRaf(); return;
+          // Izaho lany fotoana : izaho resy
+          stopPlayerTimerRaf();
+          if (!gameOverTriggered) {
+            showGameOverAlert(myOppColor, 0);
+            callApi(GAME_API_URL, 'declare-winner', { uid: myUid, gameId: gameId, winner: myOppColor })
+              .catch(function(e) { console.warn('declare-winner error:', e); });
+          }
+          return;
         }
         if (timerRunningColor === myOppColor && curOppMs <= 0) {
-          stopPlayerTimerRaf(); return;
+          // Adversaire lany fotoana : izaho mandresy
+          stopPlayerTimerRaf();
+          if (!gameOverTriggered) {
+            showGameOverAlert(myColor, 0);
+            callApi(GAME_API_URL, 'declare-winner', { uid: myUid, gameId: gameId, winner: myColor })
+              .catch(function(e) { console.warn('declare-winner error:', e); });
+          }
+          return;
         }
 
         playerTimerRaf = requestAnimationFrame(tick);
