@@ -97,8 +97,7 @@
     /* ── SVG — pièces & interactions ── */
     .grid-line { stroke: darkgray; stroke-width: 2; }
     .flipped { transform: rotate(180deg); }
-    .piece-group { transition: transform 0.22s ease-in-out; }
-    .piece-group.no-transition { transition: none; }
+    .piece-group { /* tsy misy transition — pieces ajanona mivantana amin'ny toerana marina */ }
     .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
     .movable-piece  { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
     .blocked-piece  { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
@@ -739,8 +738,6 @@
           pendingCaptures = { approach: [], withdrawal: [], moveData: null };
           document.getElementById('guides-group').innerHTML = '';
           document.getElementById('stop-move-btn').classList.remove('active');
-          document.getElementById('pieces-group').innerHTML = '';
-          piecesOnBoard = {};
           applyLocalState();
           checkGameOver();
           return;
@@ -756,11 +753,6 @@
         if (Array.isArray(step.capturedSpots)) {
           step.capturedSpots.forEach(function(s) { delete workingPieces[s]; });
         }
-
-        // Reset SVG + piecesOnBoard à chaque step : ajanona eo fotsiny ny piece,
-        // tsy misy animation CSS mamerina azy any amin'ny toerana taloha (mifamadika)
-        document.getElementById('pieces-group').innerHTML = '';
-        piecesOnBoard = {};
 
         var tempState = {
           pieces:      Object.assign({}, workingPieces),
@@ -1021,43 +1013,27 @@
     }
 
     //  SECTION 10 — Rendu des pièces
+    // Reset complet à chaque appel : tsy misy animation miverina (mifamadika)
+    // Pieces ajanona mivantana amin'ny toerana marina — tsy misy transition
     function renderPieces(pieces, stateData) {
       var grp           = document.getElementById('pieces-group');
       var isMyTurn      = stateData.turn === myColor;
       var globalCapture = playerHasAnyCapture(pieces, myColor);
 
-      var newPiecesOnBoard = {};
-      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
-      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+      // Reset total : esory ny SVG rehetra ary manomboka avy any amin'ny zero
+      // Izao no mahafaka ny mifamadika — tsy misy "toerana taloha" ho hiverenana
+      grp.innerHTML = '';
+      piecesOnBoard = {};
 
-      vanished.forEach(function(vKey) {
-        var color  = piecesOnBoard[vKey].color;
-        var target = null;
-        for (var i = 0; i < appeared.length; i++) {
-          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
-        }
-        if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
-          appeared = appeared.filter(function(a) { return a !== target; });
-        } else {
-          piecesOnBoard[vKey].el.remove();
-        }
-      });
-
-      appeared.forEach(function(aKey) {
+      Object.keys(pieces).forEach(function(spot) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         g.setAttribute('class', 'piece-group');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
         g.appendChild(c);
         grp.appendChild(g);
-        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+        piecesOnBoard[spot] = { el: g, color: pieces[spot] };
       });
-
-      Object.keys(pieces).forEach(function(k) {
-        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
-      });
-      piecesOnBoard = newPiecesOnBoard;
 
       var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
 
