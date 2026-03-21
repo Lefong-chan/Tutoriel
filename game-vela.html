@@ -55,7 +55,6 @@
       aspect-ratio: 440 / 240;
       display: block;
       touch-action: none;
-      /* SVG CSS non modifié au-delà */
     }
 
     /* ── Bande joueurs ── */
@@ -71,20 +70,33 @@
     }
 
     .player-info {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 14px;
-      background: rgba(0,0,0,0.25); border-radius: 12px;
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
       width: 100%;
       justify-content: center;
+      overflow: hidden;
     }
     .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
     .dot-maintso { background: #22c55e; }
     .dot-mena    { background: #ef4444; }
     .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
-    .player-name  { font-size: 0.95em; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Nom du joueur : taille s'adapte selon la longueur ── */
+    .player-name {
+      /* taille par défaut pour noms courts (≤10 lettres) */
+      font-size: 0.95em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: clip;
+      max-width: 100%;
+      line-height: 1.2;
+      color: white;
+      font-weight: 600;
+      transition: font-size 0.15s;
+    }
 
     /* ── SVG — pièces & interactions (inchangé) ── */
-    .grid-line { stroke: #333; stroke-width: 2; }
+    .grid-line { stroke: darkgray; stroke-width: 2; }
     .flipped { transform: rotate(180deg); }
     .piece-group { transition: transform 0.22s ease-in-out; }
     .piece-group.no-transition { transition: none; }
@@ -103,12 +115,6 @@
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
 
     /* ── Bouton Stop ── */
-    #stop-move-btn {
-      width: 60px; height: 60px;
-      font-size: 30px; font-weight: bold; cursor: pointer;
-      opacity: 0.3; transition: 0.3s; pointer-events: none;
-      border: none; background-color: transparent; color: white;
-    }
     #stop-move-btn.active {
       opacity: 1; transform: scale(1.1); pointer-events: all;
     }
@@ -147,6 +153,106 @@
       padding: 12px 24px;
       border-radius: 10px;
     }
+
+    /* ── abtn : bouton de base ── */
+    .abtn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.25);
+      color: rgba(255,255,255,0.68);
+      font-size: 1em;
+      cursor: pointer;
+      transition: background .2s, color .2s;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      flex-shrink: 0;
+      border: none;
+    }
+
+    /* ── abtn colonne (contient player-info + tdiv + tblk) ── */
+    .abtn.col {
+      flex-direction: column;
+      height: auto;
+      padding: 10px 12px;
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    /* ── Séparateur visible ── */
+    .tdiv {
+      width: 100%;
+      height: 1px;
+      background: rgba(255,255,255,0.35);
+      flex-shrink: 0;
+    }
+
+    /* ── Bloc timer ── */
+    .tblk {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1;
+      gap: 1px;
+    }
+    .tlbl {
+      font-size: 0.6em;
+      opacity: 0.55;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: white;
+    }
+    .tval {
+      font-size: 1em;
+      font-weight: 700;
+      color: white;
+    }
+
+    /* ── dbtn (DEMANDE) ── */
+    .dbtn {
+      font-family: sans-serif;
+      font-size: 0.65em;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      padding: 0 9px;
+    }
+
+    /* ── Ping bars ── */
+    .pbars {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .pbar {
+      width: 6px;
+      border-radius: 3px 3px 2px 2px;
+      background: rgba(255,255,255,0.18);
+      transition: background 0.4s;
+    }
+    /* hauteurs croissantes — proportionnelles à la hauteur du conteneur */
+    .pbar:nth-child(1) { height: 6px;  }
+    .pbar:nth-child(2) { height: 10px; }
+    .pbar:nth-child(3) { height: 15px; }
+    .pbar:nth-child(4) { height: 20px; }
+    /* couleurs selon état ping */
+    .pbar.on.ping-bad   { background: #ef4444; }
+    .pbar.on.ping-mid   { background: #ffd600; }
+    .pbar.on.ping-good  { background: #22c55e; }
+    .pbar.on.ping-great { background: #00e5ff; }
+
+    .ping-ms {
+      font-size: 0.62em;
+      color: rgba(255,255,255,0.75);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      line-height: 1;
+    }
   </style>
 </head>
 <body>
@@ -160,14 +266,32 @@
     </div>
   </div>
 
-  <!-- COLONNE GAUCHE : adversaire (en haut), puis éléments additionnels -->
+  <!-- COLONNE GAUCHE -->
   <div class="left-group">
-    <div id="players-bar-top">
-      <div class="player-info">
-        <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
-        <span class="player-name" style="opacity:0.4;">---</span>
+    <div class="abtn col">
+      <div id="players-bar-top">
+        <div class="player-info">
+          <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+          <span class="player-name" style="opacity:0.4;">---</span>
+        </div>
       </div>
+      <div class="tdiv"></div>
+      <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
     </div>
+
+    <!-- Ping widget : row [bars | ms], même height que les autres abtn -->
+    <div class="abtn" style="gap:8px;">
+      <div class="pbars" id="l-ping-bars">
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+      </div>
+      <span class="ping-ms" id="l-ping-ms">— ms</span>
+    </div>
+
+    <div class="abtn" id="opp-timer-ls">∞</div>
+    <button class="abtn"><i class="fas fa-comment-dots"></i></button>
   </div>
 
   <!-- SVG BOARD : 70vw -->
@@ -192,18 +316,22 @@
     <g id="spots-group"></g>
   </svg>
 
-  <!-- COLONNE DROITE : moi (en haut), bouton stop, éléments additionnels -->
+  <!-- COLONNE DROITE -->
   <div class="right-group">
-    <div id="players-bar-bottom">
-      <div class="player-info">
-        <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
-        <span class="player-name" style="opacity:0.4;">---</span>
+    <div class="abtn col">
+      <div id="players-bar-bottom">
+        <div class="player-info">
+          <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+          <span class="player-name" style="opacity:0.4;">---</span>
+        </div>
       </div>
+      <div class="tdiv"></div>
+      <div class="tblk"><span class="tlbl">YOU</span><span class="tval">∞</span></div>
     </div>
 
-    <button id="stop-move-btn">
-      <i class="fas fa-times"></i>
-    </button>
+    <button id="stop-move-btn" class="abtn"><i class="fas fa-times"></i></button>
+    <button class="abtn dbtn">DEMANDE</button>
+    <button class="abtn"><i class="fas fa-sliders-h"></i></button>
   </div>
 
   <div id="error-msg"></div>
@@ -225,6 +353,43 @@
     function escapeHtml(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
+
+    // ── Taille du nom selon longueur ──
+    function updateNameFontSize(spanEl, name) {
+      var len = name.length;
+      var size;
+      if (len <= 7)       size = '0.95em';
+      else if (len <= 10) size = '0.78em';
+      else if (len <= 14) size = '0.62em';
+      else                size = '0.50em';
+      spanEl.style.fontSize = size;
+    }
+
+    // ── Ping bars ──
+    function updatePing(ms) {
+      var barsEl = document.getElementById('l-ping-bars');
+      var msEl   = document.getElementById('l-ping-ms');
+      if (!barsEl || !msEl) return;
+      var bars = barsEl.querySelectorAll('.pbar');
+      var level, colorClass;
+      if (ms < 60)       { level = 4; colorClass = 'ping-great'; }
+      else if (ms < 150) { level = 3; colorClass = 'ping-good';  }
+      else if (ms < 300) { level = 2; colorClass = 'ping-mid';   }
+      else               { level = 1; colorClass = 'ping-bad';   }
+      bars.forEach(function(bar, i) {
+        bar.classList.remove('on', 'ping-bad', 'ping-mid', 'ping-good', 'ping-great');
+        if (i < level) bar.classList.add('on', colorClass);
+      });
+      msEl.textContent = ms + ' ms';
+    }
+    function measurePing() {
+      var t0 = Date.now();
+      fetch('/api/session', { method: 'HEAD' })
+        .then(function() { updatePing(Date.now() - t0); })
+        .catch(function() { updatePing(999); });
+    }
+    setInterval(measurePing, 4000);
+    measurePing();
 
     var gameOverTriggered = false;
     function disableBoardCompletely() {
@@ -441,6 +606,12 @@
 
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
+
+      // Ajuster la taille des noms
+      var oppSpan = document.querySelector('#players-bar-top .player-name');
+      var mySpan  = document.querySelector('#players-bar-bottom .player-name');
+      if (oppSpan) updateNameFontSize(oppSpan, oppUsername);
+      if (mySpan)  updateNameFontSize(mySpan,  myUsername);
     }
 
     function updateTurnIndicator(turn) {
