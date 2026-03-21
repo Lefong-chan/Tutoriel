@@ -1075,8 +1075,7 @@
       var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
       var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
 
-      // --- FIX: tsaroana ny pièces nifindra toerana mba haha-animated azy ireo ihany ---
-      // movedSpots = Set ny toerana "target" nahazo piece nifindra avy amin'ny vanished
+      // movedSpots : spots nahazo piece nifindra toerana tokoa (vanished→appeared match)
       var movedSpots = {};
 
       vanished.forEach(function(vKey) {
@@ -1087,7 +1086,7 @@
         }
         if (target) {
           newPiecesOnBoard[target] = piecesOnBoard[vKey];
-          movedSpots[target] = true; // nifindra → animated
+          movedSpots[target] = true;
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
           piecesOnBoard[vKey].el.remove();
@@ -1096,13 +1095,14 @@
 
       appeared.forEach(function(aKey) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
+        // Pièce vaovao: apetraka no-transition avy hatrany mba tsy hisy animation avy any toerana hafa
+        g.setAttribute('class', 'piece-group no-transition');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
         g.appendChild(c);
         grp.appendChild(g);
-        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
-        movedSpots[aKey] = true; // nouvelle pièce → animated
+        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey], lastTransform: null };
+        // tsy apetraka movedSpots[aKey] — pièce vaovao tsy animated
       });
 
       Object.keys(pieces).forEach(function(k) {
@@ -1121,17 +1121,21 @@
 
         var svgX = ci * 50;
         var svgY = ri * 50;
+        var newTransform = 'translate(' + svgX + ',' + svgY + ')';
 
-        // --- FIX: raha tsy nifindra ilay piece, esory ny transition mba tsy hiverina ---
         if (movedSpots[spot]) {
-          // Nifindra toerana → alefa ny transition (animation)
+          // Nifindra toerana tokoa avy amin'ny vanished → animated transition
+          // Esorina no-transition aloha mba hisy transition, avy eo set transform
           g.classList.remove('no-transition');
+          g.setAttribute('transform', newTransform);
         } else {
-          // Tsy nifindra → no-transition mba tsy hisy animation diso
+          // Tsy nifindra — apetraka avy hatrany tsy misy animation na inona na inona
+          // Raha transform mitovy tamin'ny farany → tsy misy fanovana, tsy misy risk
+          // Raha transform tsy mitovy (tsy tokony hitranga fa sécurité) → set no-transition
           g.classList.add('no-transition');
+          g.setAttribute('transform', newTransform);
         }
-
-        g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
+        entry.lastTransform = newTransform;
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
         circle.style.pointerEvents = 'all';
