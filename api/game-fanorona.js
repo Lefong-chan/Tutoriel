@@ -43,6 +43,7 @@ export default async function handler(req, res) {
       case "make-move":          return await handleMakeMove(payload, res);
       case "stop-move":          return await handleStopMove(payload, res);
       case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
+      case "update-timers":      return await handleUpdateTimers(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -157,6 +158,40 @@ async function handleStopMove(body, res) {
     lastTurnHistory: stopHistory,
     lastTurnColor:   myColor
   });
+  return res.status(200).json({ success: true });
+}
+
+// ── Timer update : met à jour les timers dans RTDB après chaque changement de tour ──
+async function handleUpdateTimers(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  const running  = game.timerRunning;
+  const lastTick = game.timerLastTick;
+  const now      = Date.now();
+
+  if (!running || !lastTick) {
+    // Démarrer le chrono pour le joueur qui a le tour
+    await gameRef.update({ timerRunning: game.turn, timerLastTick: now });
+    return res.status(200).json({ success: true });
+  }
+
+  const elapsed = Math.max(0, now - lastTick);
+  const update  = { timerLastTick: now, timerRunning: game.turn };
+
+  if (running === "maintso") {
+    update.timerMaintso = Math.max(0, (game.timerMaintso || 0) - elapsed);
+  } else {
+    update.timerMena = Math.max(0, (game.timerMena || 0) - elapsed);
+  }
+
+  await gameRef.update(update);
   return res.status(200).json({ success: true });
 }
 
