@@ -70,16 +70,30 @@
     }
 
     .player-info {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 14px;
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
       width: 100%;
       justify-content: center;
+      overflow: hidden;
     }
     .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
     .dot-maintso { background: #22c55e; }
     .dot-mena    { background: #ef4444; }
     .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
-    .player-name  { font-size: 0.95em; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Nom du joueur : taille s'adapte selon la longueur ── */
+    .player-name {
+      /* taille par défaut pour noms courts (≤10 lettres) */
+      font-size: 0.95em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: clip;
+      max-width: 100%;
+      line-height: 1.2;
+      color: white;
+      font-weight: 600;
+      transition: font-size 0.15s;
+    }
 
     /* ── SVG — pièces & interactions (inchangé) ── */
     .grid-line { stroke: darkgray; stroke-width: 2; }
@@ -145,7 +159,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 100%;         /* même largeur que les autres éléments du groupe */
+      width: 100%;
       height: 42px;
       border-radius: 12px;
       background: rgba(0,0,0,0.25);
@@ -162,9 +176,9 @@
     /* ── abtn colonne (contient player-info + tdiv + tblk) ── */
     .abtn.col {
       flex-direction: column;
-      height: auto;            /* s'adapte au contenu */
+      height: auto;
       padding: 10px 12px;
-      align-items: stretch;    /* les enfants prennent toute la largeur */
+      align-items: stretch;
       gap: 8px;
     }
 
@@ -206,6 +220,39 @@
       text-transform: uppercase;
       padding: 0 9px;
     }
+
+    /* ── Ping bars ── */
+    .pbars {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .pbar {
+      width: 6px;
+      border-radius: 3px 3px 2px 2px;
+      background: rgba(255,255,255,0.18);
+      transition: background 0.4s;
+    }
+    /* hauteurs croissantes — proportionnelles à la hauteur du conteneur */
+    .pbar:nth-child(1) { height: 6px;  }
+    .pbar:nth-child(2) { height: 10px; }
+    .pbar:nth-child(3) { height: 15px; }
+    .pbar:nth-child(4) { height: 20px; }
+    /* couleurs selon état ping */
+    .pbar.on.ping-bad   { background: #ef4444; }
+    .pbar.on.ping-mid   { background: #ffd600; }
+    .pbar.on.ping-good  { background: #22c55e; }
+    .pbar.on.ping-great { background: #00e5ff; }
+
+    .ping-ms {
+      font-size: 0.62em;
+      color: rgba(255,255,255,0.75);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      line-height: 1;
+    }
   </style>
 </head>
 <body>
@@ -232,8 +279,19 @@
       <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
     </div>
 
+    <!-- Ping widget : row [bars | ms], même height que les autres abtn -->
+    <div class="abtn" style="gap:8px;">
+      <div class="pbars" id="l-ping-bars">
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+      </div>
+      <span class="ping-ms" id="l-ping-ms">— ms</span>
+    </div>
+
+    <div class="abtn" id="opp-timer-ls">∞</div>
     <button class="abtn"><i class="fas fa-comment-dots"></i></button>
-    <button class="abtn"><i class="fas fa-sliders-h"></i></button>
   </div>
 
   <!-- SVG BOARD : 70vw -->
@@ -273,6 +331,7 @@
 
     <button id="stop-move-btn" class="abtn"><i class="fas fa-times"></i></button>
     <button class="abtn dbtn">DEMANDE</button>
+    <button class="abtn"><i class="fas fa-sliders-h"></i></button>
   </div>
 
   <div id="error-msg"></div>
@@ -295,6 +354,57 @@
     function escapeHtml(s) {
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
+
+    // ── Taille du nom selon longueur (max 10 lettres lisibles) ──
+    function updateNameFontSize(spanEl, name) {
+      var len = name.length;
+      var size;
+      if (len <= 7)       size = '0.95em';
+      else if (len <= 10) size = '0.78em';
+      else if (len <= 14) size = '0.62em';
+      else                size = '0.50em';
+      spanEl.style.fontSize = size;
+    }
+
+    // ── Ping bars ──
+    function updatePing(ms) {
+      var barsEl = document.getElementById('l-ping-bars');
+      var msEl   = document.getElementById('l-ping-ms');
+      if (!barsEl || !msEl) return;
+
+      var bars = barsEl.querySelectorAll('.pbar');
+
+      // Niveau 1-4 selon la valeur
+      var level, colorClass;
+      if (ms < 60) {
+        level = 4; colorClass = 'ping-great';   // bleu cyan — excellente
+      } else if (ms < 150) {
+        level = 3; colorClass = 'ping-good';    // vert — bonne
+      } else if (ms < 300) {
+        level = 2; colorClass = 'ping-mid';     // jaune — moyenne
+      } else {
+        level = 1; colorClass = 'ping-bad';     // rouge — mauvaise
+      }
+
+      bars.forEach(function(bar, i) {
+        bar.classList.remove('on', 'ping-bad', 'ping-mid', 'ping-good', 'ping-great');
+        if (i < level) {
+          bar.classList.add('on', colorClass);
+        }
+      });
+
+      msEl.textContent = ms + ' ms';
+    }
+
+    // Mesure ping réelle via timing HEAD
+    function measurePing() {
+      var t0 = Date.now();
+      fetch('/api/session', { method: 'HEAD' })
+        .then(function() { updatePing(Date.now() - t0); })
+        .catch(function() { updatePing(999); });
+    }
+    setInterval(measurePing, 4000);
+    measurePing();
 
     var gameOverTriggered = false;
     function disableBoardCompletely() {
@@ -480,18 +590,22 @@
       barTop.innerHTML =
         '<div class="player-info">' +
           '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
-          '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
+          '<span class="player-name" id="opp-name-span">' + escapeHtml(oppUsername) + '</span>' +
         '</div>';
 
       var barBottom = document.getElementById('players-bar-bottom');
       barBottom.innerHTML =
         '<div class="player-info">' +
           '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
-          '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
+          '<span class="player-name" id="my-name-span">' + escapeHtml(myUsername) + '</span>' +
         '</div>';
 
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
+
+      // Ajuster la taille des noms
+      updateNameFontSize(document.getElementById('opp-name-span'), oppUsername);
+      updateNameFontSize(document.getElementById('my-name-span'),  myUsername);
     }
 
     function updateTurnIndicator(turn) {
