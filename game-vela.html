@@ -316,6 +316,31 @@
       color: #ff6b6b;
       text-shadow: 0 0 10px rgba(255,100,100,0.6);
     }
+
+    /* ── Player timers dans les .tval ── */
+    .tval.ptimer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 8px rgba(255,100,100,0.5);
+      animation: timerPulse 0.8s ease-in-out infinite;
+    }
+    @keyframes timerPulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.55; }
+    }
+
+    /* ── Timer countdown dans #opp-timer-ls ── */
+    #opp-timer-ls {
+      font-size: 1em;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.85);
+      transition: color 0.2s;
+    }
+    #opp-timer-ls.timer-active { color: #fff; }
+    #opp-timer-ls.timer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 10px rgba(255,100,100,0.6);
+    }
   </style>
 </head>
 <body>
@@ -600,8 +625,7 @@
 
       var myPCA  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
       var oppPCA = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-      if (oppPCA === 0) showGameOverAlert(myColor, 2000);
-      else if (myPCA === 0) showGameOverAlert(myOppColor, 2000);
+      // fin de partie gérée via game.winner
     }
 
     function stopAllTimers() {
@@ -609,6 +633,84 @@
       stopMoveTimer();
     }
 
+    // ════════════════════════════════════════════════════════════
+    //  PLAYER TIMERS — Phase 2 uniquement, WebSocket-driven
+    // ════════════════════════════════════════════════════════════
+    var playerTimerEnabled = false;
+    var myTimerMs = 0, oppTimerMs = 0;
+    var timerRunningColor = null, timerLastTickMs = null, playerTimerRaf = null;
+    var oppTvalEl = null, myTvalEl = null;
+
+    function getTimerEls() {
+      if (!oppTvalEl) oppTvalEl = document.querySelector('.left-group  .tval');
+      if (!myTvalEl)  myTvalEl  = document.querySelector('.right-group .tval');
+    }
+    function formatPlayerTimer(ms) {
+      if (ms <= 0) return '0';
+      var s = ms / 1000;
+      if (s >= 60) { var m=Math.floor(s/60),ss=Math.floor(s%60); return m+':'+(ss<10?'0':'')+ss; }
+      return s >= 10 ? Math.floor(s)+'s' : s.toFixed(1)+'s';
+    }
+    function applyTimerUrgency(el, ms) {
+      if (!el) return;
+      if (ms > 0 && ms <= 10000) el.classList.add('ptimer-urgent');
+      else el.classList.remove('ptimer-urgent');
+    }
+    function renderPlayerTimers(myMs, oppMs) {
+      getTimerEls();
+      if (myTvalEl)  { myTvalEl.textContent  = formatPlayerTimer(myMs);  applyTimerUrgency(myTvalEl,  myMs); }
+      if (oppTvalEl) { oppTvalEl.textContent = formatPlayerTimer(oppMs); applyTimerUrgency(oppTvalEl, oppMs); }
+    }
+    function stopPlayerTimerRaf() {
+      if (playerTimerRaf) { cancelAnimationFrame(playerTimerRaf); playerTimerRaf = null; }
+    }
+    function startPlayerTimerRaf() {
+      stopPlayerTimerRaf();
+      if (!playerTimerEnabled) return;
+      function tick() {
+        if (!playerTimerEnabled) return;
+        var now = Date.now();
+        var elapsed = timerLastTickMs ? Math.max(0, now - timerLastTickMs) : 0;
+        var curMyMs = myTimerMs, curOppMs = oppTimerMs;
+        if (timerRunningColor) {
+          if (timerRunningColor === myColor) curMyMs  = Math.max(0, myTimerMs  - elapsed);
+          else                               curOppMs = Math.max(0, oppTimerMs - elapsed);
+        }
+        renderPlayerTimers(curMyMs, curOppMs);
+        if (timerRunningColor === myColor && curMyMs <= 0) {
+          stopPlayerTimerRaf();
+          if (!gameOverTriggered) {
+            showGameOverAlert(myOppColor, 0);
+            callApi(GAME_API_URL, 'declare-winner', { uid: myUid, gameId: gameId, winner: myOppColor })
+              .catch(function(e) { console.warn('declare-winner error:', e); });
+          }
+          return;
+        }
+        if (timerRunningColor === myOppColor && curOppMs <= 0) {
+          stopPlayerTimerRaf();
+          if (!gameOverTriggered) {
+            showGameOverAlert(myColor, 0);
+            callApi(GAME_API_URL, 'declare-winner', { uid: myUid, gameId: gameId, winner: myColor })
+              .catch(function(e) { console.warn('declare-winner error:', e); });
+          }
+          return;
+        }
+        playerTimerRaf = requestAnimationFrame(tick);
+      }
+      playerTimerRaf = requestAnimationFrame(tick);
+    }
+    function onPlayerTimersUpdate(game) {
+      if (!game.minutes) return;
+      playerTimerEnabled = true;
+      getTimerEls();
+      var myMs  = myColor === 'maintso' ? (game.timerMaintso||0) : (game.timerMena||0);
+      var oppMs = myColor === 'maintso' ? (game.timerMena||0)    : (game.timerMaintso||0);
+      myTimerMs = myMs; oppTimerMs = oppMs;
+      timerRunningColor = game.timerRunning || null;
+      timerLastTickMs   = game.timerLastTick || Date.now();
+      renderPlayerTimers(myMs, oppMs);
+      startPlayerTimerRaf();
+    }
     // ════════════════════════════════════════════════════════════
 
     var gameOverTriggered = false;
@@ -623,6 +725,7 @@
       });
       document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
       stopAllTimers();
+      stopPlayerTimerRaf();
     }
 
     function showGameOverAlert(winnerColor, delayMs) {
@@ -872,6 +975,17 @@
         // Mettre à jour firstMover si reçu
         if (game.firstMover && !firstMover) firstMover = game.firstMover;
 
+        // ── Timers joueur (toutes phases, Phase 1 n'affecte rien si pas de minutes) ──
+        onPlayerTimersUpdate(game);
+
+        // ── Fin de partie via game.winner (source unique) ──
+        if (game.winner) {
+          stopAllTimers();
+          stopPlayerTimerRaf();
+          showGameOverAlert(game.winner, 0);
+          return;
+        }
+
         // ── Dispatch selon la phase ──
         if (isPhase2(game.pieces)) {
           onRealtimePh2(game);
@@ -907,7 +1021,6 @@
         renderPiecesPh1(localState.pieces, localState);
 
         var myPCadv = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-        if (myPCadv === 0) showGameOverAlert(myOppColor, 2000);
         return;
       }
 
@@ -930,16 +1043,7 @@
       // Vérifier fin de partie
       var myPCph1  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPCph1 = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      if (myPCph1 === 0) {
-        showGameOverAlert(myOppColor, 2000);
-      } else if (oppPCph1 === 0) {
-        showGameOverAlert(myColor, 2000);
-      } else {
-        // Phase 1 : vérifier si le firstMover a encore des captures possibles
-        if (amIFirstMover() && !playerHasAnyCapturePh1(localState.pieces, myColor)) {
-          showGameOverAlert(myColor, 4000);
-        }
-      }
+      // fin de partie gérée via game.winner
     }
 
     function copyStatePh1(game) {
@@ -1133,14 +1237,7 @@
       if (!canContinue) {
         var myPCdm  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
         var oppPCdm = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        if (oppPCdm === 0) {
-          showGameOverAlert(myColor, 2000);
-        } else if (myPCdm === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        } else {
-          var advHasCap = playerHasAnyCapturePh1(localState.pieces, myOppColor);
-          if (!advHasCap) showGameOverAlert(myOppColor, 4000);
-        }
+        // fin de partie gérée via game.winner
       }
     }
 
@@ -1166,14 +1263,7 @@
 
       var myPC2  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPC2 = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      if (oppPC2 === 0) {
-        showGameOverAlert(myColor, 2000);
-      } else if (myPC2 === 0) {
-        showGameOverAlert(myOppColor, 2000);
-      } else {
-        var advHasCap2 = playerHasAnyCapturePh1(localState.pieces, myOppColor);
-        if (!advHasCap2) showGameOverAlert(myOppColor, 4000);
-      }
+      // fin de partie gérée via game.winner
     }
 
     function sendMoveToBackendPh1(origin, target, capturedSpots, dir) {
@@ -1338,7 +1428,6 @@
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
 
         var myPCadv = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-        if (myPCadv === 0) showGameOverAlert(myOppColor, 2000);
         return;
       }
 
@@ -1361,11 +1450,7 @@
 
       var myPCph2  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
       var oppPCph2 = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-      if (myPCph2 === 0) {
-        showGameOverAlert(myOppColor, 2000);
-      } else if (oppPCph2 === 0) {
-        showGameOverAlert(myColor, 2000);
-      }
+      // fin de partie gérée via game.winner
     }
 
     function ph2CopyState(game) {
@@ -1506,11 +1591,7 @@
       if (!canContinue) {
         var ph2OppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
         var ph2MyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-        if (ph2OppCount === 0) {
-          showGameOverAlert(myColor, 2000);
-        } else if (ph2MyCount === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        }
+        // fin de partie gérée via game.winner
       }
     }
 
@@ -1539,11 +1620,7 @@
 
       var ph2StopOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
       var ph2StopMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-      if (ph2StopOppCount === 0) {
-        showGameOverAlert(myColor, 2000);
-      } else if (ph2StopMyCount === 0) {
-        showGameOverAlert(myOppColor, 2000);
-      }
+      // fin de partie gérée via game.winner
     }
 
     function ph2SendMoveToBackend(origin, target, capturedSpots, dir) {
