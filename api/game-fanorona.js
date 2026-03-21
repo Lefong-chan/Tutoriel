@@ -176,12 +176,29 @@ async function handleUpdateTimers(body, res) {
   const lastTick = game.timerLastTick;
   const now      = Date.now();
 
+  // ── Logique :
+  //   - "running" = couleur du joueur dont le chrono TOURNAIT avant cet appel
+  //   - "game.turn" = couleur du joueur qui VA jouer maintenant
+  //   - On déduit le temps écoulé de "running", puis on passe le chrono à "game.turn"
+  //
+  // Cas spécial : premier appel (running=null ou lastTick=null)
+  //   → le joueur qui vient de jouer est l'OPPOSÉ de game.turn
+  //   → on démarre le chrono pour game.turn (le joueur qui va jouer)
+  // ──
+  // ── Invariant :
+  //   timerRunning = game.turn = mpilalao ANKEHITRINY manana anjara (chrono miisa)
+  //   Rehefa miova tour (update-timers alefa) :
+  //     1. Deduit elapsed avy amin'ny mpilalao efa nanao (= "running" = ancien game.turn)
+  //     2. Mametraka timerRunning = game.turn (vaovao = mpilalao manaraka)
+  // ──
   if (!running || !lastTick) {
-    // Démarrer le chrono pour le joueur qui a le tour
+    // Lalao vao manomboka : mametraka timerRunning = game.turn (maintso manomboka)
     await gameRef.update({ timerRunning: game.turn, timerLastTick: now });
     return res.status(200).json({ success: true });
   }
 
+  // running = mpilalao efa nanao (ilay miisa) → deduit elapsed avy aminy
+  // game.turn = mpilalao vaovao → ny chrono dia ampindramina azy
   const elapsed = Math.max(0, now - lastTick);
   const update  = { timerLastTick: now, timerRunning: game.turn };
 
