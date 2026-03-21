@@ -2,9 +2,17 @@
 <html lang="mg">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vela</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Fanorona-Vela</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+  <!-- Firebase SDK (compat) — connexion WebSocket temps réel -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -383,567 +391,562 @@
   <div id="error-msg"></div>
 </div>
 
-  <script>
-  (function () {
+<script>
+(function () {
+  'use strict';
 
-    var SESSION_API_URL = '/api/session';
-    var GAME_API_URL    = '/api/game-vela';
-    var POLL_INTERVAL   = 1500;
-    var RECONCILE_DELAY = 5000;
+  /* ══════════════════════════════════════════════
+     CONFIG
+  ══════════════════════════════════════════════ */
+  var FIREBASE_CONFIG = {
+    apiKey:      "AIzaSyDMr3plGs8sF56pM_O3jYqfGdWTlJiePW0",
+    databaseURL: "https://tutoriel-ff487-default-rtdb.firebaseio.com",
+    projectId:   "tutoriel-ff487",
+    appId:       "1:128298277579:web:9a7fb395621c448e7f594e",
+  };
 
-    function showError(msg) {
-      document.getElementById('error-msg').textContent = msg;
-      document.getElementById('error-msg').style.display = 'block';
-      document.getElementById('loading-overlay').classList.add('hidden');
-    }
-    function escapeHtml(s) {
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    }
+  var SESSION_API_URL = '/api/session';
+  var GAME_API_URL    = '/api/game-vela';
+  var RECONCILE_DELAY = 5000;
 
-    // ── Taille du nom selon longueur ──
-    function updateNameFontSize(spanEl, name) {
-      var len = name.length;
-      var size;
-      if (len <= 7)       size = '0.95em';
-      else if (len <= 10) size = '0.78em';
-      else if (len <= 14) size = '0.62em';
-      else                size = '0.50em';
-      spanEl.style.fontSize = size;
-    }
+  /* ══════════════════════════════════════════════
+     UTILS
+  ══════════════════════════════════════════════ */
+  function showError(msg) {
+    document.getElementById('error-msg').textContent = msg;
+    document.getElementById('error-msg').style.display = 'block';
+    document.getElementById('loading-overlay').classList.add('hidden');
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function updateNameFontSize(spanEl, name) {
+    var len = name ? name.length : 0;
+    var size = len <= 7 ? '0.92em' : len <= 10 ? '0.76em' : len <= 14 ? '0.60em' : '0.48em';
+    spanEl.style.fontSize = size;
+  }
+  function $id(id) { return document.getElementById(id); }
 
-    // ── Ping bars ──
-    function updatePing(ms) {
-      var barsEl = document.getElementById('l-ping-bars');
-      var msEl   = document.getElementById('l-ping-ms');
-      if (!barsEl || !msEl) return;
+  /* ── Ping ── */
+  function updatePing(ms) {
+    ['l-ping-bars','p-ping-bars'].forEach(function(id) {
+      var barsEl = $id(id); if (!barsEl) return;
       var bars = barsEl.querySelectorAll('.pbar');
-      var level, colorClass;
-      if (ms < 60)       { level = 4; colorClass = 'ping-great'; }
-      else if (ms < 150) { level = 3; colorClass = 'ping-good';  }
-      else if (ms < 300) { level = 2; colorClass = 'ping-mid';   }
-      else               { level = 1; colorClass = 'ping-bad';   }
-      bars.forEach(function(bar, i) {
-        bar.classList.remove('on', 'ping-bad', 'ping-mid', 'ping-good', 'ping-great');
-        if (i < level) bar.classList.add('on', colorClass);
+      var level, cc;
+      if (ms < 60)       { level=4; cc='ping-great'; }
+      else if (ms < 150) { level=3; cc='ping-good';  }
+      else if (ms < 300) { level=2; cc='ping-mid';   }
+      else               { level=1; cc='ping-bad';   }
+      bars.forEach(function(b,i) {
+        b.classList.remove('on','ping-bad','ping-mid','ping-good','ping-great');
+        if (i < level) b.classList.add('on', cc);
       });
-      msEl.textContent = ms + ' ms';
-    }
-    function measurePing() {
-      var t0 = Date.now();
-      fetch('/api/session', { method: 'HEAD' })
-        .then(function() { updatePing(Date.now() - t0); })
-        .catch(function() { updatePing(999); });
-    }
-    setInterval(measurePing, 4000);
-    measurePing();
+    });
+    ['l-ping-ms','p-ping-ms'].forEach(function(id) {
+      var el = $id(id); if (el) el.textContent = ms + ' ms';
+    });
+  }
+  function measurePing() {
+    var t0 = Date.now();
+    fetch('/api/session', { method:'HEAD' })
+      .then(function() { updatePing(Date.now()-t0); })
+      .catch(function() { updatePing(999); });
+  }
+  setInterval(measurePing, 4000);
+  measurePing();
 
-    var gameOverTriggered = false;
-    function disableBoardCompletely() {
-      var board = document.getElementById('game-board');
-      if (board) board.classList.add('lock-board');
-      var stopBtn = document.getElementById('stop-move-btn');
-      if (stopBtn) { stopBtn.classList.remove('active'); stopBtn.style.pointerEvents = 'none'; }
-      document.getElementById('guides-group').innerHTML = '';
-      document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el) {
-        el.removeAttribute('class');
-      });
-      document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
-    }
+  /* ══════════════════════════════════════════════
+     VARIABLES GLOBALES
+  ══════════════════════════════════════════════ */
+  var myColor    = null;
+  var myOppColor = null;
+  var gameId     = null;
+  var myUid      = null;
+  var myDotEls   = [];   // [l-dot, p-dot]
+  var oppDotEls  = [];
 
-    function showGameOverAlert(winnerColor, delayMs) {
-      if (gameOverTriggered) return;
-      gameOverTriggered = true;
+  // Phase 1 (vela) : variables
+  var localState       = null;
+  var selectedSpot     = null;
+  var lastBlockedSpot  = null;
+  var canChangePiece   = true;
+  var pendingCaptures  = { approach:[], withdrawal:[], moveData:null };
+  var piecesOnBoard    = { l:{}, p:{} };
+  var movingInProgress = false;
+  var reconcileTimer   = null;
+  var firstMover       = null;
 
-      disableBoardCompletely();
+  // Phase 2 (fanorona) : variables
+  var ph2_localState       = null;
+  var ph2_selectedSpot     = null;
+  var ph2_lastBlockedSpot  = null;
+  var ph2_canChangePiece   = true;
+  var ph2_pendingCaptures  = { approach:[], withdrawal:[], moveData:null };
+  var ph2_movingInProgress = false;
+  var ph2_reconcileTimer   = null;
 
-      var delay = (typeof delayMs === 'number') ? delayMs : 4000;
+  var gameOverTriggered = false;
 
-      setTimeout(function() {
-        var overlay = document.createElement('div');
-        overlay.style.cssText = [
-          'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
-          'display:flex','justify-content:center','align-items:center',
-          'z-index:9999','flex-direction:column','gap:0'
-        ].join(';');
+  var allowedMoves = {
+    'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],
+    'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
+    'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
+    'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],
+    'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],
+    'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
+    'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
+    'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],
+    'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
+    'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],
+    'C6':['B6','C5','C7','D6'],
+    'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],
+    'C9':['B8','B9','C8','D8','D9'],
+    'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
+    'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],
+    'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
+    'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
+    'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],
+    'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
+    'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
+  };
 
-        var box = document.createElement('div');
-        box.style.cssText = [
-          'background:#1a3a5c','border-radius:18px','padding:36px 40px',
-          'text-align:center','color:white','font-family:sans-serif',
-          'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
-        ].join(';');
+  var rows = ['A','B','C','D','E'];
+  var cols = ['1','2','3','4','5','6','7','8','9'];
 
-        var iWon  = (winnerColor === myColor);
-        var myMsg = iWon ? '&#127942; You win!' : '&#128532; You lose!';
+  /* ══════════════════════════════════════════════
+     PHASE CHECK
+  ══════════════════════════════════════════════ */
+  function isPhase2(pieces) {
+    if (!firstMover) return false;
+    var nonFMColor = firstMover === myColor ? myOppColor : myColor;
+    var count = Object.keys(pieces || {}).filter(function(s) {
+      return (pieces || {})[s] === nonFMColor;
+    }).length;
+    return count <= 5;
+  }
+  function isGameFrozen(pieces) { return isPhase2(pieces); }
 
-        var title = document.createElement('div');
-        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
-        title.textContent = myMsg;
+  /* ══════════════════════════════════════════════
+     GAME OVER
+  ══════════════════════════════════════════════ */
+  function disableBoardCompletely() {
+    ['port-board','land-board'].forEach(function(id) {
+      var b = $id(id); if (b) b.classList.add('lock-board');
+    });
+    ['l-stop-btn','p-stop-btn'].forEach(function(id) {
+      var b = $id(id); if (b) { b.classList.remove('active'); b.style.pointerEvents='none'; }
+    });
+    ['l-guides-group','p-guides-group'].forEach(function(id) {
+      var g = $id(id); if (g) g.innerHTML='';
+    });
+    document.querySelectorAll('.selected-piece,.movable-piece,.blocked-piece,.capture-target').forEach(function(el){
+      el.removeAttribute('class');
+    });
+    document.querySelectorAll('.cross-line').forEach(function(el){el.remove();});
+  }
 
-        var btn = document.createElement('button');
-        btn.textContent = 'OK';
-        btn.style.cssText = [
-          'background:#0092FF','color:white','border:none',
-          'border-radius:10px','padding:12px 48px',
-          'font-size:1.1em','font-weight:700','cursor:pointer',
-          'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
-        ].join(';');
-        btn.onclick = function() {
-          window.location.href = 'dashboard.html';
-        };
+  function showGameOverAlert(winnerColor, delayMs) {
+    if (gameOverTriggered) return;
+    gameOverTriggered = true;
+    disableBoardCompletely();
+    var delay = typeof delayMs === 'number' ? delayMs : 4000;
+    setTimeout(function() {
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;justify-content:center;align-items:center;z-index:9999;flex-direction:column;gap:0;';
+      var box = document.createElement('div');
+      box.style.cssText = 'background:linear-gradient(160deg,#1a1a3e,#2a1a4e);border:1px solid rgba(167,119,227,0.4);border-radius:20px;padding:36px 40px;text-align:center;color:white;font-family:Rajdhani,sans-serif;box-shadow:0 8px 40px rgba(0,0,0,0.7);max-width:320px;width:88vw;';
+      var iWon = winnerColor === myColor;
+      var title = document.createElement('div');
+      title.style.cssText = 'font-family:Orbitron,sans-serif;font-size:1.5em;font-weight:800;margin-bottom:28px;';
+      title.textContent = iWon ? '🏆 Ianao no menatra!' : '😔 Resy ianao!';
+      var btn = document.createElement('button');
+      btn.textContent = 'OK';
+      btn.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:42px;border-radius:14px;background:linear-gradient(135deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04));border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.85);font-size:1em;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif;letter-spacing:0.08em;backdrop-filter:blur(12px);box-shadow:0 2px 8px rgba(0,0,0,0.18);';
+      btn.onclick = function() { window.location.href = 'dashboard.html'; };
+      box.appendChild(title);
+      box.appendChild(btn);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+    }, delay);
+  }
 
-        box.appendChild(title);
-        box.appendChild(btn);
-        overlay.appendChild(box);
-        document.body.appendChild(overlay);
-      }, delay);
-    }
+  /* ══════════════════════════════════════════════
+     API
+  ══════════════════════════════════════════════ */
+  async function callApi(url, action, payload) {
+    var r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ action: action }, payload))
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'API error');
+    return d;
+  }
 
-        async function callApi(url, action, payload) {
-      var r = await fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ action: action }, payload))
-      });
-      var d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'API error');
-      return d;
-    }
+  /* ══════════════════════════════════════════════
+     PLAYERS BAR
+  ══════════════════════════════════════════════ */
+  function renderPlayersBar(myCol, myUsername, oppUsername) {
+    var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
+    var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
 
-    var allowedMoves = {
-      'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],
-      'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
-      'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
-      'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],
-      'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],
-      'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
-      'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
-      'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],
-      'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
-      'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],
-      'C6':['B6','C5','C7','D6'],
-      'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],
-      'C9':['B8','B9','C8','D8','D9'],
-      'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
-      'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],
-      'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
-      'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
-      'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],
-      'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
-      'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
-    };
-
-    var rows = ['A','B','C','D','E'];
-    var cols = ['1','2','3','4','5','6','7','8','9'];
-
-    var myColor    = null;
-    var myOppColor = null;
-    var gameId     = null;
-    var myUid      = null;
-    var myDotEl    = null;
-    var oppDotEl   = null;
-
-    // ── Phase 1 (fanorona-vela) : variables ─────────────────────────
-    var localState       = null;
-    var selectedSpot     = null;
-    var lastBlockedSpot  = null;
-    var canChangePiece   = true;
-    var pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
-    var piecesOnBoard    = {};
-    var movingInProgress = false;
-    var reconcileTimer   = null;
-    var firstMover       = null;
-
-    // ── Phase 2 (fanorona.html) : variables renommées ───────────────
-    var ph2_localState       = null;
-    var ph2_selectedSpot     = null;
-    var ph2_lastBlockedSpot  = null;
-    var ph2_canChangePiece   = true;
-    var ph2_pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
-    var ph2_movingInProgress = false;
-    var ph2_reconcileTimer   = null;
-
-    var params   = new URLSearchParams(window.location.search);
-    var gameId_p = params.get('gameId');
-    var color_p  = params.get('color');
-    var inviteId = params.get('inviteId');
-    var gameSource = params.get('source') || 'vela';
-
-    //  PHASE CHECK
-    function isPhase2(pieces) {
-      if (!firstMover) return false;
-      var nonFMColor = firstMover === myColor ? myOppColor : myColor;
-      var count = Object.keys(pieces || {}).filter(function(s) {
-        return (pieces || {})[s] === nonFMColor;
-      }).length;
-      return count <= 5;
-    }
-
-    function isGameFrozen(pieces) {
-      return isPhase2(pieces);
-    }
-
-    //  INIT
-    async function init() {
-      if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
-      if (color_p !== 'maintso' && color_p !== 'mena') { showError('Diso ny color.'); return; }
-
-      var stored = localStorage.getItem('user');
-      if (!stored) { window.location.href = 'login&register.html'; return; }
-      var localUser = null;
-      try { localUser = JSON.parse(stored); } catch(e) {}
-      if (!localUser || !localUser.uid) { window.location.href = 'login&register.html'; return; }
-
-      try {
-        var data = await callApi(SESSION_API_URL, 'get-fanorona-game', { uid: localUser.uid, gameId: gameId_p });
-        if (!data.success) { showError('Tsy hita ny lalao.'); return; }
-
-        myUid      = localUser.uid;
-        gameId     = gameId_p;
-        myColor    = color_p;
-        myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
-
-        renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
-        if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
-        drawBoardSpots();
-        document.getElementById('stop-move-btn').onclick = function() { handleStopBtnDispatch(); };
-
-        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
-        if (d.success) {
-          if (d.game.firstMover) firstMover = d.game.firstMover;
-          // Masomboly ny mpilalao roa vao esorina ny loading-overlay
-          if (data.opponentUsername && data.opponentUsername !== '???') {
-            document.getElementById('loading-overlay').classList.add('hidden');
-          }
-          if (isPhase2(d.game.pieces)) {
-            ph2_localState = ph2CopyState(d.game);
-            ph2ApplyLocalState();
-          } else {
-            localState = copyState(d.game);
-            applyLocalState();
-          }
-        }
-
-        setInterval(pollAdversaire, POLL_INTERVAL);
-        setInterval(checkBothPlayersReady, 2000);
-
-      } catch(err) { showError('Nisy olana: ' + err.message); }
-    }
-
-    //  PLAYERS BAR (commun)
-    function renderPlayersBar(myCol, myUsername, oppUsername) {
-      var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
-      var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
-
-      // Adversaire → players-bar-top
-      var barTop = document.getElementById('players-bar-top');
-      barTop.innerHTML =
+    // Portrait + Landscape : adversaire
+    ['l-opp-bar','p-opp-bar'].forEach(function(id) {
+      var el = $id(id); if (!el) return;
+      el.innerHTML =
         '<div class="player-info">' +
-          '<div class="player-dot ' + oppDotClass + '" id="opp-dot"></div>' +
+          '<div class="player-dot ' + oppDotClass + '" id="' + id + '-dot"></div>' +
           '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
         '</div>';
+      var span = el.querySelector('.player-name');
+      if (span) updateNameFontSize(span, oppUsername);
+    });
 
-      // Moi → players-bar-bottom
-      var barBottom = document.getElementById('players-bar-bottom');
-      barBottom.innerHTML =
+    // Portrait + Landscape : moi
+    ['l-my-bar','p-my-bar'].forEach(function(id) {
+      var el = $id(id); if (!el) return;
+      el.innerHTML =
         '<div class="player-info">' +
-          '<div class="player-dot ' + myDotClass + '" id="my-dot"></div>' +
+          '<div class="player-dot ' + myDotClass + '" id="' + id + '-dot"></div>' +
           '<span class="player-name">' + escapeHtml(myUsername) + '</span>' +
         '</div>';
+      var span = el.querySelector('.player-name');
+      if (span) updateNameFontSize(span, myUsername);
+    });
 
-      myDotEl  = document.getElementById('my-dot');
-      oppDotEl = document.getElementById('opp-dot');
+    myDotEls  = [$id('l-my-bar-dot'),  $id('p-my-bar-dot')];
+    oppDotEls = [$id('l-opp-bar-dot'), $id('p-opp-bar-dot')];
+  }
 
-      // Ajuster la taille des noms
-      var oppSpan = document.querySelector('#players-bar-top .player-name');
-      var mySpan  = document.querySelector('#players-bar-bottom .player-name');
-      if (oppSpan) updateNameFontSize(oppSpan, oppUsername);
-      if (mySpan)  updateNameFontSize(mySpan,  myUsername);
-    }
+  function updateTurnIndicator(turn) {
+    var isMyTurn = turn === myColor;
+    myDotEls.forEach(function(el)  { if(el) el.classList.toggle('active-turn', isMyTurn);  });
+    oppDotEls.forEach(function(el) { if(el) el.classList.toggle('active-turn', !isMyTurn); });
+  }
 
-    function updateTurnIndicator(turn) {
-      if (!myDotEl || !oppDotEl) return;
-      if (turn === myColor) {
-        myDotEl.classList.add('active-turn'); oppDotEl.classList.remove('active-turn');
-      } else {
-        oppDotEl.classList.add('active-turn'); myDotEl.classList.remove('active-turn');
-      }
-    }
+  /* ══════════════════════════════════════════════
+     STOP BUTTON DISPATCH
+  ══════════════════════════════════════════════ */
+  function handleStopBtnDispatch() {
+    var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
+    if (isPhase2(pieces)) ph2HandleStopBtn();
+    else handleStopBtn();
+  }
 
-    //  STOP BUTTON DISPATCH
-    function handleStopBtnDispatch() {
-      var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
-      if (isPhase2(pieces)) {
-        ph2HandleStopBtn();
-      } else {
-        handleStopBtn();
-      }
-    }
-
-    //  POLLING (commun — dispatch selon phase)
-    async function pollAdversaire() {
-      try {
-        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
-        if (!d.success) return;
-
-        if (d.game.firstMover && !firstMover) firstMover = d.game.firstMover;
-
-        if (isPhase2(d.game.pieces)) {
-          ph2Poll(d.game);
-        } else {
-          ph1Poll(d.game);
-        }
-      } catch(e) { console.warn('poll error', e); }
-    }
-
-    // ─── Spots cliquables (commun) ───────────────────────────────
-    function drawBoardSpots() {
-      var spotsGrp = document.getElementById('spots-group');
+  /* ══════════════════════════════════════════════
+     BOARD SPOTS (dual SVG)
+  ══════════════════════════════════════════════ */
+  function drawBoardSpots() {
+    ['l-spots-group','p-spots-group'].forEach(function(grpId) {
+      var spotsGrp = $id(grpId); if (!spotsGrp) return;
       spotsGrp.innerHTML = '';
       rows.forEach(function(r, ri) {
         cols.forEach(function(c, ci) {
-          var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          circle.setAttribute('cx', ci * 50);
-          circle.setAttribute('cy', ri * 50);
+          var circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          circle.setAttribute('cx', ci*50);
+          circle.setAttribute('cy', ri*50);
           circle.setAttribute('r', 18);
-          circle.setAttribute('fill', 'transparent');
-          circle.setAttribute('class', 'spot');
+          circle.setAttribute('fill','transparent');
+          circle.setAttribute('class','spot');
           (function(spotID) {
             circle.onclick = function(e) {
               e.stopPropagation();
               var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
-              if (isPhase2(pieces)) {
-                ph2HandleSpotClick(spotID);
-              } else {
-                handleSpotClick(spotID);
-              }
+              if (isPhase2(pieces)) ph2HandleSpotClick(spotID);
+              else handleSpotClick(spotID);
             };
-          })(r + c);
+          })(r+c);
           spotsGrp.appendChild(circle);
         });
       });
+    });
+  }
+
+  /* ══════════════════════════════════════════════
+     FIREBASE REALTIME INIT
+  ══════════════════════════════════════════════ */
+  var fbApp  = null;
+  var fbDb   = null;
+  var fbAuth = null;
+  var gameListener = null;
+
+  function initFirebase() {
+    if (!firebase.apps.length) {
+      fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+    } else {
+      fbApp = firebase.app();
     }
+    fbAuth = firebase.auth();
+    fbDb   = firebase.database();
+  }
 
-    //  PHASE 1 — logic
-    function amIFirstMover() {
-      return firstMover === null || firstMover === myColor;
-    }
+  async function connectFirebaseRealtime(uid, gId) {
+    try {
+      // Récupérer un custom token depuis le backend
+      var tokenData = await callApi(GAME_API_URL, 'get-firebase-token', { uid: uid, gameId: gId });
+      if (!tokenData.success) { console.warn('Firebase token failed'); return; }
 
-    function ph1Poll(game) {
-      if (movingInProgress) return;
-      var serverTurn = game.turn;
+      // Authentification Firebase client
+      await fbAuth.signInWithCustomToken(tokenData.token);
 
-      if (serverTurn !== myColor) {
-        if (localState) {
-          localState.pieces = Object.assign({}, game.pieces);
-          localState.turn   = game.turn;
-          renderPieces(localState.pieces, localState);
+      // Écouter le nœud du jeu en temps réel (WebSocket push)
+      var gameRef = fbDb.ref('games/' + gId);
+      if (gameListener) { gameRef.off(); }
+
+      gameListener = gameRef.on('value', function(snap) {
+        if (!snap.exists()) return;
+        var game = snap.val();
+        if (game.firstMover && !firstMover) firstMover = game.firstMover;
+
+        // Masomboly les deux joueurs prêts → cacher le loading
+        if (game.senderUid && game.receiverUid) {
+          $id('loading-overlay').classList.add('hidden');
         }
-        return;
-      }
 
-      if (selectedSpot || (localState && localState.movingPiece)) return;
-
-      var serverPiecesStr = JSON.stringify(game.pieces);
-      var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
-      if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
-
-      localState = copyState(game);
-      if (game.firstMover && !firstMover) firstMover = game.firstMover;
-      canChangePiece  = true;
-      selectedSpot    = null;
-      lastBlockedSpot = null;
-      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      document.getElementById('guides-group').innerHTML = '';
-      document.getElementById('stop-move-btn').classList.remove('active');
-      applyLocalState();
-
-      if (!isGameFrozen(localState.pieces)) {
-        var myPieceCountP  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-        var oppPieceCountP = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        if (myPieceCountP === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        } else if (oppPieceCountP === 0) {
-          showGameOverAlert(myColor, 2000);
+        // Dispatch selon phase
+        if (isPhase2(game.pieces || {})) {
+          ph2Poll(game);
         } else {
-          var myHasCap = playerHasAnyCapture(localState.pieces, myColor);
-          if (!myHasCap) {
-            showGameOverAlert(myColor, 4000);
-          }
+          ph1Poll(game);
         }
-      }
+
+        // Badge phase
+        var badge = $id('phase-badge');
+        if (badge) {
+          badge.classList.toggle('visible', isPhase2(game.pieces || {}));
+        }
+      }, function(err) {
+        console.error('Firebase listener error:', err);
+      });
+
+    } catch(e) {
+      console.warn('Firebase realtime connection failed, falling back to reconcile only:', e);
     }
+  }
 
-    function copyState(game) {
-      return {
-        pieces:                    Object.assign({}, game.pieces),
-        turn:                      game.turn,
-        movingPiece:               game.movingPiece || '',
-        visited:                   (game.visited || []).slice(),
-        lastDir:                   game.lastDir || '',
-        firstMover:                game.firstMover || null,
-        nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
-      };
-    }
+  /* ══════════════════════════════════════════════
+     INIT
+  ══════════════════════════════════════════════ */
+  var params   = new URLSearchParams(window.location.search);
+  var gameId_p = params.get('gameId');
+  var color_p  = params.get('color');
+  var inviteId = params.get('inviteId');
 
-    function applyLocalState() {
-      updateTurnIndicator(localState.turn);
-      var stopBtn = document.getElementById('stop-move-btn');
-      if (localState.turn === myColor && localState.movingPiece) {
-        stopBtn.classList.add('active');
-      } else if (!movingInProgress) {
-        stopBtn.classList.remove('active');
+  async function init() {
+    if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
+    if (color_p !== 'maintso' && color_p !== 'mena') { showError('Diso ny color.'); return; }
+
+    var stored = localStorage.getItem('user');
+    if (!stored) { window.location.href = 'login&register.html'; return; }
+    var localUser = null;
+    try { localUser = JSON.parse(stored); } catch(e) {}
+    if (!localUser || !localUser.uid) { window.location.href = 'login&register.html'; return; }
+
+    try {
+      var data = await callApi(SESSION_API_URL, 'get-fanorona-game', { uid: localUser.uid, gameId: gameId_p });
+      if (!data.success) { showError('Tsy hita ny lalao.'); return; }
+
+      myUid      = localUser.uid;
+      gameId     = gameId_p;
+      myColor    = color_p;
+      myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
+
+      renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
+
+      // Flip les boards si mena
+      if (myColor === 'mena') {
+        $id('port-board').classList.add('flipped');
+        $id('land-board').classList.add('flipped');
       }
-      renderPieces(localState.pieces, localState);
-      if (selectedSpot && localState.turn === myColor && !isGameFrozen(localState.pieces)) {
-        renderGuides(selectedSpot, localState);
-      } else if (isGameFrozen(localState.pieces)) {
-        document.getElementById('guides-group').innerHTML = '';
-      }
-    }
 
-    function handleSpotClick(spotID) {
-      if (!localState || localState.turn !== myColor) return;
-      if (isGameFrozen(localState.pieces)) return;
-      if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
+      drawBoardSpots();
 
-      var pieces = localState.pieces;
+      // Stop buttons
+      ['l-stop-btn','p-stop-btn'].forEach(function(id) {
+        var btn = $id(id);
+        if (btn) btn.onclick = function() { handleStopBtnDispatch(); };
+      });
 
-      if (canChangePiece && pieces[spotID] === myColor) {
-        var globalCap = amIFirstMover() ? playerHasAnyCapture(pieces, myColor) : false;
-        if (canPieceMove(spotID, pieces, myColor, globalCap)) {
-          selectedSpot    = spotID;
-          lastBlockedSpot = null;
+      // Charger l'état initial
+      var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
+      if (d.success) {
+        if (d.game.firstMover) firstMover = d.game.firstMover;
+        if (data.opponentUsername && data.opponentUsername !== '???') {
+          $id('loading-overlay').classList.add('hidden');
+        }
+        if (isPhase2(d.game.pieces)) {
+          ph2_localState = ph2CopyState(d.game);
+          ph2ApplyLocalState();
         } else {
-          selectedSpot    = null;
-          lastBlockedSpot = spotID;
+          localState = copyState(d.game);
+          applyLocalState();
         }
-        renderGuides(selectedSpot || '', localState);
-        renderPieces(pieces, localState);
-        return;
       }
 
-      if (!selectedSpot) return;
-      if ((allowedMoves[selectedSpot] || []).indexOf(spotID) === -1) return;
-      if (pieces[spotID]) return;
-      if (localState.visited && localState.visited.indexOf(spotID) !== -1) return;
+      // Initialiser Firebase et démarrer le listener temps réel
+      initFirebase();
+      await connectFirebaseRealtime(myUid, gameId);
 
-      var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
-      var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-      if (amIFirstMover() && playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+    } catch(err) { showError('Nisy olana: ' + err.message); }
+  }
 
-      var r1  = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
-      var r2  = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
-      var dir = (r2-r1) + ',' + (c2-c1);
-      if (!canChangePiece && localState.lastDir === dir) return;
+  /* ══════════════════════════════════════════════
+     PHASE 1 — LOGIC (vela spécifique)
+  ══════════════════════════════════════════════ */
+  function amIFirstMover() {
+    return firstMover === null || firstMover === myColor;
+  }
 
-      var origin     = selectedSpot;
-      var newPieces  = Object.assign({}, pieces);
-      delete newPieces[origin];
-      newPieces[spotID] = myColor;
-      var newVisited = (localState.visited || []).concat([origin]);
+  function ph1Poll(game) {
+    if (movingInProgress) return;
+    var serverTurn = game.turn;
 
-      if (amIFirstMover() && isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
-        pendingCaptures = {
-          approach:   caps.approach,
-          withdrawal: caps.withdrawal,
-          moveData:   { origin: origin, target: spotID, dir: dir }
-        };
-        localState.pieces  = newPieces;
-        localState.visited = newVisited;
-        selectedSpot = spotID;
-        renderPieces(newPieces, localState);
-        document.getElementById('guides-group').innerHTML = '';
-        return;
+    if (serverTurn !== myColor) {
+      if (localState) {
+        localState.pieces = Object.assign({}, game.pieces);
+        localState.turn   = game.turn;
+        renderPieces(localState.pieces, localState);
       }
-
-      var capturedSpots = (amIFirstMover() && isCaptureMove)
-        ? caps.approach.concat(caps.withdrawal)
-        : [];
-      doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
+      return;
     }
 
-    function confirmCapture(type) {
-      var md = pendingCaptures.moveData;
-      var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
-      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      var newPieces  = Object.assign({}, localState.pieces);
-      var newVisited = (localState.visited || []).slice();
-      doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
-    }
+    if (selectedSpot || (localState && localState.movingPiece)) return;
 
-    function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
-      var effectiveCaptured = amIFirstMover() ? capturedSpots : [];
-      if (effectiveCaptured.length > 0) {
-        delete newPieces[effectiveCaptured[0]];
+    var serverPiecesStr = JSON.stringify(game.pieces);
+    var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
+    if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
+
+    localState = copyState(game);
+    if (game.firstMover && !firstMover) firstMover = game.firstMover;
+    canChangePiece  = true;
+    selectedSpot    = null;
+    lastBlockedSpot = null;
+    pendingCaptures = { approach:[], withdrawal:[], moveData:null };
+    clearGuides();
+    setStopBtns(false);
+    applyLocalState();
+
+    if (!isGameFrozen(localState.pieces)) {
+      var myCount  = countColor(localState.pieces, myColor);
+      var oppCount = countColor(localState.pieces, myOppColor);
+      if (myCount === 0) { showGameOverAlert(myOppColor, 2000); }
+      else if (oppCount === 0) { showGameOverAlert(myColor, 2000); }
+      else if (!playerHasAnyCapture(localState.pieces, myColor)) {
+        showGameOverAlert(myColor, 4000);
       }
+    }
+  }
 
-      var advColor   = amIFirstMover() ? myOppColor : (firstMover || myOppColor);
-      var advCount   = Object.keys(newPieces).filter(function(s) { return newPieces[s] === advColor; }).length;
-      var nfmHasCont = localState.nonFirstMoverHasContinued || false;
-      var multiActive = amIFirstMover() ? nfmHasCont : (advCount <= 5);
-      var canContinue = multiActive && wasCapture
-        && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
+  function copyState(game) {
+    return {
+      pieces:                    Object.assign({}, game.pieces),
+      turn:                      game.turn,
+      movingPiece:               game.movingPiece || '',
+      visited:                   (game.visited || []).slice(),
+      lastDir:                   game.lastDir || '',
+      firstMover:                game.firstMover || null,
+      nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
+    };
+  }
 
-      movingInProgress  = true;
-      localState.pieces = newPieces;
+  function applyLocalState() {
+    updateTurnIndicator(localState.turn);
+    if (localState.turn === myColor && localState.movingPiece) setStopBtns(true);
+    else if (!movingInProgress) setStopBtns(false);
+    renderPieces(localState.pieces, localState);
+    if (selectedSpot && localState.turn === myColor && !isGameFrozen(localState.pieces)) {
+      renderGuides(selectedSpot, localState);
+    } else if (isGameFrozen(localState.pieces)) {
+      clearGuides();
+    }
+  }
 
-      if (canContinue) {
-        localState.movingPiece = target;
-        localState.visited     = newVisited;
-        localState.lastDir     = dir;
-        selectedSpot   = target;
-        canChangePiece = false;
-        document.getElementById('stop-move-btn').classList.add('active');
-        if (!amIFirstMover() && !localState.nonFirstMoverHasContinued) {
-          localState.nonFirstMoverHasContinued = true;
-        }
+  function handleSpotClick(spotID) {
+    if (!localState || localState.turn !== myColor) return;
+    if (isGameFrozen(localState.pieces)) return;
+    if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
+
+    var pieces = localState.pieces;
+
+    if (canChangePiece && pieces[spotID] === myColor) {
+      var globalCap = amIFirstMover() ? playerHasAnyCapture(pieces, myColor) : false;
+      if (canPieceMove(spotID, pieces, myColor, globalCap)) {
+        selectedSpot    = spotID; lastBlockedSpot = null;
       } else {
-        localState.turn        = myOppColor;
-        localState.movingPiece = '';
-        localState.visited     = [];
-        localState.lastDir     = '';
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        canChangePiece  = true;
-        document.getElementById('stop-move-btn').classList.remove('active');
+        selectedSpot    = null;  lastBlockedSpot = spotID;
       }
-
-      if (canContinue && selectedSpot) {
-        renderGuides(selectedSpot, localState);
-      } else {
-        document.getElementById('guides-group').innerHTML = '';
-      }
-
-      updateTurnIndicator(localState.turn);
-      renderPieces(localState.pieces, localState);
-      sendMoveToBackend(origin, target, effectiveCaptured, dir);
-      if (!canContinue) scheduleReconcile();
-
-      if (!canContinue) {
-        var piecesAfterMove = localState.pieces;
-
-        var myPieceCount  = Object.keys(piecesAfterMove).filter(function(s){ return piecesAfterMove[s]===myColor; }).length;
-        var oppPieceCount = Object.keys(piecesAfterMove).filter(function(s){ return piecesAfterMove[s]===myOppColor; }).length;
-
-        if (oppPieceCount === 0) {
-          showGameOverAlert(myColor, 2000);
-        } else if (myPieceCount === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        } else {
-          var advHasCapture = playerHasAnyCapture(piecesAfterMove, myOppColor);
-          if (!advHasCapture) {
-            showGameOverAlert(myOppColor, 4000);
-          }
-        }
-      }
+      renderGuides(selectedSpot || '', localState);
+      renderPieces(pieces, localState);
+      return;
     }
 
-    function handleStopBtn() {
-      if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
-      if (isGameFrozen(localState.pieces)) return;
-      var piecesSnapshot = Object.assign({}, localState.pieces);
+    if (!selectedSpot) return;
+    if ((allowedMoves[selectedSpot]||[]).indexOf(spotID)===-1) return;
+    if (pieces[spotID]) return;
+    if (localState.visited && localState.visited.indexOf(spotID)!==-1) return;
 
-      movingInProgress       = true;
+    var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
+    var isCaptureMove = caps.approach.length>0 || caps.withdrawal.length>0;
+    if (amIFirstMover() && playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+
+    var r1=rows.indexOf(selectedSpot[0]), c1=cols.indexOf(selectedSpot[1]);
+    var r2=rows.indexOf(spotID[0]),       c2=cols.indexOf(spotID[1]);
+    var dir=(r2-r1)+','+(c2-c1);
+    if (!canChangePiece && localState.lastDir===dir) return;
+
+    var origin     = selectedSpot;
+    var newPieces  = Object.assign({}, pieces);
+    delete newPieces[origin];
+    newPieces[spotID] = myColor;
+    var newVisited = (localState.visited||[]).concat([origin]);
+
+    if (amIFirstMover() && isCaptureMove && caps.approach.length>0 && caps.withdrawal.length>0) {
+      pendingCaptures = { approach:caps.approach, withdrawal:caps.withdrawal, moveData:{origin:origin,target:spotID,dir:dir} };
+      localState.pieces  = newPieces;
+      localState.visited = newVisited;
+      selectedSpot = spotID;
+      renderPieces(newPieces, localState);
+      clearGuides();
+      return;
+    }
+
+    var capturedSpots = (amIFirstMover() && isCaptureMove) ? caps.approach.concat(caps.withdrawal) : [];
+    doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
+  }
+
+  function confirmCapture(type) {
+    var md = pendingCaptures.moveData;
+    var capturedSpots = type==='approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
+    pendingCaptures = { approach:[], withdrawal:[], moveData:null };
+    var newPieces  = Object.assign({}, localState.pieces);
+    var newVisited = (localState.visited||[]).slice();
+    doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
+  }
+
+  function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
+    var effectiveCaptured = amIFirstMover() ? capturedSpots : [];
+    if (effectiveCaptured.length>0) delete newPieces[effectiveCaptured[0]];
+
+    var advColor   = amIFirstMover() ? myOppColor : (firstMover||myOppColor);
+    var advCount   = countColor(newPieces, advColor);
+    var nfmHasCont = localState.nonFirstMoverHasContinued || false;
+    var multiActive = amIFirstMover() ? nfmHasCont : (advCount<=5);
+    var canContinue = multiActive && wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
+
+    movingInProgress  = true;
+    localState.pieces = newPieces;
+
+    if (canContinue) {
+      localState.movingPiece = target;
+      localState.visited     = newVisited;
+      localState.lastDir     = dir;
+      selectedSpot   = target;
+      canChangePiece = false;
+      setStopBtns(true);
+      if (!amIFirstMover() && !localState.nonFirstMoverHasContinued) {
+        localState.nonFirstMoverHasContinued = true;
+      }
+    } else {
       localState.turn        = myOppColor;
       localState.movingPiece = '';
       localState.visited     = [];
@@ -951,389 +954,227 @@
       selectedSpot    = null;
       lastBlockedSpot = null;
       canChangePiece  = true;
-      document.getElementById('stop-move-btn').classList.remove('active');
-      document.getElementById('guides-group').innerHTML = '';
-      updateTurnIndicator(localState.turn);
-      renderPieces(localState.pieces, localState);
+      setStopBtns(false);
+    }
 
-      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
-        .catch(function(e) { console.warn('stop-move error', e); });
-      scheduleReconcile();
+    if (canContinue && selectedSpot) renderGuides(selectedSpot, localState);
+    else clearGuides();
 
-      var myPieceCount2  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-      var oppPieceCount2 = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      if (oppPieceCount2 === 0) {
-        showGameOverAlert(myColor, 2000);
-      } else if (myPieceCount2 === 0) {
-        showGameOverAlert(myOppColor, 2000);
+    updateTurnIndicator(localState.turn);
+    renderPieces(localState.pieces, localState);
+    sendMoveToBackend(origin, target, effectiveCaptured, dir);
+    if (!canContinue) scheduleReconcile();
+
+    if (!canContinue) {
+      var myCount  = countColor(localState.pieces, myColor);
+      var oppCount = countColor(localState.pieces, myOppColor);
+      if (oppCount===0) showGameOverAlert(myColor, 2000);
+      else if (myCount===0) showGameOverAlert(myOppColor, 2000);
+      else if (!playerHasAnyCapture(localState.pieces, myOppColor)) showGameOverAlert(myOppColor, 4000);
+    }
+  }
+
+  function handleStopBtn() {
+    if (!localState || localState.turn!==myColor || !localState.movingPiece) return;
+    if (isGameFrozen(localState.pieces)) return;
+    var piecesSnapshot = Object.assign({}, localState.pieces);
+
+    movingInProgress       = true;
+    localState.turn        = myOppColor;
+    localState.movingPiece = '';
+    localState.visited     = [];
+    localState.lastDir     = '';
+    selectedSpot    = null;
+    lastBlockedSpot = null;
+    canChangePiece  = true;
+    setStopBtns(false);
+    clearGuides();
+    updateTurnIndicator(localState.turn);
+    renderPieces(localState.pieces, localState);
+
+    callApi(GAME_API_URL, 'stop-move', { uid:myUid, gameId:gameId, pieces:piecesSnapshot })
+      .catch(function(e){ console.warn('stop-move error',e); });
+    scheduleReconcile();
+
+    var myCount  = countColor(localState.pieces, myColor);
+    var oppCount = countColor(localState.pieces, myOppColor);
+    if (oppCount===0) showGameOverAlert(myColor, 2000);
+    else if (myCount===0) showGameOverAlert(myOppColor, 2000);
+    else if (!playerHasAnyCapture(localState.pieces, myOppColor)) showGameOverAlert(myOppColor, 4000);
+  }
+
+  function sendMoveToBackend(origin, target, capturedSpots, dir) {
+    callApi(GAME_API_URL, 'make-move', {
+      uid:myUid, gameId:gameId, origin:origin, target:target,
+      capturedSpots:capturedSpots, dir:dir
+    }).catch(function(e){ console.warn('make-move error:',e); });
+  }
+
+  function scheduleReconcile() {
+    if (reconcileTimer) clearTimeout(reconcileTimer);
+    reconcileTimer = setTimeout(function() {
+      reconcileTimer = null; doReconcile();
+    }, RECONCILE_DELAY);
+  }
+
+  async function doReconcile() {
+    try {
+      var d = await callApi(GAME_API_URL, 'get-state', { uid:myUid, gameId:gameId });
+      if (!d.success) return;
+      movingInProgress = false;
+      if (d.game.turn !== myColor) {
+        if (localState && localState.turn !== myColor) return;
+        localState = copyState(d.game);
+        selectedSpot=null; lastBlockedSpot=null; canChangePiece=true;
+        pendingCaptures={approach:[],withdrawal:[],moveData:null};
+        clearGuides(); setStopBtns(false); applyLocalState();
       } else {
-        var advHasCapture2 = playerHasAnyCapture(localState.pieces, myOppColor);
-        if (!advHasCapture2) {
-          showGameOverAlert(myOppColor, 4000);
+        var serverMoving = d.game.movingPiece||'';
+        if (serverMoving) {
+          selectedSpot   = (localState&&localState.movingPiece)||serverMoving;
+          canChangePiece = false;
+          if (localState) localState.movingPiece = selectedSpot;
+          setStopBtns(true);
         }
+        if (selectedSpot && localState) renderGuides(selectedSpot, localState);
+        if (localState) renderPieces(localState.pieces, localState);
+        if (localState) updateTurnIndicator(localState.turn);
       }
-    }
+    } catch(e) { movingInProgress=false; console.warn('reconcile error',e); }
+  }
 
-    function sendMoveToBackend(origin, target, capturedSpots, dir) {
-      callApi(GAME_API_URL, 'make-move', {
-        uid: myUid, gameId: gameId,
-        origin: origin, target: target,
-        capturedSpots: capturedSpots, dir: dir
-      }).catch(function(e) { console.warn('make-move error:', e); });
-    }
+  /* ══════════════════════════════════════════════
+     PHASE 2 — LOGIC (fanorona standard)
+  ══════════════════════════════════════════════ */
+  function ph2CopyState(game) {
+    return {
+      pieces:      Object.assign({}, game.pieces),
+      turn:        game.turn,
+      movingPiece: game.movingPiece || '',
+      visited:     (game.visited||[]).slice(),
+      lastDir:     game.lastDir || '',
+    };
+  }
 
-    function scheduleReconcile() {
-      if (reconcileTimer) clearTimeout(reconcileTimer);
-      reconcileTimer = setTimeout(function() {
-        reconcileTimer = null;
-        doReconcile();
-      }, RECONCILE_DELAY);
+  function ph2ApplyLocalState() {
+    updateTurnIndicator(ph2_localState.turn);
+    if (ph2_localState.turn===myColor && ph2_localState.movingPiece) setStopBtns(true);
+    else if (!ph2_movingInProgress) setStopBtns(false);
+    ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+    if (ph2_selectedSpot && ph2_localState.turn===myColor) {
+      ph2RenderGuides(ph2_selectedSpot, ph2_localState);
     }
+  }
 
-    async function doReconcile() {
-      try {
-        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
-        if (!d.success) return;
-        movingInProgress = false;
-        if (d.game.turn !== myColor) {
-          if (localState && localState.turn !== myColor) return;
-          localState = copyState(d.game);
-          selectedSpot    = null;
-          lastBlockedSpot = null;
-          canChangePiece  = true;
-          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('guides-group').innerHTML = '';
-          document.getElementById('stop-move-btn').classList.remove('active');
-          applyLocalState();
-        } else {
-          var serverMoving = d.game.movingPiece || '';
-          if (serverMoving) {
-            selectedSpot           = (localState && localState.movingPiece) || serverMoving;
-            canChangePiece         = false;
-            if (localState) localState.movingPiece = selectedSpot;
-            document.getElementById('stop-move-btn').classList.add('active');
-          }
-          if (selectedSpot && localState) renderGuides(selectedSpot, localState);
-          if (localState) renderPieces(localState.pieces, localState);
-          if (localState) updateTurnIndicator(localState.turn);
-        }
-      } catch(e) {
-        movingInProgress = false;
-        console.warn('reconcile error', e);
+  function ph2Poll(game) {
+    if (ph2_movingInProgress) return;
+    var serverTurn = game.turn;
+
+    if (serverTurn !== myColor) {
+      if (ph2_localState) {
+        ph2_localState.pieces = Object.assign({}, game.pieces);
+        ph2_localState.turn   = game.turn;
+        ph2RenderPieces(ph2_localState.pieces, ph2_localState);
       }
+      return;
     }
 
-    // ─── renderPieces Phase 1 ───────────────────────────────────
-    function renderPieces(pieces, stateData) {
-      var grp      = document.getElementById('pieces-group');
-      var isMyTurn = stateData.turn === myColor;
+    if (ph2_selectedSpot || (ph2_localState && ph2_localState.movingPiece)) return;
 
-      var newPiecesOnBoard = {};
-      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
-      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+    var serverPiecesStr = JSON.stringify(game.pieces);
+    var localPiecesStr  = ph2_localState ? JSON.stringify(ph2_localState.pieces) : '';
+    if (serverPiecesStr===localPiecesStr && ph2_localState && ph2_localState.turn===myColor) return;
 
-      vanished.forEach(function(vKey) {
-        var color  = piecesOnBoard[vKey].color;
-        var target = null;
-        for (var i = 0; i < appeared.length; i++) {
-          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
-        }
-        if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
-          appeared = appeared.filter(function(a) { return a !== target; });
-        } else {
-          piecesOnBoard[vKey].el.remove();
-        }
-      });
+    ph2_localState      = ph2CopyState(game);
+    ph2_canChangePiece  = true;
+    ph2_selectedSpot    = null;
+    ph2_lastBlockedSpot = null;
+    ph2_pendingCaptures = { approach:[], withdrawal:[], moveData:null };
+    clearGuides(); setStopBtns(false);
+    ph2ApplyLocalState();
 
-      appeared.forEach(function(aKey) {
-        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
-        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('r', 8);
-        g.appendChild(c);
-        grp.appendChild(g);
-        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
-      });
+    var myCount  = countColor(ph2_localState.pieces, myColor);
+    var oppCount = countColor(ph2_localState.pieces, myOppColor);
+    if (myCount===0) showGameOverAlert(myOppColor, 2000);
+    else if (oppCount===0) showGameOverAlert(myColor, 2000);
+  }
 
-      Object.keys(pieces).forEach(function(k) {
-        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
-      });
-      piecesOnBoard = newPiecesOnBoard;
+  function ph2HandleSpotClick(spotID) {
+    if (!ph2_localState || ph2_localState.turn!==myColor) return;
+    if (ph2_pendingCaptures.approach.length>0 || ph2_pendingCaptures.withdrawal.length>0) return;
 
-      var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
-      var frozen     = isGameFrozen(pieces);
+    var pieces = ph2_localState.pieces;
 
-      Object.keys(pieces).forEach(function(spot) {
-        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
-        if (ri < 0 || ci < 0) return;
-        var entry = piecesOnBoard[spot];
-        if (!entry) return;
-        var g = entry.el, circle = g.querySelector('circle');
-
-        g.setAttribute('transform', 'translate(' + (ci*50) + ',' + (ri*50) + ')');
-        circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
-        circle.removeAttribute('class');
-        circle.style.pointerEvents = 'all';
-        circle.onclick = (function(s) {
-          return function(e) { e.stopPropagation(); handleSpotClick(s); };
-        })(spot);
-
-        if (!frozen && isMyTurn && pieces[spot] === myColor && !stateData.movingPiece) {
-          if (selectedSpot === spot) {
-            circle.setAttribute('class', 'selected-piece');
-          } else if (lastBlockedSpot === spot) {
-            circle.setAttribute('class', 'blocked-piece');
-          } else {
-            var globalCap = amIFirstMover() ? playerHasAnyCapture(pieces, myColor) : false;
-            if (canPieceMove(spot, pieces, myColor, globalCap))
-              circle.setAttribute('class', 'movable-piece');
-          }
-        }
-
-        var isApp  = pendingCaptures.approach.indexOf(spot)  !== -1;
-        var isWith = pendingCaptures.withdrawal.indexOf(spot) !== -1;
-        g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
-
-        if (!frozen && (isApp || isWith)) {
-          circle.classList.add('capture-target');
-          circle.style.pointerEvents = 'all';
-          var ct = isApp ? 'approach' : 'withdrawal';
-          circle.onclick = (function(type) {
-            return function(e) { e.stopPropagation(); confirmCapture(type); };
-          })(ct);
-          g.appendChild(createCross(-5,-5,5,5));
-          g.appendChild(createCross(5,-5,-5,5));
-        }
-      });
-
-      var board = document.getElementById('game-board');
-      if (!isMyTurn || hasPending || frozen) board.classList.add('lock-board');
-      else board.classList.remove('lock-board');
-    }
-
-    function renderGuides(startSpot, stateData) {
-      var grp = document.getElementById('guides-group');
-      if (!grp) return;
-      grp.innerHTML = '';
-      if (!startSpot) return;
-      if (isGameFrozen(stateData.pieces)) return;
-
-      var pieces  = stateData.pieces;
-      var visited = stateData.visited || [];
-      var lastDir = stateData.lastDir || '';
-      var moves   = allowedMoves[startSpot] || [];
-
-      if (amIFirstMover()) {
-        var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
-        moves.forEach(function(target) {
-          if (pieces[target] || visited.indexOf(target) !== -1) return;
-          var caps = getCaptures(pieces, startSpot, target, myColor);
-          var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-          if (globalCapturePossible && !isCaptureMove) return;
-          var r2  = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-          var dir = (r2 - rows.indexOf(startSpot[0])) + ',' + (c2 - cols.indexOf(startSpot[1]));
-          if (!canChangePiece && lastDir === dir) return;
-          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          dot.setAttribute('cx', c2*50); dot.setAttribute('cy', r2*50);
-          dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
-          grp.appendChild(dot);
-        });
+    if (ph2_canChangePiece && pieces[spotID]===myColor) {
+      if (ph2CanPieceMove(spotID, pieces, myColor, ph2PlayerHasAnyCapture(pieces, myColor))) {
+        ph2_selectedSpot=spotID; ph2_lastBlockedSpot=null;
       } else {
-        moves.forEach(function(target) {
-          if (pieces[target] || visited.indexOf(target) !== -1) return;
-          var r2  = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
-          var dir = (r2 - rows.indexOf(startSpot[0])) + ',' + (c2 - cols.indexOf(startSpot[1]));
-          if (!canChangePiece && lastDir === dir) return;
-          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          dot.setAttribute('cx', c2*50); dot.setAttribute('cy', r2*50);
-          dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
-          grp.appendChild(dot);
-        });
+        ph2_selectedSpot=null;   ph2_lastBlockedSpot=spotID;
       }
+      ph2RenderGuides(ph2_selectedSpot||'', ph2_localState);
+      ph2RenderPieces(pieces, ph2_localState);
+      return;
     }
 
-    //  PHASE 2
-    function ph2CopyState(game) {
-      return {
-        pieces:      Object.assign({}, game.pieces),
-        turn:        game.turn,
-        movingPiece: game.movingPiece || '',
-        visited:     (game.visited || []).slice(),
-        lastDir:     game.lastDir || '',
-      };
+    if (!ph2_selectedSpot) return;
+    if ((allowedMoves[ph2_selectedSpot]||[]).indexOf(spotID)===-1) return;
+    if (pieces[spotID]) return;
+    if (ph2_localState.visited && ph2_localState.visited.indexOf(spotID)!==-1) return;
+
+    var caps = ph2GetCaptures(pieces, ph2_selectedSpot, spotID, myColor);
+    var isCaptureMove = caps.approach.length>0||caps.withdrawal.length>0;
+    if (ph2PlayerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+
+    var r1=rows.indexOf(ph2_selectedSpot[0]), c1=cols.indexOf(ph2_selectedSpot[1]);
+    var r2=rows.indexOf(spotID[0]),            c2=cols.indexOf(spotID[1]);
+    var dir=(r2-r1)+','+(c2-c1);
+    if (!ph2_canChangePiece && ph2_localState.lastDir===dir) return;
+
+    var origin     = ph2_selectedSpot;
+    var newPieces  = Object.assign({}, pieces);
+    delete newPieces[origin];
+    newPieces[spotID] = myColor;
+    var newVisited = (ph2_localState.visited||[]).concat([origin]);
+
+    if (isCaptureMove && caps.approach.length>0 && caps.withdrawal.length>0) {
+      ph2_pendingCaptures = { approach:caps.approach, withdrawal:caps.withdrawal, moveData:{origin:origin,target:spotID,dir:dir} };
+      ph2_localState.pieces  = newPieces;
+      ph2_localState.visited = newVisited;
+      ph2_selectedSpot = spotID;
+      ph2RenderPieces(newPieces, ph2_localState);
+      clearGuides();
+      return;
     }
 
-    function ph2ApplyLocalState() {
-      updateTurnIndicator(ph2_localState.turn);
-      var stopBtn = document.getElementById('stop-move-btn');
-      if (ph2_localState.turn === myColor && ph2_localState.movingPiece) {
-        stopBtn.classList.add('active');
-      } else if (!ph2_movingInProgress) {
-        stopBtn.classList.remove('active');
-      }
-      ph2RenderPieces(ph2_localState.pieces, ph2_localState);
-      if (ph2_selectedSpot && ph2_localState.turn === myColor) {
-        ph2RenderGuides(ph2_selectedSpot, ph2_localState);
-      }
-    }
+    var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
+    ph2DoMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
+  }
 
-    function ph2Poll(game) {
-      if (ph2_movingInProgress) return;
-      var serverTurn = game.turn;
+  function ph2ConfirmCapture(type) {
+    var md = ph2_pendingCaptures.moveData;
+    var capturedSpots = type==='approach' ? ph2_pendingCaptures.approach : ph2_pendingCaptures.withdrawal;
+    ph2_pendingCaptures = { approach:[], withdrawal:[], moveData:null };
+    var newPieces  = Object.assign({}, ph2_localState.pieces);
+    var newVisited = (ph2_localState.visited||[]).slice();
+    ph2DoMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
+  }
 
-      if (serverTurn !== myColor) {
-        if (ph2_localState) {
-          ph2_localState.pieces = Object.assign({}, game.pieces);
-          ph2_localState.turn   = game.turn;
-          ph2RenderPieces(ph2_localState.pieces, ph2_localState);
-        }
-        return;
-      }
+  function ph2DoMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
+    capturedSpots.forEach(function(s){ delete newPieces[s]; });
 
-      if (ph2_selectedSpot || (ph2_localState && ph2_localState.movingPiece)) return;
+    var canContinue = wasCapture && ph2CheckAvailableCaptures(newPieces, target, newVisited, dir, myColor);
 
-      var serverPiecesStr = JSON.stringify(game.pieces);
-      var localPiecesStr  = ph2_localState ? JSON.stringify(ph2_localState.pieces) : '';
-      if (serverPiecesStr === localPiecesStr && ph2_localState && ph2_localState.turn === myColor) return;
+    ph2_movingInProgress  = true;
+    ph2_localState.pieces = newPieces;
 
-      ph2_localState      = ph2CopyState(game);
-      ph2_canChangePiece  = true;
-      ph2_selectedSpot    = null;
-      ph2_lastBlockedSpot = null;
-      ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      document.getElementById('guides-group').innerHTML = '';
-      document.getElementById('stop-move-btn').classList.remove('active');
-      ph2ApplyLocalState();
-
-      var ph2PollMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-      var ph2PollOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-      if (ph2PollMyCount === 0) {
-        showGameOverAlert(myOppColor, 2000);
-      } else if (ph2PollOppCount === 0) {
-        showGameOverAlert(myColor, 2000);
-      }
-    }
-
-    function ph2HandleSpotClick(spotID) {
-      if (!ph2_localState || ph2_localState.turn !== myColor) return;
-      if (ph2_pendingCaptures.approach.length > 0 || ph2_pendingCaptures.withdrawal.length > 0) return;
-
-      var pieces = ph2_localState.pieces;
-
-      if (ph2_canChangePiece && pieces[spotID] === myColor) {
-        if (ph2CanPieceMove(spotID, pieces, myColor, ph2PlayerHasAnyCapture(pieces, myColor))) {
-          ph2_selectedSpot    = spotID;
-          ph2_lastBlockedSpot = null;
-        } else {
-          ph2_selectedSpot    = null;
-          ph2_lastBlockedSpot = spotID;
-        }
-        ph2RenderGuides(ph2_selectedSpot || '', ph2_localState);
-        ph2RenderPieces(pieces, ph2_localState);
-        return;
-      }
-
-      if (!ph2_selectedSpot) return;
-      if ((allowedMoves[ph2_selectedSpot] || []).indexOf(spotID) === -1) return;
-      if (pieces[spotID]) return;
-      if (ph2_localState.visited && ph2_localState.visited.indexOf(spotID) !== -1) return;
-
-      var caps = ph2GetCaptures(pieces, ph2_selectedSpot, spotID, myColor);
-      var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-      if (ph2PlayerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
-
-      var r1  = rows.indexOf(ph2_selectedSpot[0]), c1 = cols.indexOf(ph2_selectedSpot[1]);
-      var r2  = rows.indexOf(spotID[0]),            c2 = cols.indexOf(spotID[1]);
-      var dir = (r2-r1) + ',' + (c2-c1);
-      if (!ph2_canChangePiece && ph2_localState.lastDir === dir) return;
-
-      var origin     = ph2_selectedSpot;
-      var newPieces  = Object.assign({}, pieces);
-      delete newPieces[origin];
-      newPieces[spotID] = myColor;
-      var newVisited = (ph2_localState.visited || []).concat([origin]);
-
-      if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
-        ph2_pendingCaptures = {
-          approach:   caps.approach,
-          withdrawal: caps.withdrawal,
-          moveData:   { origin: origin, target: spotID, dir: dir }
-        };
-        ph2_localState.pieces  = newPieces;
-        ph2_localState.visited = newVisited;
-        ph2_selectedSpot = spotID;
-        ph2RenderPieces(newPieces, ph2_localState);
-        document.getElementById('guides-group').innerHTML = '';
-        return;
-      }
-
-      var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
-      ph2DoMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
-    }
-
-    function ph2ConfirmCapture(type) {
-      var md = ph2_pendingCaptures.moveData;
-      var capturedSpots = type === 'approach' ? ph2_pendingCaptures.approach : ph2_pendingCaptures.withdrawal;
-      ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      var newPieces  = Object.assign({}, ph2_localState.pieces);
-      var newVisited = (ph2_localState.visited || []).slice();
-      ph2DoMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
-    }
-
-    function ph2DoMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
-      capturedSpots.forEach(function(s) { delete newPieces[s]; });
-
-      var canContinue = wasCapture && ph2CheckAvailableCaptures(newPieces, target, newVisited, dir, myColor);
-
-      ph2_movingInProgress  = true;
-      ph2_localState.pieces = newPieces;
-
-      if (canContinue) {
-        ph2_localState.movingPiece = target;
-        ph2_localState.visited     = newVisited;
-        ph2_localState.lastDir     = dir;
-        ph2_selectedSpot   = target;
-        ph2_canChangePiece = false;
-        document.getElementById('stop-move-btn').classList.add('active');
-      } else {
-        ph2_localState.turn        = myOppColor;
-        ph2_localState.movingPiece = '';
-        ph2_localState.visited     = [];
-        ph2_localState.lastDir     = '';
-        ph2_selectedSpot    = null;
-        ph2_lastBlockedSpot = null;
-        ph2_canChangePiece  = true;
-        document.getElementById('stop-move-btn').classList.remove('active');
-      }
-
-      if (canContinue && ph2_selectedSpot) {
-        ph2RenderGuides(ph2_selectedSpot, ph2_localState);
-      } else {
-        document.getElementById('guides-group').innerHTML = '';
-      }
-
-      updateTurnIndicator(ph2_localState.turn);
-      ph2RenderPieces(ph2_localState.pieces, ph2_localState);
-      ph2SendMoveToBackend(origin, target, capturedSpots, dir);
-      if (!canContinue) ph2ScheduleReconcile();
-
-      if (!canContinue) {
-        var ph2OppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-        var ph2MyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-        if (ph2OppCount === 0) {
-          showGameOverAlert(myColor, 2000);
-        } else if (ph2MyCount === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        }
-      }
-    }
-
-    function ph2HandleStopBtn() {
-      if (!ph2_localState || ph2_localState.turn !== myColor || !ph2_localState.movingPiece) return;
-      var piecesSnapshot = Object.assign({}, ph2_localState.pieces);
-
-      ph2_movingInProgress       = true;
+    if (canContinue) {
+      ph2_localState.movingPiece = target;
+      ph2_localState.visited     = newVisited;
+      ph2_localState.lastDir     = dir;
+      ph2_selectedSpot   = target;
+      ph2_canChangePiece = false;
+      setStopBtns(true);
+    } else {
       ph2_localState.turn        = myOppColor;
       ph2_localState.movingPiece = '';
       ph2_localState.visited     = [];
@@ -1341,313 +1182,388 @@
       ph2_selectedSpot    = null;
       ph2_lastBlockedSpot = null;
       ph2_canChangePiece  = true;
-      document.getElementById('stop-move-btn').classList.remove('active');
-      document.getElementById('guides-group').innerHTML = '';
-      updateTurnIndicator(ph2_localState.turn);
-      ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+      setStopBtns(false);
+    }
 
-      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
-        .catch(function(e) { console.warn('stop-move error', e); });
-      ph2ScheduleReconcile();
+    if (canContinue && ph2_selectedSpot) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
+    else clearGuides();
 
-      var ph2StopOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-      var ph2StopMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-      if (ph2StopOppCount === 0) {
-        showGameOverAlert(myColor, 2000);
-      } else if (ph2StopMyCount === 0) {
-        showGameOverAlert(myOppColor, 2000);
+    updateTurnIndicator(ph2_localState.turn);
+    ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+    ph2SendMoveToBackend(origin, target, capturedSpots, dir);
+    if (!canContinue) ph2ScheduleReconcile();
+
+    if (!canContinue) {
+      var oppCount = countColor(ph2_localState.pieces, myOppColor);
+      var myCount  = countColor(ph2_localState.pieces, myColor);
+      if (oppCount===0) showGameOverAlert(myColor, 2000);
+      else if (myCount===0) showGameOverAlert(myOppColor, 2000);
+    }
+  }
+
+  function ph2HandleStopBtn() {
+    if (!ph2_localState || ph2_localState.turn!==myColor || !ph2_localState.movingPiece) return;
+    var piecesSnapshot = Object.assign({}, ph2_localState.pieces);
+
+    ph2_movingInProgress       = true;
+    ph2_localState.turn        = myOppColor;
+    ph2_localState.movingPiece = '';
+    ph2_localState.visited     = [];
+    ph2_localState.lastDir     = '';
+    ph2_selectedSpot    = null;
+    ph2_lastBlockedSpot = null;
+    ph2_canChangePiece  = true;
+    setStopBtns(false);
+    clearGuides();
+    updateTurnIndicator(ph2_localState.turn);
+    ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+
+    callApi(GAME_API_URL, 'stop-move', { uid:myUid, gameId:gameId, pieces:piecesSnapshot })
+      .catch(function(e){ console.warn('ph2 stop-move error',e); });
+    ph2ScheduleReconcile();
+
+    var oppCount = countColor(ph2_localState.pieces, myOppColor);
+    var myCount  = countColor(ph2_localState.pieces, myColor);
+    if (oppCount===0) showGameOverAlert(myColor, 2000);
+    else if (myCount===0) showGameOverAlert(myOppColor, 2000);
+  }
+
+  function ph2SendMoveToBackend(origin, target, capturedSpots, dir) {
+    callApi(GAME_API_URL, 'make-move', {
+      uid:myUid, gameId:gameId, origin:origin, target:target,
+      capturedSpots:capturedSpots, dir:dir
+    }).catch(function(e){ console.warn('ph2 make-move error:',e); });
+  }
+
+  function ph2ScheduleReconcile() {
+    if (ph2_reconcileTimer) clearTimeout(ph2_reconcileTimer);
+    ph2_reconcileTimer = setTimeout(function() {
+      ph2_reconcileTimer = null; ph2DoReconcile();
+    }, RECONCILE_DELAY);
+  }
+
+  async function ph2DoReconcile() {
+    try {
+      var d = await callApi(GAME_API_URL, 'get-state', { uid:myUid, gameId:gameId });
+      if (!d.success) return;
+      ph2_movingInProgress = false;
+      if (d.game.turn !== myColor) {
+        if (ph2_localState && ph2_localState.turn !== myColor) return;
+        ph2_localState      = ph2CopyState(d.game);
+        ph2_selectedSpot    = null; ph2_lastBlockedSpot = null; ph2_canChangePiece = true;
+        ph2_pendingCaptures = { approach:[], withdrawal:[], moveData:null };
+        clearGuides(); setStopBtns(false); ph2ApplyLocalState();
+      } else {
+        var serverMoving = d.game.movingPiece||'';
+        if (serverMoving) {
+          ph2_selectedSpot   = (ph2_localState&&ph2_localState.movingPiece)||serverMoving;
+          ph2_canChangePiece = false;
+          if (ph2_localState) ph2_localState.movingPiece = ph2_selectedSpot;
+          setStopBtns(true);
+        }
+        if (ph2_selectedSpot && ph2_localState) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
+        if (ph2_localState) ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+        if (ph2_localState) updateTurnIndicator(ph2_localState.turn);
       }
-    }
+    } catch(e) { ph2_movingInProgress=false; console.warn('ph2 reconcile error',e); }
+  }
 
-    function ph2SendMoveToBackend(origin, target, capturedSpots, dir) {
-      callApi(GAME_API_URL, 'make-move', {
-        uid: myUid, gameId: gameId,
-        origin: origin, target: target,
-        capturedSpots: capturedSpots, dir: dir
-      }).catch(function(e) { console.warn('ph2 make-move error:', e); });
-    }
+  /* ══════════════════════════════════════════════
+     RENDER — DUAL SVG (portrait + landscape)
+  ══════════════════════════════════════════════ */
+  var PREFIXES = ['l','p'];
 
-    function ph2ScheduleReconcile() {
-      if (ph2_reconcileTimer) clearTimeout(ph2_reconcileTimer);
-      ph2_reconcileTimer = setTimeout(function() {
-        ph2_reconcileTimer = null;
-        ph2DoReconcile();
-      }, RECONCILE_DELAY);
-    }
+  function clearGuides() {
+    PREFIXES.forEach(function(px) {
+      var g = $id(px+'-guides-group'); if(g) g.innerHTML='';
+    });
+  }
 
-    async function ph2DoReconcile() {
-      try {
-        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
-        if (!d.success) return;
-        ph2_movingInProgress = false;
-        if (d.game.turn !== myColor) {
-          if (ph2_localState && ph2_localState.turn !== myColor) return;
-          ph2_localState      = ph2CopyState(d.game);
-          ph2_selectedSpot    = null;
-          ph2_lastBlockedSpot = null;
-          ph2_canChangePiece  = true;
-          ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-          document.getElementById('guides-group').innerHTML = '';
-          document.getElementById('stop-move-btn').classList.remove('active');
-          ph2ApplyLocalState();
-        } else {
-          var serverMoving = d.game.movingPiece || '';
-          if (serverMoving) {
-            ph2_selectedSpot                = (ph2_localState && ph2_localState.movingPiece) || serverMoving;
-            ph2_canChangePiece              = false;
-            if (ph2_localState) ph2_localState.movingPiece = ph2_selectedSpot;
-            document.getElementById('stop-move-btn').classList.add('active');
-          }
-          if (ph2_selectedSpot && ph2_localState) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
-          if (ph2_localState) ph2RenderPieces(ph2_localState.pieces, ph2_localState);
-          if (ph2_localState) updateTurnIndicator(ph2_localState.turn);
-        }
-      } catch(e) {
-        ph2_movingInProgress = false;
-        console.warn('ph2 reconcile error', e);
+  function setStopBtns(active) {
+    ['l-stop-btn','p-stop-btn'].forEach(function(id) {
+      var btn = $id(id); if (!btn) return;
+      btn.classList.toggle('active', active);
+    });
+  }
+
+  function countColor(pieces, color) {
+    return Object.keys(pieces).filter(function(s){ return pieces[s]===color; }).length;
+  }
+
+  // ── Phase 1 render ──
+  function renderPieces(pieces, stateData) {
+    PREFIXES.forEach(function(px) {
+      _renderPiecesInSvg(px, pieces, stateData, false);
+    });
+  }
+
+  function renderGuides(startSpot, stateData) {
+    PREFIXES.forEach(function(px) {
+      _renderGuidesInSvg(px, startSpot, stateData, false);
+    });
+  }
+
+  // ── Phase 2 render ──
+  function ph2RenderPieces(pieces, stateData) {
+    PREFIXES.forEach(function(px) {
+      _renderPiecesInSvg(px, pieces, stateData, true);
+    });
+  }
+
+  function ph2RenderGuides(startSpot, stateData) {
+    PREFIXES.forEach(function(px) {
+      _renderGuidesInSvg(px, startSpot, stateData, true);
+    });
+  }
+
+  // ── Implémentation commune ──
+  function _renderPiecesInSvg(px, pieces, stateData, isPhase2Mode) {
+    var grp = $id(px+'-pieces-group'); if (!grp) return;
+    var isMyTurn = stateData.turn === myColor;
+
+    var pob = piecesOnBoard[px];
+    var newPOB = {};
+    var vanished = Object.keys(pob).filter(function(k){ return !pieces[k]; });
+    var appeared = Object.keys(pieces).filter(function(k){ return !pob[k]; });
+
+    vanished.forEach(function(vKey) {
+      var color = pob[vKey].color, target = null;
+      for (var i=0;i<appeared.length;i++) {
+        if (pieces[appeared[i]]===color) { target=appeared[i]; break; }
       }
-    }
+      if (target) {
+        newPOB[target] = pob[vKey];
+        appeared = appeared.filter(function(a){ return a!==target; });
+      } else {
+        pob[vKey].el.remove();
+      }
+    });
 
-    // ─── renderPieces Phase 2 ───────────────────────────────────
-    function ph2RenderPieces(pieces, stateData) {
-      var grp           = document.getElementById('pieces-group');
-      var isMyTurn      = stateData.turn === myColor;
-      var ph2GlobalCap  = ph2PlayerHasAnyCapture(pieces, myColor);
+    appeared.forEach(function(aKey) {
+      var g = document.createElementNS('http://www.w3.org/2000/svg','g');
+      g.setAttribute('class','piece-group');
+      var c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('r',8);
+      g.appendChild(c); grp.appendChild(g);
+      newPOB[aKey] = { el:g, color:pieces[aKey] };
+    });
 
-      var newPiecesOnBoard = {};
-      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
-      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+    Object.keys(pieces).forEach(function(k) {
+      if (!newPOB[k]) newPOB[k] = pob[k];
+    });
+    piecesOnBoard[px] = newPOB;
 
-      vanished.forEach(function(vKey) {
-        var color  = piecesOnBoard[vKey].color;
-        var target = null;
-        for (var i = 0; i < appeared.length; i++) {
-          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
+    var hasPending = isPhase2Mode
+      ? (ph2_pendingCaptures.approach.length>0||ph2_pendingCaptures.withdrawal.length>0)
+      : (pendingCaptures.approach.length>0||pendingCaptures.withdrawal.length>0);
+    var frozen = !isPhase2Mode && isGameFrozen(pieces);
+
+    Object.keys(pieces).forEach(function(spot) {
+      var ri=rows.indexOf(spot[0]), ci=cols.indexOf(spot[1]);
+      if (ri<0||ci<0) return;
+      var entry = piecesOnBoard[px][spot]; if (!entry) return;
+      var g = entry.el, circle = g.querySelector('circle');
+
+      g.setAttribute('transform','translate('+(ci*50)+','+(ri*50)+')');
+      circle.setAttribute('fill','url(#'+px+'-'+pieces[spot]+'-pat)');
+      circle.removeAttribute('class');
+      circle.style.pointerEvents = 'all';
+
+      if (isPhase2Mode) {
+        circle.onclick = (function(s){ return function(e){ e.stopPropagation(); ph2HandleSpotClick(s); }; })(spot);
+        var ph2GlobalCap = ph2PlayerHasAnyCapture(pieces, myColor);
+        if (isMyTurn && pieces[spot]===myColor) {
+          if (ph2_selectedSpot===spot)      circle.setAttribute('class','selected-piece');
+          else if (ph2_lastBlockedSpot===spot) circle.setAttribute('class','blocked-piece');
+          else if (!stateData.movingPiece && ph2CanPieceMove(spot,pieces,myColor,ph2GlobalCap))
+            circle.setAttribute('class','movable-piece');
         }
-        if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
-          appeared = appeared.filter(function(a) { return a !== target; });
-        } else {
-          piecesOnBoard[vKey].el.remove();
-        }
-      });
-
-      appeared.forEach(function(aKey) {
-        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
-        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('r', 8);
-        g.appendChild(c);
-        grp.appendChild(g);
-        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
-      });
-
-      Object.keys(pieces).forEach(function(k) {
-        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
-      });
-      piecesOnBoard = newPiecesOnBoard;
-
-      var hasPending = ph2_pendingCaptures.approach.length > 0 || ph2_pendingCaptures.withdrawal.length > 0;
-
-      Object.keys(pieces).forEach(function(spot) {
-        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
-        if (ri < 0 || ci < 0) return;
-        var entry = piecesOnBoard[spot];
-        if (!entry) return;
-        var g = entry.el, circle = g.querySelector('circle');
-
-        g.setAttribute('transform', 'translate(' + (ci*50) + ',' + (ri*50) + ')');
-        circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
-        circle.removeAttribute('class');
-        circle.style.pointerEvents = 'all';
-        circle.onclick = (function(s) {
-          return function(e) { e.stopPropagation(); ph2HandleSpotClick(s); };
-        })(spot);
-
-        if (isMyTurn && pieces[spot] === myColor) {
-          if (ph2_selectedSpot === spot)
-            circle.setAttribute('class', 'selected-piece');
-          else if (ph2_lastBlockedSpot === spot)
-            circle.setAttribute('class', 'blocked-piece');
-          else if (!stateData.movingPiece && ph2CanPieceMove(spot, pieces, myColor, ph2GlobalCap))
-            circle.setAttribute('class', 'movable-piece');
-        }
-
-        var isApp  = ph2_pendingCaptures.approach.indexOf(spot)  !== -1;
-        var isWith = ph2_pendingCaptures.withdrawal.indexOf(spot) !== -1;
-        g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
-
-        if (isApp || isWith) {
+        g.querySelectorAll('.cross-line').forEach(function(l){l.remove();});
+        var isApp  = ph2_pendingCaptures.approach.indexOf(spot)!==-1;
+        var isWith = ph2_pendingCaptures.withdrawal.indexOf(spot)!==-1;
+        if (isApp||isWith) {
           circle.classList.add('capture-target');
-          circle.style.pointerEvents = 'all';
-          var ct = isApp ? 'approach' : 'withdrawal';
-          circle.onclick = (function(type) {
-            return function(e) { e.stopPropagation(); ph2ConfirmCapture(type); };
-          })(ct);
-          g.appendChild(createCross(-5,-5,5,5));
-          g.appendChild(createCross(5,-5,-5,5));
+          circle.style.pointerEvents='all';
+          var ct2 = isApp?'approach':'withdrawal';
+          circle.onclick=(function(type){ return function(e){ e.stopPropagation(); ph2ConfirmCapture(type); }; })(ct2);
+          g.appendChild(createCross(-5,-5,5,5)); g.appendChild(createCross(5,-5,-5,5));
         }
-      });
+      } else {
+        circle.onclick = (function(s){ return function(e){ e.stopPropagation(); handleSpotClick(s); }; })(spot);
+        if (!frozen && isMyTurn && pieces[spot]===myColor && !stateData.movingPiece) {
+          if (selectedSpot===spot)          circle.setAttribute('class','selected-piece');
+          else if (lastBlockedSpot===spot)  circle.setAttribute('class','blocked-piece');
+          else {
+            var globalCap2 = amIFirstMover() ? playerHasAnyCapture(pieces, myColor) : false;
+            if (canPieceMove(spot,pieces,myColor,globalCap2)) circle.setAttribute('class','movable-piece');
+          }
+        }
+        g.querySelectorAll('.cross-line').forEach(function(l){l.remove();});
+        var isApp2  = pendingCaptures.approach.indexOf(spot)!==-1;
+        var isWith2 = pendingCaptures.withdrawal.indexOf(spot)!==-1;
+        if (!frozen && (isApp2||isWith2)) {
+          circle.classList.add('capture-target');
+          circle.style.pointerEvents='all';
+          var ct3 = isApp2?'approach':'withdrawal';
+          circle.onclick=(function(type){ return function(e){ e.stopPropagation(); confirmCapture(type); }; })(ct3);
+          g.appendChild(createCross(-5,-5,5,5)); g.appendChild(createCross(5,-5,-5,5));
+        }
+      }
+    });
 
-      var board = document.getElementById('game-board');
-      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+    var boardId = px==='l' ? 'land-board' : 'port-board';
+    var board = $id(boardId);
+    if (board) {
+      if (!isMyTurn || hasPending || frozen) board.classList.add('lock-board');
       else board.classList.remove('lock-board');
     }
+  }
 
-    function ph2RenderGuides(startSpot, stateData) {
-      var grp = document.getElementById('guides-group');
-      if (!grp) return;
-      grp.innerHTML = '';
-      if (!startSpot) return;
+  function _renderGuidesInSvg(px, startSpot, stateData, isPhase2Mode) {
+    var grp = $id(px+'-guides-group'); if (!grp) return;
+    grp.innerHTML = '';
+    if (!startSpot) return;
+    if (!isPhase2Mode && isGameFrozen(stateData.pieces)) return;
 
-      var pieces  = stateData.pieces;
-      var visited = stateData.visited  || [];
-      var lastDir = stateData.lastDir  || '';
+    var pieces  = stateData.pieces;
+    var visited = stateData.visited || [];
+    var lastDir = stateData.lastDir || '';
+    var moves   = allowedMoves[startSpot] || [];
+
+    if (isPhase2Mode) {
       var globalCapturePossible = ph2PlayerHasAnyCapture(pieces, myColor);
-      var moves = allowedMoves[startSpot] || [];
-
       moves.forEach(function(target) {
-        if (pieces[target] || visited.indexOf(target) !== -1) return;
+        if (pieces[target]||visited.indexOf(target)!==-1) return;
         var caps = ph2GetCaptures(pieces, startSpot, target, myColor);
-        var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+        var isCaptureMove = caps.approach.length>0||caps.withdrawal.length>0;
         if (globalCapturePossible && !isCaptureMove) return;
-
-        var r2  = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
-        var dir = (r2 - rows.indexOf(startSpot[0])) + ',' + (c2 - cols.indexOf(startSpot[1]));
-        if (!ph2_canChangePiece && lastDir === dir) return;
-
-        var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', c2*50); dot.setAttribute('cy', r2*50);
-        dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
+        var r2=rows.indexOf(target[0]), c2=cols.indexOf(target[1]);
+        var dir=(r2-rows.indexOf(startSpot[0]))+','+(c2-cols.indexOf(startSpot[1]));
+        if (!ph2_canChangePiece && lastDir===dir) return;
+        var dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        dot.setAttribute('cx',c2*50); dot.setAttribute('cy',r2*50);
+        dot.setAttribute('r',6); dot.setAttribute('class','guide-dot');
         grp.appendChild(dot);
       });
-    }
-
-    // ─── Helpers Phase 2 (renamed) ───────────────────────────────
-    function ph2GetCaptures(pieces, s, e, color) {
-      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
-      var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
-      function scan(row,col,sr,sc) {
-        var res=[],cr=row+sr,cc=col+sc;
-        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}
-        return res;
+    } else {
+      if (amIFirstMover()) {
+        var globalCapturePossible2 = playerHasAnyCapture(pieces, myColor);
+        moves.forEach(function(target) {
+          if (pieces[target]||visited.indexOf(target)!==-1) return;
+          var caps = getCaptures(pieces, startSpot, target, myColor);
+          var isCaptureMove = caps.approach.length>0||caps.withdrawal.length>0;
+          if (globalCapturePossible2 && !isCaptureMove) return;
+          var r2=rows.indexOf(target[0]), c2=cols.indexOf(target[1]);
+          var dir=(r2-rows.indexOf(startSpot[0]))+','+(c2-cols.indexOf(startSpot[1]));
+          if (!canChangePiece && lastDir===dir) return;
+          var dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          dot.setAttribute('cx',c2*50); dot.setAttribute('cy',r2*50);
+          dot.setAttribute('r',6); dot.setAttribute('class','guide-dot');
+          grp.appendChild(dot);
+        });
+      } else {
+        moves.forEach(function(target) {
+          if (pieces[target]||visited.indexOf(target)!==-1) return;
+          var r2=rows.indexOf(target[0]), c2=cols.indexOf(target[1]);
+          var dir=(r2-rows.indexOf(startSpot[0]))+','+(c2-cols.indexOf(startSpot[1]));
+          if (!canChangePiece && lastDir===dir) return;
+          var dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          dot.setAttribute('cx',c2*50); dot.setAttribute('cy',r2*50);
+          dot.setAttribute('r',6); dot.setAttribute('class','guide-dot');
+          grp.appendChild(dot);
+        });
       }
-      return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
     }
+  }
 
-    function ph2PlayerHasAnyCapture(pieces, color) {
-      var sl = Object.keys(pieces);
-      for (var i=0;i<sl.length;i++) {
-        var s=sl[i]; if(pieces[s]!==color)continue;
-        var mv=allowedMoves[s]||[];
-        for (var j=0;j<mv.length;j++) {
-          var t=mv[j]; if(!pieces[t]){var c=ph2GetCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
-        }
-      }
-      return false;
-    }
+  /* ══════════════════════════════════════════════
+     HELPERS COMMUNS
+  ══════════════════════════════════════════════ */
+  function createCross(x1,y1,x2,y2) {
+    var l=document.createElementNS('http://www.w3.org/2000/svg','line');
+    l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+    l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+    l.setAttribute('class','cross-line'); return l;
+  }
 
-    function ph2CanPieceMove(spot, pieces, color, globalCapture) {
-      var mv=allowedMoves[spot]||[];
-      for(var i=0;i<mv.length;i++){
-        var t=mv[i]; if(pieces[t])continue;
-        var caps=ph2GetCaptures(pieces,spot,t,color);
-        var isCap=caps.approach.length>0||caps.withdrawal.length>0;
-        if(globalCapture?isCap:true)return true;
-      }
-      return false;
-    }
+  // Phase 1
+  function getCaptures(pieces,s,e,color) {
+    var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
+    var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
+    function scan(row,col,sr,sc){var res=[],cr=row+sr,cc=col+sc;while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}return res;}
+    return { approach:scan(r2,c2,dr,dc), withdrawal:scan(r1,c1,-dr,-dc) };
+  }
+  function playerHasAnyCapture(pieces,color){
+    return Object.keys(pieces).some(function(s){
+      if(pieces[s]!==color)return false;
+      return (allowedMoves[s]||[]).some(function(t){
+        if(pieces[t])return false;
+        var c=getCaptures(pieces,s,t,color);
+        return c.approach.length>0||c.withdrawal.length>0;
+      });
+    });
+  }
+  function canPieceMove(spot,pieces,color,globalCapture){
+    return (allowedMoves[spot]||[]).some(function(t){
+      if(pieces[t])return false;
+      var caps=getCaptures(pieces,spot,t,color);
+      var isCap=caps.approach.length>0||caps.withdrawal.length>0;
+      return globalCapture?isCap:true;
+    });
+  }
+  function checkAvailableCaptures(pieces,s,visited,lastDir,color){
+    return (allowedMoves[s]||[]).some(function(t){
+      if(pieces[t]||(visited&&visited.indexOf(t)!==-1))return false;
+      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
+      var dir=(r2-r1)+','+(c2-c1);
+      if(lastDir&&lastDir===dir)return false;
+      var caps=getCaptures(pieces,s,t,color);
+      return caps.approach.length>0||caps.withdrawal.length>0;
+    });
+  }
 
-    function ph2CheckAvailableCaptures(pieces, s, visited, lastDir, color) {
-      var mv=allowedMoves[s]||[];
-      for(var i=0;i<mv.length;i++){
-        var t=mv[i];
-        if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue;
-        var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
-        var dir=(r2-r1)+','+(c2-c1);
-        if(lastDir&&lastDir===dir)continue;
-        var caps=ph2GetCaptures(pieces,s,t,color);
-        if(caps.approach.length>0||caps.withdrawal.length>0)return true;
-      }
-      return false;
-    }
+  // Phase 2
+  function ph2GetCaptures(pieces,s,e,color){
+    var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
+    var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
+    function scan(row,col,sr,sc){var res=[],cr=row+sr,cc=col+sc;while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}return res;}
+    return { approach:scan(r2,c2,dr,dc), withdrawal:scan(r1,c1,-dr,-dc) };
+  }
+  function ph2PlayerHasAnyCapture(pieces,color){
+    return Object.keys(pieces).some(function(s){
+      if(pieces[s]!==color)return false;
+      return (allowedMoves[s]||[]).some(function(t){
+        if(pieces[t])return false;
+        var c=ph2GetCaptures(pieces,s,t,color);
+        return c.approach.length>0||c.withdrawal.length>0;
+      });
+    });
+  }
+  function ph2CanPieceMove(spot,pieces,color,globalCapture){
+    return (allowedMoves[spot]||[]).some(function(t){
+      if(pieces[t])return false;
+      var caps=ph2GetCaptures(pieces,spot,t,color);
+      var isCap=caps.approach.length>0||caps.withdrawal.length>0;
+      return globalCapture?isCap:true;
+    });
+  }
+  function ph2CheckAvailableCaptures(pieces,s,visited,lastDir,color){
+    return (allowedMoves[s]||[]).some(function(t){
+      if(pieces[t]||(visited&&visited.indexOf(t)!==-1))return false;
+      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
+      var dir=(r2-r1)+','+(c2-c1);
+      if(lastDir&&lastDir===dir)return false;
+      var caps=ph2GetCaptures(pieces,s,t,color);
+      return caps.approach.length>0||caps.withdrawal.length>0;
+    });
+  }
 
-    //  HELPERS COMMUNS (phase 1)
-    function getCaptures(pieces, s, e, color) {
-      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
-      var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
-      function scan(row,col,sr,sc) {
-        var res=[],cr=row+sr,cc=col+sc;
-        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}
-        return res;
-      }
-      return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
-    }
+  /* ══════════════════════════════════════════════
+     START
+  ══════════════════════════════════════════════ */
+  init();
 
-    function playerHasAnyCapture(pieces, color) {
-      var sl = Object.keys(pieces);
-      for (var i=0;i<sl.length;i++) {
-        var s=sl[i]; if(pieces[s]!==color)continue;
-        var mv=allowedMoves[s]||[];
-        for (var j=0;j<mv.length;j++) {
-          var t=mv[j]; if(!pieces[t]){var c=getCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
-        }
-      }
-      return false;
-    }
-
-    function canPieceMove(spot, pieces, color, globalCapture) {
-      var mv=allowedMoves[spot]||[];
-      for(var i=0;i<mv.length;i++){
-        var t=mv[i]; if(pieces[t])continue;
-        var caps=getCaptures(pieces,spot,t,color);
-        var isCap=caps.approach.length>0||caps.withdrawal.length>0;
-        if(globalCapture?isCap:true)return true;
-      }
-      return false;
-    }
-
-    function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
-      var mv=allowedMoves[s]||[];
-      for(var i=0;i<mv.length;i++){
-        var t=mv[i];
-        if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue;
-        var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
-        var dir=(r2-r1)+','+(c2-c1);
-        if(lastDir&&lastDir===dir)continue;
-        var caps=getCaptures(pieces,s,t,color);
-        if(caps.approach.length>0||caps.withdrawal.length>0)return true;
-      }
-      return false;
-    }
-
-    function createCross(x1,y1,x2,y2) {
-      var l = document.createElementNS('http://www.w3.org/2000/svg','line');
-      l.setAttribute('x1',x1); l.setAttribute('y1',y1);
-      l.setAttribute('x2',x2); l.setAttribute('y2',y2);
-      l.setAttribute('class','cross-line');
-      return l;
-    }
-
-    //  Attente des deux joueurs
-    var bothPlayersReadyTimer = null;
-    function checkBothPlayersReady() {
-      if (document.getElementById('loading-overlay').classList.contains('hidden')) return;
-      callApi(SESSION_API_URL, 'get-fanorona-game', { uid: myUid, gameId: gameId })
-        .then(function(data) {
-          if (data.success && data.opponentUsername && data.opponentUsername !== '???') {
-            renderPlayersBar(myColor,
-              (JSON.parse(localStorage.getItem('user') || '{}')).username || myUid,
-              data.opponentUsername);
-            document.getElementById('loading-overlay').classList.add('hidden');
-          }
-        })
-        .catch(function() {});
-    }
-
-    init();
-
-  })();
-  </script>
+})();
+</script>
 </body>
 </html>
