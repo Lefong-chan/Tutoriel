@@ -86,7 +86,6 @@
 
     /* ── Nom du joueur : taille s'adapte selon la longueur ── */
     .player-name {
-      /* taille par défaut pour noms courts (≤10 lettres) */
       font-size: 0.95em;
       white-space: nowrap;
       overflow: hidden;
@@ -163,7 +162,7 @@
       background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
       border: 1px solid rgba(255,255,255,0.18);
       color: rgba(255,255,255,0.85);
-      font-size: 1.35em;       /* icône plus grande */
+      font-size: 1.35em;
       cursor: pointer;
       transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.12s;
       backdrop-filter: blur(12px);
@@ -283,12 +282,10 @@
       background: rgba(255,255,255,0.18);
       transition: background 0.4s;
     }
-    /* hauteurs croissantes — proportionnelles à la hauteur du conteneur */
     .pbar:nth-child(1) { height: 6px;  }
     .pbar:nth-child(2) { height: 10px; }
     .pbar:nth-child(3) { height: 15px; }
     .pbar:nth-child(4) { height: 20px; }
-    /* couleurs selon état ping */
     .pbar.on.ping-bad   { background: #ef4444; }
     .pbar.on.ping-mid   { background: #ffd600; }
     .pbar.on.ping-good  { background: #22c55e; }
@@ -328,7 +325,7 @@
       <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
     </div>
 
-    <!-- Ping widget : row [bars | ms], même height que les autres abtn -->
+    <!-- Ping widget -->
     <div class="abtn" style="gap:8px;">
       <div class="pbars" id="l-ping-bars">
         <div class="pbar on ping-great"></div>
@@ -392,6 +389,7 @@
     var SESSION_API_URL = '/api/session';
     var GAME_API_URL    = '/api/game-vela';
     var RECONCILE_DELAY = 5000;
+    var OPP_REPLAY_DELAY = 220; // ms between each step of opponent's replay
 
     var FIREBASE_CONFIG = {
       apiKey:      "AIzaSyDMr3plGs8sF56pM_O3jYqfGdWTlJiePW0",
@@ -508,7 +506,7 @@
       }, delay);
     }
 
-        async function callApi(url, action, payload) {
+    async function callApi(url, action, payload) {
       var r = await fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({ action: action }, payload))
@@ -552,15 +550,19 @@
     var oppDotEl   = null;
 
     // ── Phase 1 (fanorona-vela) : variables ─────────────────────────
-    var localState       = null;
-    var selectedSpot     = null;
-    var lastBlockedSpot  = null;
-    var canChangePiece   = true;
-    var pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
-    var piecesOnBoard    = {};
-    var movingInProgress = false;
-    var reconcileTimer   = null;
-    var firstMover       = null;
+    var localState         = null;
+    var selectedSpot       = null;
+    var lastBlockedSpot    = null;
+    var canChangePiece     = true;
+    var pendingCaptures    = { approach: [], withdrawal: [], moveData: null };
+    var piecesOnBoard      = {};
+    var movingInProgress   = false;
+    var reconcileTimer     = null;
+    var firstMover         = null;
+
+    // ── Phase 1 : replay adversaire ─────────────────────────────────
+    var ph1_replayInProgress  = false;
+    var ph1_lastReplayedTurn  = null;  // "lastTurnColor" du dernier replay effectué
 
     // ── Phase 2 (fanorona.html) : variables renommées ───────────────
     var ph2_localState       = null;
@@ -570,6 +572,10 @@
     var ph2_pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
     var ph2_movingInProgress = false;
     var ph2_reconcileTimer   = null;
+
+    // ── Phase 2 : replay adversaire ─────────────────────────────────
+    var ph2_replayInProgress = false;
+    var ph2_lastReplayedTurn = null;
 
     var params   = new URLSearchParams(window.location.search);
     var gameId_p = params.get('gameId');
@@ -619,7 +625,6 @@
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
           if (d.game.firstMover) firstMover = d.game.firstMover;
-          // Masomboly ny mpilalao roa vao esorina ny loading-overlay
           if (data.opponentUsername && data.opponentUsername !== '???') {
             document.getElementById('loading-overlay').classList.add('hidden');
           }
@@ -632,9 +637,7 @@
           }
         }
 
-        // Démarrer Firebase Realtime (remplace le polling)
         connectFirebaseRealtime(myUid, gameId);
-        // Fallback polling pour attente adversaire
         setInterval(checkBothPlayersReady, 2000);
 
       } catch(err) { showError('Nisy olana: ' + err.message); }
@@ -645,7 +648,6 @@
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
 
-      // Adversaire → players-bar-top
       var barTop = document.getElementById('players-bar-top');
       barTop.innerHTML =
         '<div class="player-info">' +
@@ -653,7 +655,6 @@
           '<span class="player-name">' + escapeHtml(oppUsername) + '</span>' +
         '</div>';
 
-      // Moi → players-bar-bottom
       var barBottom = document.getElementById('players-bar-bottom');
       barBottom.innerHTML =
         '<div class="player-info">' +
@@ -664,7 +665,6 @@
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
 
-      // Ajuster la taille des noms
       var oppSpan = document.querySelector('#players-bar-top .player-name');
       var mySpan  = document.querySelector('#players-bar-bottom .player-name');
       if (oppSpan) updateNameFontSize(oppSpan, oppUsername);
@@ -690,7 +690,7 @@
       }
     }
 
-    //  FIREBASE REALTIME (remplace le polling)
+    //  FIREBASE REALTIME
     async function connectFirebaseRealtime(uid, gId) {
       try {
         var tokenData = await callApi(GAME_API_URL, 'get-firebase-token', { uid: uid, gameId: gId });
@@ -760,10 +760,92 @@
       return firstMover === null || firstMover === myColor;
     }
 
+    // ─── ph1ReplayOppMove : rejoue lastTurnHistory step-by-step ───
+    function ph1ReplayOppMove(game) {
+      var history = game.lastTurnHistory;
+      var oppColor = game.lastTurnColor;
+
+      // Construire l'état de départ du replay (avant les moves de l'adversaire)
+      // On part de localState.pieces courant mais on doit reconstituer
+      // l'état AVANT le premier move de l'adversaire.
+      // Pour cela on rejoue depuis game.pieces en sens inverse n'est pas simple,
+      // donc on replay VISUELLEMENT depuis l'état actuel de localState
+      // en appliquant chaque étape de history.
+
+      // État de départ = état actuel du board (avant réception)
+      var replayPieces = Object.assign({}, localState ? localState.pieces : {});
+
+      // Bloquer le board pendant le replay
+      ph1_replayInProgress = true;
+      document.getElementById('game-board').classList.add('lock-board');
+
+      // Créer une copie de stateData pour le render (turn = oppColor pour ne pas montrer highlights)
+      var replayState = {
+        turn: oppColor,
+        movingPiece: '',
+        visited: [],
+        lastDir: '',
+        firstMover: firstMover,
+        nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
+      };
+
+      var steps = history.slice(); // copie
+      var stepIndex = 0;
+
+      function doNextStep() {
+        if (stepIndex >= steps.length) {
+          // Replay terminé → appliquer l'état final du serveur
+          ph1_replayInProgress = false;
+          localState = copyState(game);
+          selectedSpot    = null;
+          lastBlockedSpot = null;
+          canChangePiece  = true;
+          pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+          document.getElementById('guides-group').innerHTML = '';
+          document.getElementById('stop-move-btn').classList.remove('active');
+          applyLocalState();
+
+          // Vérifier game over
+          var myPieceCountP  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+          var oppPieceCountP = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+          if (myPieceCountP === 0) {
+            showGameOverAlert(myOppColor, 2000);
+          } else if (oppPieceCountP === 0) {
+            showGameOverAlert(myColor, 2000);
+          } else if (!isGameFrozen(localState.pieces)) {
+            var myHasCap = playerHasAnyCapture(localState.pieces, myColor);
+            if (!myHasCap) showGameOverAlert(myColor, 4000);
+          }
+          return;
+        }
+
+        var step = steps[stepIndex];
+        stepIndex++;
+
+        // Appliquer ce step sur replayPieces
+        delete replayPieces[step.origin];
+        replayPieces[step.target] = oppColor;
+        if (Array.isArray(step.capturedSpots)) {
+          step.capturedSpots.forEach(function(s) { delete replayPieces[s]; });
+        }
+
+        replayState.pieces = Object.assign({}, replayPieces);
+        renderPieces(replayState.pieces, replayState);
+
+        setTimeout(doNextStep, OPP_REPLAY_DELAY);
+      }
+
+      doNextStep();
+    }
+
     function ph1Poll(game) {
+      // Si replay en cours → ignorer les updates Firebase
+      if (ph1_replayInProgress) return;
       if (movingInProgress) return;
+
       var serverTurn = game.turn;
 
+      // C'est le tour de l'adversaire → juste afficher son state actuel (movingPiece en cours)
       if (serverTurn !== myColor) {
         if (localState) {
           localState.pieces = Object.assign({}, game.pieces);
@@ -773,33 +855,52 @@
         return;
       }
 
+      // C'est mon tour maintenant
+      // Si j'avais déjà une sélection active → ne pas écraser
       if (selectedSpot || (localState && localState.movingPiece)) return;
 
+      // Vérifier si l'état serveur est déjà reflété localement
       var serverPiecesStr = JSON.stringify(game.pieces);
       var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
       if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
 
-      localState = copyState(game);
-      if (game.firstMover && !firstMover) firstMover = game.firstMover;
-      canChangePiece  = true;
-      selectedSpot    = null;
-      lastBlockedSpot = null;
-      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      document.getElementById('guides-group').innerHTML = '';
-      document.getElementById('stop-move-btn').classList.remove('active');
-      applyLocalState();
+      // Détecter si l'adversaire vient de jouer (lastTurnColor === myOppColor)
+      // et si on n'a pas encore rejoué ce tour
+      var lastTurnColor = game.lastTurnColor || null;
+      var lastTurnHistory = game.lastTurnHistory;
+      var hasNewOppMove = (
+        lastTurnColor === myOppColor &&
+        Array.isArray(lastTurnHistory) &&
+        lastTurnHistory.length > 0 &&
+        ph1_lastReplayedTurn !== JSON.stringify(lastTurnHistory)
+      );
 
-      if (!isGameFrozen(localState.pieces)) {
-        var myPieceCountP  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-        var oppPieceCountP = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        if (myPieceCountP === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        } else if (oppPieceCountP === 0) {
-          showGameOverAlert(myColor, 2000);
-        } else {
-          var myHasCap = playerHasAnyCapture(localState.pieces, myColor);
-          if (!myHasCap) {
-            showGameOverAlert(myColor, 4000);
+      if (hasNewOppMove && localState) {
+        // Mémoriser ce replay pour ne pas le rejouer
+        ph1_lastReplayedTurn = JSON.stringify(lastTurnHistory);
+        ph1ReplayOppMove(game);
+      } else {
+        // Pas de replay à faire (ex: premier chargement) → appliquer directement
+        localState = copyState(game);
+        if (game.firstMover && !firstMover) firstMover = game.firstMover;
+        canChangePiece  = true;
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+        document.getElementById('guides-group').innerHTML = '';
+        document.getElementById('stop-move-btn').classList.remove('active');
+        applyLocalState();
+
+        if (!isGameFrozen(localState.pieces)) {
+          var myPieceCountP  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+          var oppPieceCountP = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+          if (myPieceCountP === 0) {
+            showGameOverAlert(myOppColor, 2000);
+          } else if (oppPieceCountP === 0) {
+            showGameOverAlert(myColor, 2000);
+          } else {
+            var myHasCap = playerHasAnyCapture(localState.pieces, myColor);
+            if (!myHasCap) showGameOverAlert(myColor, 4000);
           }
         }
       }
@@ -1140,7 +1241,7 @@
       });
 
       var board = document.getElementById('game-board');
-      if (!isMyTurn || hasPending || frozen) board.classList.add('lock-board');
+      if (!isMyTurn || hasPending || frozen || ph1_replayInProgress) board.classList.add('lock-board');
       else board.classList.remove('lock-board');
     }
 
@@ -1210,8 +1311,71 @@
       }
     }
 
+    // ─── ph2ReplayOppMove : rejoue lastTurnHistory step-by-step (Phase 2) ───
+    function ph2ReplayOppMove(game) {
+      var history = game.lastTurnHistory;
+      var oppColor = game.lastTurnColor;
+
+      var replayPieces = Object.assign({}, ph2_localState ? ph2_localState.pieces : {});
+
+      ph2_replayInProgress = true;
+      document.getElementById('game-board').classList.add('lock-board');
+
+      var replayState = {
+        turn: oppColor,
+        movingPiece: '',
+        visited: [],
+        lastDir: '',
+      };
+
+      var steps = history.slice();
+      var stepIndex = 0;
+
+      function doNextStep() {
+        if (stepIndex >= steps.length) {
+          ph2_replayInProgress = false;
+          ph2_localState      = ph2CopyState(game);
+          ph2_selectedSpot    = null;
+          ph2_lastBlockedSpot = null;
+          ph2_canChangePiece  = true;
+          ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+          document.getElementById('guides-group').innerHTML = '';
+          document.getElementById('stop-move-btn').classList.remove('active');
+          ph2ApplyLocalState();
+
+          var ph2PollMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+          var ph2PollOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+          if (ph2PollMyCount === 0) {
+            showGameOverAlert(myOppColor, 2000);
+          } else if (ph2PollOppCount === 0) {
+            showGameOverAlert(myColor, 2000);
+          }
+          return;
+        }
+
+        var step = steps[stepIndex];
+        stepIndex++;
+
+        delete replayPieces[step.origin];
+        replayPieces[step.target] = oppColor;
+        if (Array.isArray(step.capturedSpots)) {
+          step.capturedSpots.forEach(function(s) { delete replayPieces[s]; });
+        }
+
+        replayState.pieces = Object.assign({}, replayPieces);
+        ph2RenderPieces(replayState.pieces, replayState);
+
+        setTimeout(doNextStep, OPP_REPLAY_DELAY);
+      }
+
+      doNextStep();
+    }
+
     function ph2Poll(game) {
+      // Si replay en cours → ignorer les updates Firebase
+      if (ph2_replayInProgress) return;
       if (ph2_movingInProgress) return;
+
       var serverTurn = game.turn;
 
       if (serverTurn !== myColor) {
@@ -1229,21 +1393,36 @@
       var localPiecesStr  = ph2_localState ? JSON.stringify(ph2_localState.pieces) : '';
       if (serverPiecesStr === localPiecesStr && ph2_localState && ph2_localState.turn === myColor) return;
 
-      ph2_localState      = ph2CopyState(game);
-      ph2_canChangePiece  = true;
-      ph2_selectedSpot    = null;
-      ph2_lastBlockedSpot = null;
-      ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      document.getElementById('guides-group').innerHTML = '';
-      document.getElementById('stop-move-btn').classList.remove('active');
-      ph2ApplyLocalState();
+      // Détecter si l'adversaire vient de jouer
+      var lastTurnColor = game.lastTurnColor || null;
+      var lastTurnHistory = game.lastTurnHistory;
+      var hasNewOppMove = (
+        lastTurnColor === myOppColor &&
+        Array.isArray(lastTurnHistory) &&
+        lastTurnHistory.length > 0 &&
+        ph2_lastReplayedTurn !== JSON.stringify(lastTurnHistory)
+      );
 
-      var ph2PollMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-      var ph2PollOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-      if (ph2PollMyCount === 0) {
-        showGameOverAlert(myOppColor, 2000);
-      } else if (ph2PollOppCount === 0) {
-        showGameOverAlert(myColor, 2000);
+      if (hasNewOppMove && ph2_localState) {
+        ph2_lastReplayedTurn = JSON.stringify(lastTurnHistory);
+        ph2ReplayOppMove(game);
+      } else {
+        ph2_localState      = ph2CopyState(game);
+        ph2_canChangePiece  = true;
+        ph2_selectedSpot    = null;
+        ph2_lastBlockedSpot = null;
+        ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+        document.getElementById('guides-group').innerHTML = '';
+        document.getElementById('stop-move-btn').classList.remove('active');
+        ph2ApplyLocalState();
+
+        var ph2PollMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+        var ph2PollOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+        if (ph2PollMyCount === 0) {
+          showGameOverAlert(myOppColor, 2000);
+        } else if (ph2PollOppCount === 0) {
+          showGameOverAlert(myColor, 2000);
+        }
       }
     }
 
@@ -1522,7 +1701,7 @@
       });
 
       var board = document.getElementById('game-board');
-      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+      if (!isMyTurn || hasPending || ph2_replayInProgress) board.classList.add('lock-board');
       else board.classList.remove('lock-board');
     }
 
