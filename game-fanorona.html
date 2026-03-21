@@ -711,24 +711,29 @@
         var curMyMs  = myTimerMs;
         var curOppMs = oppTimerMs;
 
-        // Interpoler localement le timer du joueur qui a le tour
+        // timerRunningColor = game.turn = joueur EN COURS (qui a le droit de jouer)
+        // Donc timerRunningColor === myColor → c'est MON tour → MON chrono tourne
         if (timerRunningColor) {
           if (timerRunningColor === myColor) {
+            // C'est mon tour : mon chrono tourne
             curMyMs  = Math.max(0, myTimerMs  - elapsed);
           } else {
+            // C'est le tour de l'adversaire : son chrono tourne
             curOppMs = Math.max(0, oppTimerMs - elapsed);
           }
         }
 
         renderPlayerTimers(curMyMs, curOppMs);
 
-        // Vérifier expiration locale (le serveur confirmera via Firebase)
+        // Expiration : izay lany fotoana no resy
         if (timerRunningColor === myColor && curMyMs <= 0) {
+          // Mon chrono est à 0 : je perds
           stopPlayerTimerRaf();
           if (!gameOverTriggered) showGameOverAlert(myOppColor, 0);
           return;
         }
         if (timerRunningColor === myOppColor && curOppMs <= 0) {
+          // Le chrono de l'adversaire est à 0 : je gagne
           stopPlayerTimerRaf();
           if (!gameOverTriggered) showGameOverAlert(myColor, 0);
           return;
@@ -757,11 +762,11 @@
       renderPlayerTimers(myMs, oppMs);
       startPlayerTimerRaf();
 
-      // Vérifier expiration immédiate (cas où le serveur signale déjà 0)
+      // Vérifier expiration immédiate : izay lany fotoana no resy
       if (myMs <= 0 && !gameOverTriggered) {
-        showGameOverAlert(myOppColor, 0);
+        showGameOverAlert(myOppColor, 0); // adversaire mandresy (izaho lany)
       } else if (oppMs <= 0 && !gameOverTriggered) {
-        showGameOverAlert(myColor, 0);
+        showGameOverAlert(myColor, 0); // izaho mandresy (adversaire lany)
       }
     }
 
