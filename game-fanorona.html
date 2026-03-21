@@ -741,7 +741,7 @@
 
     // ── Replay des hetsika adversaire, étape par étape (300ms/step) ──
     // history = [{origin, target, capturedSpots}]  (dans l'ordre chronologique)
-    // finalState = state final déjà calculé par le serveur (on l'applique à la fin)
+    // finalState = state final calculé par le serveur (appliqué à la fin)
     function startOppReplay(history, finalState) {
       if (!history || history.length === 0) {
         finalApplyState(finalState);
@@ -750,10 +750,28 @@
 
       replayInProgress = true;
 
-      // On a besoin d'un state de départ pour animer : on reconstitue
-      // l'état AVANT le premier mouvement en repartant du state local actuel
-      // (l'adversaire jouait — les pièces locales sont donc celles d'avant son tour)
-      var replayPieces = localState ? Object.assign({}, localState.pieces) : Object.assign({}, finalState.pieces);
+      // ── Reconstituer l'état AVANT le tour adversaire ──
+      // On part du state final (serveur) et on "annule" les steps en sens inverse
+      // pour obtenir les pièces d'avant le premier mouvement.
+      var prePieces = Object.assign({}, finalState.pieces);
+
+      // Annule les steps de la fin vers le début
+      for (var i = history.length - 1; i >= 0; i--) {
+        var s   = history[i];
+        var org = s.origin;
+        var tgt = s.target;
+        var cap = Array.isArray(s.capturedSpots) ? s.capturedSpots : [];
+
+        // Remet la pièce à son origine
+        prePieces[org] = myOppColor;
+        delete prePieces[tgt];
+
+        // Remet les pièces capturées (elles étaient de myColor)
+        cap.forEach(function(spot) { prePieces[spot] = myColor; });
+      }
+
+      // prePieces est maintenant l'état avant que l'adversaire joue
+      var replayPieces = prePieces;
 
       // Verrou board pendant replay
       var board = document.getElementById('game-board');
@@ -763,40 +781,50 @@
 
       function playStep() {
         if (stepIndex >= history.length) {
-          // Tous les steps joués — applique l'état final officiel
+          // Tous les steps joués — applique l'état final officiel du serveur
           replayInProgress = false;
           finalApplyState(finalState);
           return;
         }
 
-        var step = history[stepIndex];
+        var step          = history[stepIndex];
         stepIndex++;
 
-        // Applique ce step sur replayPieces
         var origin        = step.origin;
         var target        = step.target;
         var capturedSpots = Array.isArray(step.capturedSpots) ? step.capturedSpots : [];
 
+        // Applique ce step sur replayPieces
         delete replayPieces[origin];
         replayPieces[target] = myOppColor;
         capturedSpots.forEach(function(s) { delete replayPieces[s]; });
 
-        // Rendu temporaire (state neutre — pas de tour actif, juste affichage)
+        // Rendu — state neutre (aucun joueur actif, juste affichage)
         var replayState = {
-          pieces:      replayPieces,
-          turn:        myOppColor,   // adversaire "joue" visuellement
+          pieces:      Object.assign({}, replayPieces),
+          turn:        myOppColor,
           movingPiece: '',
           visited:     [],
           lastDir:     ''
         };
-        renderPieces(Object.assign({}, replayPieces), replayState);
+        renderPieces(replayState.pieces, replayState);
 
         // Prochain step dans 300ms
         setTimeout(playStep, 300);
       }
 
-      // Premier step après un court délai de 100ms
-      setTimeout(playStep, 100);
+      // Affiche l'état pré-replay immédiatement (sans délai) pour éviter tout flash
+      var preState = {
+        pieces:      Object.assign({}, replayPieces),
+        turn:        myOppColor,
+        movingPiece: '',
+        visited:     [],
+        lastDir:     ''
+      };
+      renderPieces(preState.pieces, preState);
+
+      // Commence les steps après 150ms
+      setTimeout(playStep, 150);
     }
 
     function copyState(game) {
@@ -1014,14 +1042,36 @@
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
 
+        // Seulement maintenant on libère movingInProgress
         movingInProgress = false;
 
         var serverTurn = d.game.turn;
 
         if (serverTurn !== myColor) {
-          if (localState.turn !== myColor) return;
-          // Adversaire joue encore — applique juste son état courant
-          localState = copyState(d.game);
+          // Tour adversaire confirmé par le server — on accepte le state serveur
+          // MAIS on ne ré-affiche QUE si notre localState dit aussi que c'est son tour
+          // (évite d'écraser notre propre optimistic UI si on vient juste d'envoyer notre coup)
+          if (localState && localState.turn !== myColor) {
+            // Déjà dans l'état adversaire — simple sync silencieux
+            localState.pieces = Object.assign({}, d.game.pieces);
+          }
+          return;
+        }
+
+        // C'est notre tour selon le server
+        var serverMoving = d.game.movingPiece || '';
+        if (serverMoving) {
+          // Encore en train de bouger (multi-capture côté server)
+          selectedSpot   = localState ? (localState.movingPiece || serverMoving) : serverMoving;
+          canChangePiece = false;
+          if (localState) localState.movingPiece = selectedSpot;
+          document.getElementById('stop-move-btn').classList.add('active');
+          if (selectedSpot && localState) renderGuides(selectedSpot, localState);
+          if (localState) renderPieces(localState.pieces, localState);
+          updateTurnIndicator(myColor);
+        } else {
+          // Tour propre — on peut maintenant appliquer le state server en autoritaire
+          localState      = copyState(d.game);
           selectedSpot    = null;
           lastBlockedSpot = null;
           canChangePiece  = true;
@@ -1029,18 +1079,6 @@
           document.getElementById('guides-group').innerHTML = '';
           document.getElementById('stop-move-btn').classList.remove('active');
           applyLocalState();
-
-        } else {
-          var serverMoving = d.game.movingPiece || '';
-          if (serverMoving) {
-            selectedSpot   = localState.movingPiece || serverMoving;
-            canChangePiece = false;
-            localState.movingPiece = selectedSpot;
-            document.getElementById('stop-move-btn').classList.add('active');
-          }
-          if (selectedSpot) renderGuides(selectedSpot, localState);
-          renderPieces(localState.pieces, localState);
-          updateTurnIndicator(localState.turn);
         }
       } catch(e) {
         movingInProgress = false;
