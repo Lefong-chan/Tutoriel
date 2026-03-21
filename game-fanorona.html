@@ -462,22 +462,27 @@
     measurePing();
 
     // ════════════════════════════════════════════════════════════
-    //  TIMER 2s — countdown local uniquement (frontend only)
+    //  TIMER A — 2s "move multiple" : reset après chaque move
+    //    Miasa rehefa canContinue (move feno natao, mbola afaka manohy)
+    //    Frontend ihany — tsy misy fiatraikany amin'ny backend
     //
-    //  Règles :
-    //  - Visible uniquement pour le joueur LOCAL quand il est
-    //    en cours de move multiple (canChangePiece === false,
-    //    i.e. il a déjà bougé au moins une fois dans ce tour).
-    //  - "-- " quand c'est le tour de l'adversaire (attente).
-    //  - Démarre (reset à 2.0s) à chaque nouveau déplacement réel
-    //    d'une pièce (pas au simple clic de sélection).
-    //  - À 0 : stop automatique (comme si on appuyait sur ×).
-    //  - Côté adversaire : ils voient toujours "--" pour ce timer.
+    //  TIMER B — 4s "selection capture" : fidiana approach/withdrawal
+    //    Miasa ONLY raha !canChangePiece (efa nisy move teo aloha)
+    //    Rehefa tapitra → averina eo amin'ny movingPiece (toerana teo
+    //    aloha) ilay pièce, ary stop automatic (tsy eo amin'ny ← fa
+    //    eo amin'ny toerana niandohana)
+    //    Frontend ihany — tsy misy fiatraikany amin'ny backend
     // ════════════════════════════════════════════════════════════
-    var MOVE_TIMER_DURATION = 2.0;   // secondes
-    var moveTimerRaf    = null;      // requestAnimationFrame handle
-    var moveTimerEnd    = null;      // timestamp de fin
+    var MOVE_TIMER_DURATION = 2.0;      // secondes — timer A
+    var SEL_TIMER_DURATION  = 4.0;      // secondes — timer B
+
+    var moveTimerRaf    = null;
+    var moveTimerEnd    = null;
     var moveTimerActive = false;
+
+    var selTimerRaf     = null;
+    var selTimerEnd     = null;
+    var selTimerActive  = false;
 
     var timerEl = document.getElementById('opp-timer-ls');
 
@@ -488,23 +493,22 @@
       } else {
         timerEl.classList.add('timer-active');
         var num = parseFloat(val);
-        if (num <= 0.5) timerEl.classList.add('timer-urgent');
+        if (num <= 0.8) timerEl.classList.add('timer-urgent');
         else            timerEl.classList.remove('timer-urgent');
       }
     }
 
+    // ── Timer A : move multiple (2s) ──
     function stopMoveTimer() {
-      if (moveTimerRaf) {
-        cancelAnimationFrame(moveTimerRaf);
-        moveTimerRaf = null;
-      }
+      if (moveTimerRaf) { cancelAnimationFrame(moveTimerRaf); moveTimerRaf = null; }
       moveTimerActive = false;
       moveTimerEnd    = null;
-      setTimerDisplay('--');
+      if (!selTimerActive) setTimerDisplay('--');
     }
 
     function startMoveTimer() {
-      // Annuler le timer précédent s'il tournait
+      // Stopper le timer de sélection s'il tournait
+      stopSelTimer(true);
       if (moveTimerRaf) cancelAnimationFrame(moveTimerRaf);
       moveTimerActive = true;
       moveTimerEnd    = Date.now() + MOVE_TIMER_DURATION * 1000;
@@ -516,7 +520,6 @@
           setTimerDisplay('0.0');
           moveTimerActive = false;
           moveTimerRaf    = null;
-          // ── Auto-stop : déclenche le stop comme si on appuyait sur × ──
           handleStopBtn();
           return;
         }
@@ -524,6 +527,97 @@
         moveTimerRaf = requestAnimationFrame(tick);
       }
       moveTimerRaf = requestAnimationFrame(tick);
+    }
+
+    // ── Timer B : sélection capture (4s) — ONLY si !canChangePiece ──
+    // silent=true → ne remet pas "--" (utilisé quand on enchaîne avec moveTimer)
+    function stopSelTimer(silent) {
+      if (selTimerRaf) { cancelAnimationFrame(selTimerRaf); selTimerRaf = null; }
+      selTimerActive = false;
+      selTimerEnd    = null;
+      if (!silent && !moveTimerActive) setTimerDisplay('--');
+    }
+
+    function startSelTimer() {
+      // Ne démarrer que si on est en mode capture multiple (!canChangePiece)
+      if (canChangePiece) return;
+      stopMoveTimer();
+      if (selTimerRaf) cancelAnimationFrame(selTimerRaf);
+      selTimerActive = true;
+      selTimerEnd    = Date.now() + SEL_TIMER_DURATION * 1000;
+
+      // Snapshot de la position AVANT le mouvement (movingPiece = toerana teo aloha)
+      var returnSpot = localState.movingPiece;
+
+      function tick() {
+        if (!selTimerActive) return;
+        var remaining = (selTimerEnd - Date.now()) / 1000;
+        if (remaining <= 0) {
+          setTimerDisplay('0.0');
+          selTimerActive = false;
+          selTimerRaf    = null;
+          // ── Auto : annuler le pendingCaptures et REVENIR au movingPiece ──
+          autoResolvePending(returnSpot);
+          return;
+        }
+        setTimerDisplay(remaining.toFixed(1));
+        selTimerRaf = requestAnimationFrame(tick);
+      }
+      selTimerRaf = requestAnimationFrame(tick);
+    }
+
+    // Annuler le choix approach/withdrawal et revenir à la position d'avant le move
+    function autoResolvePending(returnSpot) {
+      if (!pendingCaptures.moveData) return;
+      var md = pendingCaptures.moveData;
+      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+
+      // Remettre la pièce à sa position d'origine (md.origin = toerana niandohana du move)
+      // Le joueur reste en mode movingPiece sur md.origin
+      var restoredPieces = Object.assign({}, localState.pieces);
+      // Enlever la pièce à la position intermédiaire (spotID), remettre à origin
+      delete restoredPieces[md.target];
+      restoredPieces[md.origin] = myColor;
+      // Retirer aussi le visited qu'on avait ajouté
+      var restoredVisited = (localState.visited || []).filter(function(v) { return v !== md.origin; });
+
+      localState.pieces  = restoredPieces;
+      localState.visited = restoredVisited;
+
+      // Le selectedSpot revient à md.origin (la pièce qui est encore en train de jouer)
+      selectedSpot = md.origin;
+
+      // Stop automatic : fin de tour
+      var piecesSnapshot = Object.assign({}, restoredPieces);
+
+      stopMoveTimer();
+      setTimerDisplay('--');
+
+      movingInProgress       = true;
+      localState.turn        = myOppColor;
+      localState.movingPiece = '';
+      localState.visited     = [];
+      localState.lastDir     = '';
+      selectedSpot           = null;
+      lastBlockedSpot        = null;
+      canChangePiece         = true;
+      document.getElementById('stop-move-btn').classList.remove('active');
+      document.getElementById('guides-group').innerHTML = '';
+      updateTurnIndicator(localState.turn);
+      renderPieces(localState.pieces, localState);
+
+      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
+        .catch(function(e) { console.warn('auto-resolve stop-move error', e); });
+
+      var myPCA  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+      var oppPCA = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+      if (oppPCA === 0) showGameOverAlert(myColor, 2000);
+      else if (myPCA === 0) showGameOverAlert(myOppColor, 2000);
+    }
+
+    function stopAllTimers() {
+      stopSelTimer(true);
+      stopMoveTimer();
     }
 
     // ════════════════════════════════════════════════════════════
@@ -539,7 +633,7 @@
         el.removeAttribute('class');
       });
       document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
-      stopMoveTimer();
+      stopAllTimers();
     }
 
     function showGameOverAlert(winnerColor, delayMs) {
@@ -780,8 +874,8 @@
 
         if (game.turn !== myColor) {
           // ── Tour adversaire : afficher le mouvement reçu ──
-          // Stopper le timer local (c'est maintenant au tour de l'adversaire)
-          stopMoveTimer();
+          // Stopper tous les timers (c'est maintenant au tour de l'adversaire)
+          stopAllTimers();
           renderPieces(localState.pieces, localState);
 
           var myPCadv = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
@@ -803,7 +897,7 @@
         pendingCaptures = { approach: [], withdrawal: [], moveData: null };
         document.getElementById('guides-group').innerHTML = '';
         document.getElementById('stop-move-btn').classList.remove('active');
-        stopMoveTimer();
+        stopAllTimers();
         applyLocalState();
 
         var myPC  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
@@ -910,6 +1004,8 @@
         selectedSpot = spotID;
         renderPieces(newPieces, localState);
         document.getElementById('guides-group').innerHTML = '';
+        // ── Timer B : démarrer 4s UNIQUEMENT si !canChangePiece (efa nisy move teo aloha) ──
+        startSelTimer();
         return;
       }
 
@@ -921,6 +1017,8 @@
       var md = pendingCaptures.moveData;
       var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
       pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      // ── Arrêter le timer de sélection (le joueur a fait son choix) ──
+      stopSelTimer(true);
       var newPieces  = Object.assign({}, localState.pieces);
       var newVisited = (localState.visited || []).slice();
       doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
@@ -941,7 +1039,7 @@
         selectedSpot   = target;
         canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
-        // ── Démarrer / relancer le timer 2s après chaque déplacement réel ──
+        // ── Timer A : démarrer / relancer 2s après chaque déplacement réel ──
         startMoveTimer();
       } else {
         localState.turn        = myOppColor;
@@ -952,8 +1050,8 @@
         lastBlockedSpot = null;
         canChangePiece  = true;
         document.getElementById('stop-move-btn').classList.remove('active');
-        // ── Fin de tour : stopper le timer ──
-        stopMoveTimer();
+        // ── Fin de tour : stopper tous les timers ──
+        stopAllTimers();
       }
 
       if (canContinue && selectedSpot) {
@@ -982,8 +1080,8 @@
       if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
       var piecesSnapshot = Object.assign({}, localState.pieces);
 
-      // ── Stopper le timer immédiatement ──
-      stopMoveTimer();
+      // ── Stopper tous les timers immédiatement ──
+      stopAllTimers();
 
       movingInProgress = true;
       localState.turn        = myOppColor;
