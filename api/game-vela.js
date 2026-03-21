@@ -158,9 +158,7 @@ async function handleMakeMove(body, res) {
     const canCapture        = firstMover === myColor;
     const effectiveCaptured = canCapture && Array.isArray(capturedSpots) ? capturedSpots : [];
 
-    if (effectiveCaptured.length > 0) {
-      delete pieces[effectiveCaptured[0]];
-    }
+    effectiveCaptured.forEach(s => delete pieces[s]);
 
     const newVisited  = [...visited, origin];
     const wasCapture  = effectiveCaptured.length > 0;
