@@ -394,11 +394,12 @@
     var SESSION_API_URL = '/api/session';
     var GAME_API_URL    = '/api/game-fanorona';
 
+    // ── Firebase client config — remplissez avec vos valeurs ──
     var FIREBASE_CONFIG = {
-      apiKey:      "AIzaSyDMr3plGs8sF56pM_O3jYqfGdWTlJiePW0",
-      databaseURL: "https://tutoriel-ff487-default-rtdb.firebaseio.com",
-      projectId:   "tutoriel-ff487",
-      appId:       "1:128298277579:web:9a7fb395621c448e7f594e",
+      apiKey:      "VOTRE_FIREBASE_API_KEY",
+      databaseURL: "VOTRE_FIREBASE_DATABASE_URL",   // ex: https://votre-projet-default-rtdb.firebaseio.com
+      projectId:   "VOTRE_PROJECT_ID",
+      appId:       "VOTRE_APP_ID",
     };
     firebase.initializeApp(FIREBASE_CONFIG);
 
@@ -579,8 +580,6 @@
     var moveQueue       = [];
     var movingInProgress = false;
 
-    var lastSeenHistKey   = null;
-
     var myDotEl  = null;
     var oppDotEl = null;
 
@@ -674,6 +673,16 @@
     }
 
     //  SECTION 6 — WebSocket temps réel (Firebase RTDB onValue)
+    //
+    //  Bugs corrigés vs version précédente :
+    //  1. "tour adversaire" faisait un update PARTIEL (pieces+turn seulement)
+    //     → certains moves ne s'affichaient pas car localState désynchronisé
+    //  2. Guard "serverPiecesStr === localPiecesStr" pouvait bloquer le rendu
+    //     si Firebase livrait le state final avant que localState soit mis à jour
+    //  3. movingInProgress pouvait rester true trop longtemps et bloquer les updates
+    //
+    //  Fix : copyState(game) SYSTÉMATIQUE → localState toujours en sync avec serveur
+
     var opponentReadyChecked = false;
 
     async function startRealtimeListener() {
@@ -686,7 +695,7 @@
         var game = snapshot.val();
         if (!game) return;
 
-        // ── Vérifier si l'adversaire vient de rejoindre ──
+        // ── Vérifier si l'adversaire vient de rejoindre (loading overlay) ──
         if (!opponentReadyChecked &&
             !document.getElementById('loading-overlay').classList.contains('hidden')) {
           var oppUid = (myUid === game.senderUid) ? game.receiverUid : game.senderUid;
@@ -706,52 +715,45 @@
           }
         }
 
-        // ── Si un mouvement local est en cours ──
+        // ── Filtrage echo de mon propre mouvement en cours ──
         if (movingInProgress) {
-          // Le serveur a confirmé la fin du tour (tour passé à l'adversaire)
           if (game.turn !== myColor) {
+            // Mon move a été confirmé par le serveur → tour passé à l'adversaire
             movingInProgress = false;
-            if (localState) {
-              localState.pieces      = Object.assign({}, game.pieces);
-              localState.turn        = game.turn;
-              localState.movingPiece = game.movingPiece || '';
-            }
-            renderPieces(localState.pieces, localState);
-            updateTurnIndicator(localState.turn);
+            // On continue vers la mise à jour complète ci-dessous
+          } else {
+            // Toujours mon tour (capture multiple en cours) → ignorer cet echo
+            return;
           }
-          // Sinon : capture multiple encore en cours, on ne touche rien
+        }
+
+        // ── SYNC COMPLÈTE : copyState systématique (jamais de patch partiel) ──
+        var prevTurn = localState ? localState.turn : null;
+        localState = copyState(game);
+        updateTurnIndicator(localState.turn);
+
+        if (game.turn !== myColor) {
+          // ── Tour adversaire : afficher le mouvement reçu ──
+          renderPieces(localState.pieces, localState);
+
+          // Vérifier fin de partie (adversaire capture toutes mes pièces)
+          var myPCadv = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+          if (myPCadv === 0) showGameOverAlert(myOppColor, 2000);
           return;
         }
 
-        var serverTurn = game.turn;
+        // ── Notre tour ──
 
-        // ── Tour adversaire : mettre à jour les pièces ──
-        if (serverTurn !== myColor) {
-          if (localState) {
-            localState.pieces = Object.assign({}, game.pieces);
-            localState.turn   = game.turn;
-            renderPieces(localState.pieces, localState);
-          }
+        // Si c'était déjà notre tour et qu'on est en train de sélectionner
+        // (ex : Firebase echo d'un sous-état en cours de capture multiple)
+        // → re-render sans casser la sélection
+        if (prevTurn === myColor && (selectedSpot || localState.movingPiece)) {
+          renderPieces(localState.pieces, localState);
+          if (selectedSpot) renderGuides(selectedSpot, localState);
           return;
         }
 
-        // ── Notre tour : pas d'intervention si on est en train de jouer ──
-        if (selectedSpot || (localState && localState.movingPiece)) return;
-
-        var histColor = game.lastTurnColor || '';
-        var history   = Array.isArray(game.lastTurnHistory) ? game.lastTurnHistory : [];
-        var histKey   = histColor + '|' + history.length + '|' +
-                        (history.length > 0 ? history[history.length - 1].target : '');
-
-        if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
-          lastSeenHistKey = histKey;
-        }
-
-        var serverPiecesStr = JSON.stringify(game.pieces);
-        var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
-        if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
-
-        localState      = copyState(game);
+        // L'adversaire vient de finir son tour → reset UI complet et activation de notre tour
         canChangePiece  = true;
         selectedSpot    = null;
         lastBlockedSpot = null;
@@ -760,6 +762,7 @@
         document.getElementById('stop-move-btn').classList.remove('active');
         applyLocalState();
 
+        // Vérifier fin de partie
         var myPC  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
         var oppPC = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
         if (myPC === 0) {
