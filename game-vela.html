@@ -632,16 +632,20 @@
           }
         }
 
+        // Démarrer Firebase Realtime (remplace le polling)
         connectFirebaseRealtime(myUid, gameId);
+        // Fallback polling pour attente adversaire
         setInterval(checkBothPlayersReady, 2000);
 
       } catch(err) { showError('Nisy olana: ' + err.message); }
     }
 
+    //  PLAYERS BAR (commun)
     function renderPlayersBar(myCol, myUsername, oppUsername) {
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
 
+      // Adversaire → players-bar-top
       var barTop = document.getElementById('players-bar-top');
       barTop.innerHTML =
         '<div class="player-info">' +
