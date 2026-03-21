@@ -3,58 +3,107 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Vela</title>
+  <title>Fanorona-Vela</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 
-  <!-- Firebase SDK (compat) — connexion WebSocket temps réel -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <!-- Firebase App (client SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
     body {
-      font-family: sans-serif;
+      font-family: 'Rajdhani', sans-serif;
       margin: 0; padding: 0;
       background: linear-gradient(135deg, #6e8efb, #a777e3);
       overflow: hidden;
-      height: 100vh;
+      height: 100dvh;
       width: 100vw;
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      justify-content: center;
     }
 
-    /* ── Container principal : 3 colonnes 15/70/15 ── */
-    .container {
+    /* ════════════════════════════════════════
+       PORTRAIT  (#port)
+    ════════════════════════════════════════ */
+    #port {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      width: 100vw;
+      height: 100dvh;
+      padding: 10px 8px env(safe-area-inset-bottom, 8px);
+      gap: 8px;
+    }
+
+    /* ── Rangée joueur (portrait) ── */
+    .port-player-row {
       display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      gap: 8px;
+    }
+
+    /* ── Nom + dot dans un abtn.col (portrait) ── */
+    .port-player-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    /* ── Boutons droite/gauche dans rangée joueur ── */
+    .port-btn-group {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    /* board portrait */
+    #port-board {
+      background-image: url('img/table-game.jpg');
+      background-size: cover;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 480px;
+      aspect-ratio: 440 / 240;
+      display: block;
+      touch-action: none;
+      flex-shrink: 0;
+    }
+
+    /* ════════════════════════════════════════
+       LANDSCAPE  (#land)
+    ════════════════════════════════════════ */
+    #land {
+      display: none;
       flex-direction: row;
       align-items: center;
       justify-content: center;
       width: 100vw;
-      height: 100vh;
+      height: 100dvh;
     }
 
     /* ── Colonnes latérales ── */
-    .left-group,
-    .right-group {
+    .land-col {
       width: 15%;
-      height: 100vh;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 16px;
+      gap: 10px;
       flex-shrink: 0;
-      padding: 12px 8px;
+      padding: 10px 6px;
     }
 
-    /* ── SVG board : 70% du body ── */
-    #game-board {
+    /* ── SVG board landscape : 70% ── */
+    #land-board {
       background-image: url('img/table-game.jpg');
       background-size: cover;
       border-radius: 20px;
@@ -65,47 +114,154 @@
       touch-action: none;
     }
 
-    /* ── Bande joueurs ── */
-    #players-bar-top,
-    #players-bar-bottom {
+    /* ── Orientation switch ── */
+    @media (orientation: portrait)  { #port { display: flex; } #land { display: none; } }
+    @media (orientation: landscape) { #land { display: flex; } #port { display: none; } }
+
+    /* ════════════════════════════════════════
+       COMMUN — abtn
+    ════════════════════════════════════════ */
+    .abtn {
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-size: 1em;
-      font-weight: 700;
       width: 100%;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+      border: 1px solid rgba(255,255,255,0.18);
+      color: rgba(255,255,255,0.85);
+      font-size: 1.35em;
+      cursor: pointer;
+      transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.12s;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.12);
+      font-family: 'Rajdhani', sans-serif;
+    }
+    .abtn:hover {
+      background: linear-gradient(135deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08));
+      border-color: rgba(255,255,255,0.38);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.18);
+      transform: translateY(-1px);
+    }
+    .abtn:active { transform: translateY(0) scale(0.97); box-shadow: 0 1px 4px rgba(0,0,0,0.18); }
+
+    /* icône hover glow */
+    button.abtn:not(.abtn-col):not(.stop-btn):not(.dbtn) i {
+      transition: color 0.18s, text-shadow 0.18s;
+    }
+    button.abtn:not(.abtn-col):not(.stop-btn):not(.dbtn):hover i {
+      color: #a5f3ff;
+      text-shadow: 0 0 10px rgba(165,243,255,0.6);
     }
 
+    /* abtn-col : layout colonne (player card) */
+    .abtn-col {
+      flex-direction: column;
+      height: auto;
+      padding: 10px 12px;
+      align-items: stretch;
+      gap: 8px;
+      font-size: 1em;
+      background: linear-gradient(160deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05));
+      border: 1px solid rgba(255,255,255,0.20);
+    }
+
+    /* ── stop-btn ── */
+    .stop-btn {
+      background: linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.06));
+      border-color: rgba(239,68,68,0.35);
+      color: rgba(255,180,180,0.75);
+      opacity: 0.35;
+      pointer-events: none;
+    }
+    .stop-btn.active {
+      opacity: 1;
+      pointer-events: all;
+      background: linear-gradient(135deg, rgba(239,68,68,0.40), rgba(239,68,68,0.15));
+      border-color: rgba(239,68,68,0.75);
+      color: #ffaaaa;
+      box-shadow: 0 0 14px rgba(239,68,68,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+      transform: scale(1.05);
+    }
+
+    /* ── dbtn (DEMANDE) ── */
+    .dbtn {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.55em;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0 9px;
+      background: linear-gradient(135deg, rgba(124,77,255,0.35), rgba(167,119,227,0.18));
+      border-color: rgba(167,119,227,0.55);
+      color: rgba(220,190,255,0.95);
+      box-shadow: 0 2px 12px rgba(124,77,255,0.25), inset 0 1px 0 rgba(255,255,255,0.10);
+    }
+    .dbtn:hover {
+      background: linear-gradient(135deg, rgba(124,77,255,0.55), rgba(167,119,227,0.30));
+      border-color: rgba(200,160,255,0.75);
+      color: #e8d5ff;
+      box-shadow: 0 4px 20px rgba(124,77,255,0.40), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+
+    /* ── Séparateur ── */
+    .tdiv {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.40), transparent);
+      flex-shrink: 0;
+    }
+
+    /* ── Bloc timer ── */
+    .tblk { display: flex; flex-direction: column; align-items: center; line-height: 1; gap: 1px; }
+    .tlbl { font-size: 0.6em; opacity: 0.55; letter-spacing: 0.08em; text-transform: uppercase; color: white; }
+    .tval { font-size: 1em; font-weight: 700; color: white; font-family: 'Orbitron', sans-serif; }
+
+    /* ── Player info ── */
     .player-info {
       display: flex; align-items: center; gap: 6px;
-      padding: 4px 8px;
-      width: 100%;
-      justify-content: center;
+      width: 100%; justify-content: flex-start;
       overflow: hidden;
     }
-    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
+    .player-dot {
+      width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.6);
+      transition: box-shadow 0.3s;
+    }
     .dot-maintso { background: #22c55e; }
     .dot-mena    { background: #ef4444; }
-    .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
-
-    /* ── Nom du joueur : taille s'adapte selon la longueur ── */
+    .player-dot.active-turn {
+      box-shadow: 0 0 0 3px rgba(255,215,0,0.8), 0 0 12px 4px rgba(255,215,0,0.5);
+    }
     .player-name {
-      /* taille par défaut pour noms courts (≤10 lettres) */
-      font-size: 0.95em;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: clip;
-      max-width: 100%;
-      line-height: 1.2;
-      color: white;
-      font-weight: 600;
-      transition: font-size 0.15s;
+      font-size: 0.92em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 100%; line-height: 1.2; color: white; font-weight: 600;
+      font-family: 'Rajdhani', sans-serif;
     }
 
-    /* ── SVG — pièces & interactions (inchangé) ── */
+    /* ── Ping ── */
+    .pbars { display: flex; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+    .pbar  { width: 6px; border-radius: 3px 3px 2px 2px; background: rgba(255,255,255,0.18); transition: background 0.4s; }
+    .pbar:nth-child(1) { height: 6px;  }
+    .pbar:nth-child(2) { height: 10px; }
+    .pbar:nth-child(3) { height: 15px; }
+    .pbar:nth-child(4) { height: 20px; }
+    .pbar.on.ping-bad   { background: #ef4444; }
+    .pbar.on.ping-mid   { background: #ffd600; }
+    .pbar.on.ping-good  { background: #22c55e; }
+    .pbar.on.ping-great { background: #00e5ff; }
+    .ping-ms {
+      font-size: 0.62em; color: rgba(255,255,255,0.75);
+      font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; line-height: 1;
+    }
+
+    /* ── SVG pièces & interactions ── */
     .grid-line { stroke: darkgray; stroke-width: 2; }
-    .flipped { transform: rotate(180deg); }
+    .flipped   { transform: rotate(180deg); }
     .piece-group { transition: transform 0.22s ease-in-out; }
     .piece-group.no-transition { transition: none; }
     .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
@@ -122,208 +278,60 @@
     .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
     .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
 
-    /* ── Loading ── */
+    /* ── Loading overlay ── */
     #loading-overlay {
       position: fixed; inset: 0;
-      background: rgba(0, 146, 255, 0.45);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       display: flex; justify-content: center; align-items: center;
-      z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
-      flex-direction: column; gap: 16px;
-      transition: opacity 0.4s ease;
+      z-index: 100; color: white;
+      flex-direction: column; gap: 18px;
     }
     #loading-overlay.hidden { display: none; }
     .spinner {
-      width: 36px; height: 36px;
-      border: 4px solid rgba(255,255,255,0.3); border-top-color: white;
-      border-radius: 50%; animation: spin 0.7s linear infinite;
+      width: 40px; height: 40px;
+      border: 4px solid rgba(255,255,255,0.25); border-top-color: white;
+      border-radius: 50%; animation: spin 0.75s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-title   { font-family: 'Orbitron', sans-serif; font-size: 1.1em; font-weight: 700; letter-spacing: 0.05em; }
+    .loading-subtitle{ font-size: 0.85em; opacity: 0.65; margin-top: 4px; font-family: 'Rajdhani', sans-serif; }
 
-    /* ── Erreur : centrée horizontalement et verticalement ── */
+    /* ── Error ── */
     #error-msg {
+      display: none; position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      color: #fef08a; font-size: 1em; text-align: center;
+      z-index: 200; background: rgba(0,0,0,0.6);
+      padding: 14px 28px; border-radius: 12px;
+      font-family: 'Rajdhani', sans-serif;
+    }
+
+    /* ── Phase badge ── */
+    #phase-badge {
       display: none;
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #fef08a;
-      font-size: 1em;
-      text-align: center;
-      z-index: 200;
-      background: rgba(0,0,0,0.5);
-      padding: 12px 24px;
-      border-radius: 10px;
+      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+      background: linear-gradient(135deg, rgba(124,77,255,0.7), rgba(167,119,227,0.5));
+      border: 1px solid rgba(200,160,255,0.6);
+      color: white; font-family: 'Orbitron', sans-serif;
+      font-size: 0.65em; font-weight: 700; letter-spacing: 0.12em;
+      padding: 5px 16px; border-radius: 20px;
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      z-index: 50; white-space: nowrap;
+      box-shadow: 0 2px 12px rgba(124,77,255,0.4);
     }
-
-    /* ── abtn : bouton de base — style gaming glassmorphism ── */
-    .abtn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      height: 42px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
-      border: 1px solid rgba(255,255,255,0.18);
-      color: rgba(255,255,255,0.85);
-      font-size: 1.35em;       /* icône plus grande */
-      cursor: pointer;
-      transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.12s;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      flex-shrink: 0;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.12);
-    }
-    .abtn:hover {
-      background: linear-gradient(135deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08));
-      border-color: rgba(255,255,255,0.38);
-      box-shadow: 0 4px 18px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.18);
-      transform: translateY(-1px);
-    }
-    .abtn:active {
-      transform: translateY(0) scale(0.97);
-      box-shadow: 0 1px 4px rgba(0,0,0,0.18);
-    }
-
-    /* ── boutons icône spéciaux — couleur accent au hover ── */
-    button.abtn:not(.abtn.col):not(#stop-move-btn):not(.dbtn) i {
-      transition: color 0.18s, text-shadow 0.18s;
-    }
-    button.abtn:not(.abtn.col):not(#stop-move-btn):not(.dbtn):hover i {
-      color: #a5f3ff;
-      text-shadow: 0 0 10px rgba(165,243,255,0.6);
-    }
-
-    /* ── stop-move-btn : style danger / stop ── */
-    #stop-move-btn {
-      background: linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.06));
-      border-color: rgba(239,68,68,0.35);
-      color: rgba(255,180,180,0.75);
-      opacity: 0.35;
-      pointer-events: none;
-    }
-    #stop-move-btn.active {
-      opacity: 1;
-      pointer-events: all;
-      background: linear-gradient(135deg, rgba(239,68,68,0.40), rgba(239,68,68,0.15));
-      border-color: rgba(239,68,68,0.75);
-      color: #ffaaaa;
-      box-shadow: 0 0 14px rgba(239,68,68,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
-      transform: scale(1.05);
-    }
-
-    /* ── abtn colonne (player-info + tdiv + tblk) ── */
-    .abtn.col {
-      flex-direction: column;
-      height: auto;
-      padding: 10px 12px;
-      align-items: stretch;
-      gap: 8px;
-      font-size: 1em;
-      background: linear-gradient(160deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05));
-      border: 1px solid rgba(255,255,255,0.20);
-    }
-
-    /* ── Séparateur visible ── */
-    .tdiv {
-      width: 100%;
-      height: 1px;
-      background: linear-gradient(to right, transparent, rgba(255,255,255,0.40), transparent);
-      flex-shrink: 0;
-    }
-
-    /* ── Bloc timer ── */
-    .tblk {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      line-height: 1;
-      gap: 1px;
-    }
-    .tlbl {
-      font-size: 0.6em;
-      opacity: 0.55;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: white;
-    }
-    .tval {
-      font-size: 1em;
-      font-weight: 700;
-      color: white;
-    }
-
-    /* ── dbtn (DEMANDE) — accent color ── */
-    .dbtn {
-      font-family: sans-serif;
-      font-size: 0.6em;
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      padding: 0 9px;
-      background: linear-gradient(135deg, rgba(124,77,255,0.35), rgba(167,119,227,0.18));
-      border-color: rgba(167,119,227,0.55);
-      color: rgba(220,190,255,0.95);
-      box-shadow: 0 2px 12px rgba(124,77,255,0.25), inset 0 1px 0 rgba(255,255,255,0.10);
-    }
-    .dbtn:hover {
-      background: linear-gradient(135deg, rgba(124,77,255,0.55), rgba(167,119,227,0.30));
-      border-color: rgba(200,160,255,0.75);
-      color: #e8d5ff;
-      box-shadow: 0 4px 20px rgba(124,77,255,0.40), inset 0 1px 0 rgba(255,255,255,0.15);
-    }
-
-    /* ── Ping bars ── */
-    .pbars {
-      display: flex;
-      align-items: flex-end;
-      gap: 3px;
-      flex-shrink: 0;
-    }
-    .pbar {
-      width: 6px;
-      border-radius: 3px 3px 2px 2px;
-      background: rgba(255,255,255,0.18);
-      transition: background 0.4s;
-    }
-    /* hauteurs croissantes — proportionnelles à la hauteur du conteneur */
-    .pbar:nth-child(1) { height: 6px;  }
-    .pbar:nth-child(2) { height: 10px; }
-    .pbar:nth-child(3) { height: 15px; }
-    .pbar:nth-child(4) { height: 20px; }
-    /* couleurs selon état ping */
-    .pbar.on.ping-bad   { background: #ef4444; }
-    .pbar.on.ping-mid   { background: #ffd600; }
-    .pbar.on.ping-good  { background: #22c55e; }
-    .pbar.on.ping-great { background: #00e5ff; }
-
-    .ping-ms {
-      font-size: 0.62em;
-      color: rgba(255,255,255,0.75);
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      white-space: nowrap;
-      line-height: 1;
-    }
+    #phase-badge.visible { display: block; }
   </style>
 </head>
 <body>
 
-<div class="container">
-  <div id="loading-overlay">
-    <div class="spinner"></div>
-    <div style="text-align:center;line-height:1.6;">
-      <div style="font-size:1.1em;font-weight:800;letter-spacing:0.03em;">Waiting for opponent</div>
-      <div style="font-size:0.85em;opacity:0.75;font-weight:400;margin-top:4px;">Waiting for opponent</div>
-    </div>
-  </div>
+<!-- ═══════════════ PORTRAIT ═══════════════ -->
+<div id="port">
 
-  <!-- COLONNE GAUCHE -->
-  <div class="left-group">
-    <div class="abtn col">
-      <div id="players-bar-top">
+  <!-- Rangée adversaire -->
+  <div class="port-player-row">
+    <div class="abtn abtn-col port-player-box" style="min-width:0;">
+      <div id="p-opp-bar">
         <div class="player-info">
           <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
           <span class="player-name" style="opacity:0.4;">---</span>
@@ -332,29 +340,25 @@
       <div class="tdiv"></div>
       <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
     </div>
-
-    <!-- Ping widget : row [bars | ms], même height que les autres abtn -->
-    <div class="abtn" style="gap:8px;">
-      <div class="pbars" id="l-ping-bars">
-        <div class="pbar on ping-great"></div>
-        <div class="pbar on ping-great"></div>
-        <div class="pbar on ping-great"></div>
-        <div class="pbar on ping-great"></div>
+    <div class="port-btn-group">
+      <div class="abtn" style="width:42px;gap:6px;flex-direction:column;">
+        <div class="pbars" id="p-ping-bars">
+          <div class="pbar on ping-great"></div><div class="pbar on ping-great"></div>
+          <div class="pbar on ping-great"></div><div class="pbar on ping-great"></div>
+        </div>
+        <span class="ping-ms" id="p-ping-ms">—</span>
       </div>
-      <span class="ping-ms" id="l-ping-ms">— ms</span>
+      <button class="abtn" style="width:42px;"><i class="fas fa-comment-dots"></i></button>
     </div>
-
-    <div class="abtn" id="opp-timer-ls">∞</div>
-    <button class="abtn"><i class="fas fa-comment-dots"></i></button>
   </div>
 
-  <!-- SVG BOARD : 70vw -->
-  <svg id="game-board" viewBox="-20 -20 440 240">
+  <!-- Board portrait -->
+  <svg id="port-board" viewBox="-20 -20 440 240">
     <defs>
-      <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+      <pattern id="p-mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
         <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
       </pattern>
-      <pattern id="maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+      <pattern id="p-maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
         <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
       </pattern>
     </defs>
@@ -365,15 +369,19 @@
       M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
       M300 0 L400 100 M400 0 L200 200
       M0 100 L100 200 M400 100 L300 200"/>
-    <g id="guides-group"></g>
-    <g id="pieces-group"></g>
-    <g id="spots-group"></g>
+    <g id="p-guides-group"></g>
+    <g id="p-pieces-group"></g>
+    <g id="p-spots-group"></g>
   </svg>
 
-  <!-- COLONNE DROITE -->
-  <div class="right-group">
-    <div class="abtn col">
-      <div id="players-bar-bottom">
+  <!-- Rangée moi -->
+  <div class="port-player-row">
+    <div class="port-btn-group">
+      <button id="p-stop-btn" class="abtn stop-btn" style="width:42px;"><i class="fas fa-times"></i></button>
+      <button class="abtn dbtn" style="width:80px;height:42px;">DEMANDE</button>
+    </div>
+    <div class="abtn abtn-col port-player-box" style="min-width:0;">
+      <div id="p-my-bar">
         <div class="player-info">
           <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
           <span class="player-name" style="opacity:0.4;">---</span>
@@ -382,14 +390,86 @@
       <div class="tdiv"></div>
       <div class="tblk"><span class="tlbl">YOU</span><span class="tval">∞</span></div>
     </div>
+  </div>
 
-    <button id="stop-move-btn" class="abtn"><i class="fas fa-times"></i></button>
+</div><!-- /port -->
+
+<!-- ═══════════════ LANDSCAPE ═══════════════ -->
+<div id="land">
+
+  <!-- Colonne gauche -->
+  <div class="land-col">
+    <div class="abtn abtn-col" style="width:100%;">
+      <div id="l-opp-bar">
+        <div class="player-info">
+          <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+          <span class="player-name" style="opacity:0.4;">---</span>
+        </div>
+      </div>
+      <div class="tdiv"></div>
+      <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
+    </div>
+    <div class="abtn" style="gap:8px;">
+      <div class="pbars" id="l-ping-bars">
+        <div class="pbar on ping-great"></div><div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div><div class="pbar on ping-great"></div>
+      </div>
+      <span class="ping-ms" id="l-ping-ms">— ms</span>
+    </div>
+    <button class="abtn"><i class="fas fa-comment-dots"></i></button>
+  </div>
+
+  <!-- Board landscape -->
+  <svg id="land-board" viewBox="-20 -20 440 240">
+    <defs>
+      <pattern id="l-mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+        <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
+      </pattern>
+      <pattern id="l-maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+        <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
+      </pattern>
+    </defs>
+    <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
+      M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
+      M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
+      M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
+      M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
+      M300 0 L400 100 M400 0 L200 200
+      M0 100 L100 200 M400 100 L300 200"/>
+    <g id="l-guides-group"></g>
+    <g id="l-pieces-group"></g>
+    <g id="l-spots-group"></g>
+  </svg>
+
+  <!-- Colonne droite -->
+  <div class="land-col">
+    <div class="abtn abtn-col" style="width:100%;">
+      <div id="l-my-bar">
+        <div class="player-info">
+          <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+          <span class="player-name" style="opacity:0.4;">---</span>
+        </div>
+      </div>
+      <div class="tdiv"></div>
+      <div class="tblk"><span class="tlbl">YOU</span><span class="tval">∞</span></div>
+    </div>
+    <button id="l-stop-btn" class="abtn stop-btn"><i class="fas fa-times"></i></button>
     <button class="abtn dbtn">DEMANDE</button>
     <button class="abtn"><i class="fas fa-sliders-h"></i></button>
   </div>
 
-  <div id="error-msg"></div>
+</div><!-- /land -->
+
+<!-- ═══════════════ OVERLAYS ═══════════════ -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div style="text-align:center;">
+    <div class="loading-title">Fanorona-Vela</div>
+    <div class="loading-subtitle">Miandry ny mpanohitra…</div>
+  </div>
 </div>
+<div id="error-msg"></div>
+<div id="phase-badge">⚔ PHASE 2</div>
 
 <script>
 (function () {
