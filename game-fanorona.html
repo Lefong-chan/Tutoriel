@@ -301,6 +301,17 @@
       line-height: 1;
     }
 
+    /* ── Player timers dans les .tval ── */
+    .tval.ptimer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 8px rgba(255,100,100,0.5);
+      animation: timerPulse 0.8s ease-in-out infinite;
+    }
+    @keyframes timerPulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.55; }
+    }
+
     /* ── Timer countdown dans #opp-timer-ls ── */
     #opp-timer-ls {
       font-size: 1em;
@@ -608,6 +619,8 @@
 
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('auto-resolve stop-move error', e); });
+      callApi(GAME_API_URL, 'update-timers', { uid: myUid, gameId: gameId })
+        .catch(function(e) { console.warn('update-timers error:', e); });
 
       var myPCA  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPCA = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
@@ -618,6 +631,138 @@
     function stopAllTimers() {
       stopSelTimer(true);
       stopMoveTimer();
+    }
+
+    // ════════════════════════════════════════════════════════════
+
+    // ════════════════════════════════════════════════════════════
+    //  PLAYER TIMERS — countdown per player (via Firebase WebSocket)
+    //
+    //  Architecture :
+    //  - Les temps restants (timerMaintso, timerMena) sont stockés
+    //    dans Firebase RTDB et mis à jour à chaque changement de tour
+    //    via l'action "update-timers" du backend.
+    //  - Le client LOCAL fait tourner un RAF local pour afficher le
+    //    décompte en temps réel (interpolation côté client).
+    //  - À chaque push Firebase (onValue), on reçoit les valeurs
+    //    fraîches et on relance le RAF local.
+    //  - Quand le temps tombe à 0 → showGameOverAlert immédiatement.
+    //
+    //  Affichage :
+    //  ≥ 60s  → "4:59"  (pas de secondes sauf si < 60s)
+    //  < 60s  → "59"    (secondes entières)
+    //  < 10s  → "9.9"   (dixièmes de seconde)
+    // ════════════════════════════════════════════════════════════
+    var playerTimerEnabled = false;
+    var myTimerMs          = 0;
+    var oppTimerMs         = 0;
+    var timerRunningColor  = null;   // "maintso" ou "mena" — qui compte
+    var timerLastTickMs    = null;   // Date.now() au moment du dernier push
+    var playerTimerRaf     = null;
+
+    // Éléments DOM (OPP = colonne gauche .tval, MY = colonne droite .tval)
+    var oppTvalEl = null;
+    var myTvalEl  = null;
+
+    function getTimerEls() {
+      if (!oppTvalEl) oppTvalEl = document.querySelector('.left-group  .tval');
+      if (!myTvalEl)  myTvalEl  = document.querySelector('.right-group .tval');
+    }
+
+    function formatPlayerTimer(ms) {
+      if (ms <= 0) return '0';
+      var totalSec = ms / 1000;
+      if (totalSec >= 60) {
+        var m = Math.floor(totalSec / 60);
+        var s = Math.floor(totalSec % 60);
+        return m + ':' + (s < 10 ? '0' : '') + s;
+      } else if (totalSec >= 10) {
+        return Math.floor(totalSec) + 's';
+      } else {
+        return totalSec.toFixed(1) + 's';
+      }
+    }
+
+    function applyTimerUrgency(el, ms) {
+      if (!el) return;
+      if (ms > 0 && ms <= 10000) el.classList.add('ptimer-urgent');
+      else                        el.classList.remove('ptimer-urgent');
+    }
+
+    function renderPlayerTimers(myMs, oppMs) {
+      getTimerEls();
+      if (myTvalEl)  { myTvalEl.textContent  = formatPlayerTimer(myMs);  applyTimerUrgency(myTvalEl,  myMs); }
+      if (oppTvalEl) { oppTvalEl.textContent = formatPlayerTimer(oppMs); applyTimerUrgency(oppTvalEl, oppMs); }
+    }
+
+    function stopPlayerTimerRaf() {
+      if (playerTimerRaf) { cancelAnimationFrame(playerTimerRaf); playerTimerRaf = null; }
+    }
+
+    function startPlayerTimerRaf() {
+      stopPlayerTimerRaf();
+      if (!playerTimerEnabled) return;
+
+      function tick() {
+        if (!playerTimerEnabled) return;
+        var now     = Date.now();
+        var elapsed = timerLastTickMs ? Math.max(0, now - timerLastTickMs) : 0;
+
+        var curMyMs  = myTimerMs;
+        var curOppMs = oppTimerMs;
+
+        // Interpoler localement le timer du joueur qui a le tour
+        if (timerRunningColor) {
+          if (timerRunningColor === myColor) {
+            curMyMs  = Math.max(0, myTimerMs  - elapsed);
+          } else {
+            curOppMs = Math.max(0, oppTimerMs - elapsed);
+          }
+        }
+
+        renderPlayerTimers(curMyMs, curOppMs);
+
+        // Vérifier expiration locale (le serveur confirmera via Firebase)
+        if (timerRunningColor === myColor && curMyMs <= 0) {
+          stopPlayerTimerRaf();
+          if (!gameOverTriggered) showGameOverAlert(myOppColor, 0);
+          return;
+        }
+        if (timerRunningColor === myOppColor && curOppMs <= 0) {
+          stopPlayerTimerRaf();
+          if (!gameOverTriggered) showGameOverAlert(myColor, 0);
+          return;
+        }
+
+        playerTimerRaf = requestAnimationFrame(tick);
+      }
+      playerTimerRaf = requestAnimationFrame(tick);
+    }
+
+    // Appelé à chaque push Firebase — met à jour les valeurs et relance le RAF
+    function onPlayerTimersUpdate(game) {
+      if (!game.minutes) return; // pas de timer configuré
+      playerTimerEnabled = true;
+      getTimerEls();
+
+      // Identifier mes couleurs dans le game
+      var myMs  = myColor === 'maintso' ? (game.timerMaintso || 0) : (game.timerMena || 0);
+      var oppMs = myColor === 'maintso' ? (game.timerMena || 0)    : (game.timerMaintso || 0);
+
+      myTimerMs         = myMs;
+      oppTimerMs        = oppMs;
+      timerRunningColor = game.timerRunning || null;
+      timerLastTickMs   = game.timerLastTick || Date.now();
+
+      renderPlayerTimers(myMs, oppMs);
+      startPlayerTimerRaf();
+
+      // Vérifier expiration immédiate (cas où le serveur signale déjà 0)
+      if (myMs <= 0 && !gameOverTriggered) {
+        showGameOverAlert(myOppColor, 0);
+      } else if (oppMs <= 0 && !gameOverTriggered) {
+        showGameOverAlert(myColor, 0);
+      }
     }
 
     // ════════════════════════════════════════════════════════════
@@ -634,6 +779,7 @@
       });
       document.querySelectorAll('.cross-line').forEach(function(el) { el.remove(); });
       stopAllTimers();
+      stopPlayerTimerRaf();
     }
 
     function showGameOverAlert(winnerColor, delayMs) {
@@ -872,6 +1018,9 @@
         localState = copyState(game);
         updateTurnIndicator(localState.turn);
 
+        // ── Mettre à jour les timers joueur depuis Firebase ──
+        onPlayerTimersUpdate(game);
+
         if (game.turn !== myColor) {
           // ── Tour adversaire : afficher le mouvement reçu ──
           // Stopper tous les timers (c'est maintenant au tour de l'adversaire)
@@ -1065,6 +1214,12 @@
 
       sendMoveToBackend(origin, target, capturedSpots, dir);
 
+      // ── Mettre à jour les timers backend lors d'un changement de tour ──
+      if (!canContinue) {
+        callApi(GAME_API_URL, 'update-timers', { uid: myUid, gameId: gameId })
+          .catch(function(e) { console.warn('update-timers error:', e); });
+      }
+
       if (!canContinue) {
         var myPieceCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
         var oppPieceCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
@@ -1098,6 +1253,8 @@
 
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('stop-move error', e); });
+      callApi(GAME_API_URL, 'update-timers', { uid: myUid, gameId: gameId })
+        .catch(function(e) { console.warn('update-timers error:', e); });
 
       var myPieceCountS  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPieceCountS = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
