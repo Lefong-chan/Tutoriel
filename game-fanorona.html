@@ -619,8 +619,6 @@
 
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('auto-resolve stop-move error', e); });
-      callApi(GAME_API_URL, 'update-timers', { uid: myUid, gameId: gameId })
-        .catch(function(e) { console.warn('update-timers error:', e); });
 
       var myPCA  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPCA = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
@@ -745,28 +743,37 @@
     }
 
     // Appelé à chaque push Firebase — met à jour les valeurs et relance le RAF
+    // ── Invariant : timerRunning = couleur du joueur EN COURS (qui a le droit de jouer)
+    //   timerRunning === myColor    → c'est MON tour    → MON chrono tourne
+    //   timerRunning === myOppColor → c'est SON tour    → SON chrono tourne
     function onPlayerTimersUpdate(game) {
       if (!game.minutes) return; // pas de timer configuré
       playerTimerEnabled = true;
       getTimerEls();
 
-      // Identifier mes couleurs dans le game
+      // timerMaintso/timerMena = temps restant pour chaque couleur (valeur serveur)
       var myMs  = myColor === 'maintso' ? (game.timerMaintso || 0) : (game.timerMena || 0);
-      var oppMs = myColor === 'maintso' ? (game.timerMena || 0)    : (game.timerMaintso || 0);
+      var oppMs = myColor === 'maintso' ? (game.timerMena    || 0) : (game.timerMaintso || 0);
 
       myTimerMs         = myMs;
       oppTimerMs        = oppMs;
-      timerRunningColor = game.timerRunning || null;
+      timerRunningColor = game.timerRunning || null;   // qui a le tour maintenant
       timerLastTickMs   = game.timerLastTick || Date.now();
 
+      // Rendu immédiat des valeurs serveur
       renderPlayerTimers(myMs, oppMs);
+      // Lancer le RAF d'interpolation locale
       startPlayerTimerRaf();
 
-      // Vérifier expiration immédiate : izay lany fotoana no resy
-      if (myMs <= 0 && !gameOverTriggered) {
-        showGameOverAlert(myOppColor, 0); // adversaire mandresy (izaho lany)
-      } else if (oppMs <= 0 && !gameOverTriggered) {
-        showGameOverAlert(myColor, 0); // izaho mandresy (adversaire lany)
+      // Vérification d'expiration immédiate (serveur déjà à 0)
+      if (!gameOverTriggered) {
+        if (myMs <= 0 && timerRunningColor === myColor) {
+          // Mon temps est épuisé : je perds
+          showGameOverAlert(myOppColor, 0);
+        } else if (oppMs <= 0 && timerRunningColor === myOppColor) {
+          // Le temps de l'adversaire est épuisé : je gagne
+          showGameOverAlert(myColor, 0);
+        }
       }
     }
 
@@ -1218,22 +1225,6 @@
       renderPieces(localState.pieces, localState);
 
       sendMoveToBackend(origin, target, capturedSpots, dir);
-
-      // ── Mettre à jour les timers backend lors d'un changement de tour ──
-      if (!canContinue) {
-        callApi(GAME_API_URL, 'update-timers', { uid: myUid, gameId: gameId })
-          .catch(function(e) { console.warn('update-timers error:', e); });
-      }
-
-      if (!canContinue) {
-        var myPieceCount  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-        var oppPieceCount = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        if (oppPieceCount === 0) {
-          showGameOverAlert(myColor, 2000);
-        } else if (myPieceCount === 0) {
-          showGameOverAlert(myOppColor, 2000);
-        }
-      }
     }
 
     function handleStopBtn() {
@@ -1258,8 +1249,6 @@
 
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('stop-move error', e); });
-      callApi(GAME_API_URL, 'update-timers', { uid: myUid, gameId: gameId })
-        .catch(function(e) { console.warn('update-timers error:', e); });
 
       var myPieceCountS  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPieceCountS = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
