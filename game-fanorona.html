@@ -729,7 +729,8 @@
 
       function playNextStep() {
         if (stepIndex >= history.length) {
-          // Tous les steps rejoués : basculer sur l'état final du serveur
+          // Vita ny replay : reset total ny SVG + piecesOnBoard
+          // mba tsy hisian'ny mifamadika rehefa applyLocalState
           oppReplayActive = false;
           localState      = finalState;
           canChangePiece  = true;
@@ -738,6 +739,8 @@
           pendingCaptures = { approach: [], withdrawal: [], moveData: null };
           document.getElementById('guides-group').innerHTML = '';
           document.getElementById('stop-move-btn').classList.remove('active');
+          document.getElementById('pieces-group').innerHTML = '';
+          piecesOnBoard = {};
           applyLocalState();
           checkGameOver();
           return;
@@ -754,11 +757,14 @@
           step.capturedSpots.forEach(function(s) { delete workingPieces[s]; });
         }
 
-        // Mettre à jour l'affichage avec cet état intermédiaire
-        // On crée un état temporaire qui garde le tour adversaire pour le visuel
+        // Reset SVG + piecesOnBoard à chaque step : ajanona eo fotsiny ny piece,
+        // tsy misy animation CSS mamerina azy any amin'ny toerana taloha (mifamadika)
+        document.getElementById('pieces-group').innerHTML = '';
+        piecesOnBoard = {};
+
         var tempState = {
           pieces:      Object.assign({}, workingPieces),
-          turn:        myOppColor,   // encore le tour adversaire visuellement
+          turn:        myOppColor,
           movingPiece: step.target,
           visited:     [],
           lastDir:     ''
@@ -766,7 +772,6 @@
         updateTurnIndicator(myOppColor);
         renderPieces(tempState.pieces, tempState);
 
-        // Attendre avant le prochain step
         setTimeout(playNextStep, OPP_MOVE_DELAY);
       }
 
