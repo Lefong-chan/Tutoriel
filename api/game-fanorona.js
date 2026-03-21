@@ -44,6 +44,7 @@ export default async function handler(req, res) {
       case "stop-move":          return await handleStopMove(payload, res);
       case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
       case "update-timers":      return await handleUpdateTimers(payload, res);
+      case "declare-winner":     return await handleDeclareWinner(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -203,6 +204,36 @@ async function handleStopMove(body, res) {
   if (stopWinner) stopPayload.winner = stopWinner;
   await gameRef.update(stopPayload);
   return res.status(200).json({ success: true, winner: stopWinner || null });
+}
+
+// ── Declare winner : appelé par le client quand le timer expire côté client
+// Écrit game.winner dans RTDB → les deux joueurs reçoivent le push Firebase
+async function handleDeclareWinner(body, res) {
+  const { uid, gameId, winner } = body;
+  if (!uid || !gameId || !winner) return res.status(400).json({ error: "uid, gameId, winner required." });
+  if (winner !== "maintso" && winner !== "mena") return res.status(400).json({ error: "Invalid winner." });
+
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  // Idempotent : si winner déjà écrit, ne pas écraser
+  if (game.winner) return res.status(200).json({ success: true, winner: game.winner });
+
+  // Vérifier que le timer du perdant est bien à 0 (sécurité, tolérance 2s pour la latence)
+  if (game.minutes) {
+    const loser      = winner === "maintso" ? "mena" : "maintso";
+    const loserMs    = loser === "maintso" ? (game.timerMaintso || 0) : (game.timerMena || 0);
+    const lastTick   = game.timerLastTick || 0;
+    const elapsed    = Math.max(0, Date.now() - lastTick);
+    const actualLeft = Math.max(0, loserMs - elapsed);
+    if (actualLeft > 2000) return res.status(400).json({ error: "Timer not expired yet." });
+  }
+
+  await gameRef.update({ winner });
+  return res.status(200).json({ success: true, winner });
 }
 
 // ── Timer update : met à jour les timers dans RTDB après chaque changement de tour ──
