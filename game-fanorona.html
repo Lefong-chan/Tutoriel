@@ -83,7 +83,6 @@
 
     /* ── Nom du joueur : taille s'adapte selon la longueur ── */
     .player-name {
-      /* taille par défaut pour noms courts (≤10 lettres) */
       font-size: 0.95em;
       white-space: nowrap;
       overflow: hidden;
@@ -160,7 +159,7 @@
       background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
       border: 1px solid rgba(255,255,255,0.18);
       color: rgba(255,255,255,0.85);
-      font-size: 1.35em;       /* icône plus grande */
+      font-size: 1.35em;
       cursor: pointer;
       transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.12s;
       backdrop-filter: blur(12px);
@@ -280,12 +279,10 @@
       background: rgba(255,255,255,0.18);
       transition: background 0.4s;
     }
-    /* hauteurs croissantes — proportionnelles à la hauteur du conteneur */
     .pbar:nth-child(1) { height: 6px;  }
     .pbar:nth-child(2) { height: 10px; }
     .pbar:nth-child(3) { height: 15px; }
     .pbar:nth-child(4) { height: 20px; }
-    /* couleurs selon état ping */
     .pbar.on.ping-bad   { background: #ef4444; }
     .pbar.on.ping-mid   { background: #ffd600; }
     .pbar.on.ping-good  { background: #22c55e; }
@@ -325,7 +322,7 @@
       <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
     </div>
 
-    <!-- Ping widget : row [bars | ms], même height que les autres abtn -->
+    <!-- Ping widget -->
     <div class="abtn" style="gap:8px;">
       <div class="pbars" id="l-ping-bars">
         <div class="pbar on ping-great"></div>
@@ -391,6 +388,7 @@
     var GAME_API_URL    = '/api/game-fanorona';
     var POLL_INTERVAL   = 1500;
     var RECONCILE_DELAY = 5000;
+    var REPLAY_STEP_MS  = 300; // délai entre chaque étape du replay
 
     function showError(msg) {
       document.getElementById('error-msg').textContent = msg;
@@ -401,7 +399,6 @@
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    // ── Taille du nom selon longueur (max 10 lettres lisibles) ──
     function updateNameFontSize(spanEl, name) {
       var len = name.length;
       var size;
@@ -412,37 +409,28 @@
       spanEl.style.fontSize = size;
     }
 
-    // ── Ping bars ──
     function updatePing(ms) {
       var barsEl = document.getElementById('l-ping-bars');
       var msEl   = document.getElementById('l-ping-ms');
       if (!barsEl || !msEl) return;
-
       var bars = barsEl.querySelectorAll('.pbar');
-
-      // Niveau 1-4 selon la valeur
       var level, colorClass;
       if (ms < 60) {
-        level = 4; colorClass = 'ping-great';   // bleu cyan — excellente
+        level = 4; colorClass = 'ping-great';
       } else if (ms < 150) {
-        level = 3; colorClass = 'ping-good';    // vert — bonne
+        level = 3; colorClass = 'ping-good';
       } else if (ms < 300) {
-        level = 2; colorClass = 'ping-mid';     // jaune — moyenne
+        level = 2; colorClass = 'ping-mid';
       } else {
-        level = 1; colorClass = 'ping-bad';     // rouge — mauvaise
+        level = 1; colorClass = 'ping-bad';
       }
-
       bars.forEach(function(bar, i) {
         bar.classList.remove('on', 'ping-bad', 'ping-mid', 'ping-good', 'ping-great');
-        if (i < level) {
-          bar.classList.add('on', colorClass);
-        }
+        if (i < level) bar.classList.add('on', colorClass);
       });
-
       msEl.textContent = ms + ' ms';
     }
 
-    // Mesure ping réelle via timing HEAD
     function measurePing() {
       var t0 = Date.now();
       fetch('/api/session', { method: 'HEAD' })
@@ -468,11 +456,8 @@
     function showGameOverAlert(winnerColor, delayMs) {
       if (gameOverTriggered) return;
       gameOverTriggered = true;
-
       disableBoardCompletely();
-
       var delay = (typeof delayMs === 'number') ? delayMs : 2000;
-
       setTimeout(function() {
         var overlay = document.createElement('div');
         overlay.style.cssText = [
@@ -480,21 +465,17 @@
           'display:flex','justify-content:center','align-items:center',
           'z-index:9999','flex-direction:column','gap:0'
         ].join(';');
-
         var box = document.createElement('div');
         box.style.cssText = [
           'background:#1a3a5c','border-radius:18px','padding:36px 40px',
           'text-align:center','color:white','font-family:sans-serif',
           'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
         ].join(';');
-
         var iWon  = (winnerColor === myColor);
         var myMsg = iWon ? '&#127942; You win!' : '&#128532; You lose!';
-
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
         title.textContent = myMsg;
-
         var btn = document.createElement('button');
         btn.textContent = 'OK';
         btn.style.cssText = [
@@ -503,10 +484,7 @@
           'font-size:1.1em','font-weight:700','cursor:pointer',
           'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
         ].join(';');
-        btn.onclick = function() {
-          window.location.href = 'dashboard.html';
-        };
-
+        btn.onclick = function() { window.location.href = 'dashboard.html'; };
         box.appendChild(title);
         box.appendChild(btn);
         overlay.appendChild(box);
@@ -566,13 +544,13 @@
 
     var piecesOnBoard = {};
 
-    var moveQueue        = [];
     var movingInProgress = false;
 
-    // Clé du dernier replay déjà exécuté — évite de rejouer deux fois le même tour
-    var lastReplayedTurnKey = null;
-    // Vrai pendant qu'un replay adversaire est en cours — bloque le poll
-    var replayInProgress    = false;
+    // ── Replay ──
+    // lastSeenHistKey : clé du dernier replay déjà joué
+    var lastSeenHistKey = null;
+    // replayRunning : true pendant qu'un replay est en cours (bloque le poll)
+    var replayRunning = false;
 
     var reconcileTimer = null;
 
@@ -580,7 +558,6 @@
     var oppDotEl = null;
 
     //  SECTION 4 — Init
-
     var params   = new URLSearchParams(window.location.search);
     var gameId_p = params.get('gameId');
     var color_p  = params.get('color');
@@ -617,6 +594,11 @@
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
           localState = copyState(d.game);
+          // Marquer le histKey initial pour ne pas rejouer l'historique de départ
+          var initHistory = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
+          var initColor   = d.game.lastTurnColor || '';
+          lastSeenHistKey = makeHistKey(initColor, initHistory);
+
           if (data.opponentUsername && data.opponentUsername !== '???') {
             document.getElementById('loading-overlay').classList.add('hidden');
           }
@@ -630,7 +612,6 @@
     }
 
     //  SECTION 5 — Players bar
-
     function renderPlayersBar(myCol, myUsername, oppUsername) {
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
@@ -652,7 +633,6 @@
       myDotEl  = document.getElementById('my-dot');
       oppDotEl = document.getElementById('opp-dot');
 
-      // Ajuster la taille des noms
       updateNameFontSize(document.getElementById('opp-name-span'), oppUsername);
       updateNameFontSize(document.getElementById('my-name-span'),  myUsername);
     }
@@ -666,165 +646,178 @@
       }
     }
 
-    //  SECTION 6 — Polling + Replay adversaire
-    async function pollAdversaire() {
-      try {
-        // Bloqué pendant un replay ou un mouvement local en cours
-        if (replayInProgress || movingInProgress) return;
-
-        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
-        if (!d.success) return;
-
-        var serverTurn  = d.game.turn;
-        var histColor   = d.game.lastTurnColor || '';
-        var history     = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
-
-        // Clé unique identifiant ce tour adversaire (couleur + dernier target)
-        var turnKey = history.length > 0
-          ? (histColor + '|' + history[history.length - 1].target)
-          : null;
-
-        // ── Cas 1 : c'est encore le tour de l'adversaire (il n'a pas fini) ──
-        // On affiche juste son état courant sans replay
-        if (serverTurn !== myColor) {
-          if (localState) {
-            localState.pieces = Object.assign({}, d.game.pieces);
-            localState.turn   = d.game.turn;
-            renderPieces(localState.pieces, localState);
-          }
-          return;
-        }
-
-        // ── Cas 2 : c'est notre tour ──
-        // Vérifie si l'adversaire vient de finir un nouveau tour avec un historique à rejouer
-        if (histColor === myOppColor && history.length > 0 && turnKey && turnKey !== lastReplayedTurnKey) {
-          // Marque ce tour comme rejoué AVANT de lancer le replay (évite double-replay)
-          lastReplayedTurnKey = turnKey;
-
-          // Lance le replay en partant du state avant les mouvements adversaires
-          // On reconstruit le state de départ depuis les pièces actuelles du serveur
-          // en "annulant" les captures pour partir d'un état cohérent avec history[0].origin
-          var finalServerState = copyState(d.game);
-          startOppReplay(history, finalServerState);
-          return;
-        }
-
-        // ── Cas 3 : tour déjà connu (rien de nouveau à rejouer) ──
-        if (selectedSpot || (localState && localState.movingPiece)) return;
-
-        var serverPiecesStr = JSON.stringify(d.game.pieces);
-        var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
-        if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
-
-        localState      = finalApplyState(d.game);
-      } catch(e) { console.warn('poll error', e); }
+    //  SECTION 6 — Polling adversaire + Replay
+    function makeHistKey(color, history) {
+      var last = history.length > 0 ? history[history.length - 1].target : '';
+      return color + '|' + history.length + '|' + last;
     }
 
-    // ── Applique le state final et déclenche les vérifications ──
-    function finalApplyState(game) {
-      var st = copyState(game);
-      localState      = st;
-      canChangePiece  = true;
-      selectedSpot    = null;
-      lastBlockedSpot = null;
-      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      document.getElementById('guides-group').innerHTML = '';
-      document.getElementById('stop-move-btn').classList.remove('active');
-      applyLocalState();
+    // Rejoue step par step la liste d'étapes de l'adversaire sur un état pièces donné
+    // steps = tableau de { origin, target, capturedSpots }
+    // startPieces = état des pièces AVANT le premier step (état de départ du turn)
+    // oppColor = couleur de l'adversaire
+    // onDone = callback appelé quand le replay est terminé
+    function playReplaySteps(steps, startPieces, oppColor, onDone) {
+      replayRunning = true;
 
-      var myC  = Object.keys(st.pieces).filter(function(s){ return st.pieces[s]===myColor; }).length;
-      var oppC = Object.keys(st.pieces).filter(function(s){ return st.pieces[s]===myOppColor; }).length;
-      if (myC  === 0) showGameOverAlert(myOppColor, 1500);
-      else if (oppC === 0) showGameOverAlert(myColor, 1500);
-      return st;
-    }
+      // Reconstruire l'état des pièces au début du turn adverse
+      // (avant toute capture de ce tour — on le reconstruit depuis steps)
+      // On commence par l'état server actuel APRÈS le tour complet,
+      // et on rejoue visuellement step by step.
 
-    // ── Replay des hetsika adversaire, étape par étape (300ms/step) ──
-    // history = [{origin, target, capturedSpots}]  (dans l'ordre chronologique)
-    // finalState = state final calculé par le serveur (appliqué à la fin)
-    function startOppReplay(history, finalState) {
-      if (!history || history.length === 0) {
-        finalApplyState(finalState);
-        return;
-      }
-
-      replayInProgress = true;
-
-      // ── Reconstituer l'état AVANT le tour adversaire ──
-      // On part du state final (serveur) et on "annule" les steps en sens inverse
-      // pour obtenir les pièces d'avant le premier mouvement.
-      var prePieces = Object.assign({}, finalState.pieces);
-
-      // Annule les steps de la fin vers le début
-      for (var i = history.length - 1; i >= 0; i--) {
-        var s   = history[i];
-        var org = s.origin;
-        var tgt = s.target;
-        var cap = Array.isArray(s.capturedSpots) ? s.capturedSpots : [];
-
-        // Remet la pièce à son origine
-        prePieces[org] = myOppColor;
-        delete prePieces[tgt];
-
-        // Remet les pièces capturées (elles étaient de myColor)
-        cap.forEach(function(spot) { prePieces[spot] = myColor; });
-      }
-
-      // prePieces est maintenant l'état avant que l'adversaire joue
-      var replayPieces = prePieces;
-
-      // Verrou board pendant replay
-      var board = document.getElementById('game-board');
-      if (board) board.classList.add('lock-board');
-
+      // Pour le replay : on repart de startPieces et on applique step par step
+      var replayPieces = Object.assign({}, startPieces);
       var stepIndex = 0;
 
-      function playStep() {
-        if (stepIndex >= history.length) {
-          // Tous les steps joués — applique l'état final officiel du serveur
-          replayInProgress = false;
-          finalApplyState(finalState);
+      function doStep() {
+        if (stepIndex >= steps.length) {
+          // Replay terminé
+          replayRunning = false;
+          if (onDone) onDone();
           return;
         }
-
-        var step          = history[stepIndex];
+        var step = steps[stepIndex];
         stepIndex++;
 
-        var origin        = step.origin;
-        var target        = step.target;
-        var capturedSpots = Array.isArray(step.capturedSpots) ? step.capturedSpots : [];
+        // Appliquer le mouvement
+        delete replayPieces[step.origin];
+        replayPieces[step.target] = oppColor;
+        if (Array.isArray(step.capturedSpots)) {
+          step.capturedSpots.forEach(function(s) { delete replayPieces[s]; });
+        }
 
-        // Applique ce step sur replayPieces
-        delete replayPieces[origin];
-        replayPieces[target] = myOppColor;
-        capturedSpots.forEach(function(s) { delete replayPieces[s]; });
-
-        // Rendu — state neutre (aucun joueur actif, juste affichage)
-        var replayState = {
+        // Afficher l'état intermédiaire : bloquer le board, afficher les pièces
+        var displayState = {
           pieces:      Object.assign({}, replayPieces),
-          turn:        myOppColor,
+          turn:        myOppColor, // pendant le replay c'est encore le tour adverse
           movingPiece: '',
           visited:     [],
           lastDir:     ''
         };
-        renderPieces(replayState.pieces, replayState);
+        renderPieces(displayState.pieces, displayState);
 
-        // Prochain step dans 300ms
-        setTimeout(playStep, 300);
+        setTimeout(doStep, REPLAY_STEP_MS);
       }
 
-      // Affiche l'état pré-replay immédiatement (sans délai) pour éviter tout flash
-      var preState = {
-        pieces:      Object.assign({}, replayPieces),
-        turn:        myOppColor,
-        movingPiece: '',
-        visited:     [],
-        lastDir:     ''
-      };
-      renderPieces(preState.pieces, preState);
+      doStep();
+    }
 
-      // Commence les steps après 150ms
-      setTimeout(playStep, 150);
+    // Reconstruit l'état AVANT le tour adverse à partir des steps (en inversant les captures)
+    function rebuildPreTurnPieces(finalPieces, steps, oppColor) {
+      // Partir de finalPieces (état après tout le tour) et défaire les steps en sens inverse
+      var pre = Object.assign({}, finalPieces);
+      for (var i = steps.length - 1; i >= 0; i--) {
+        var step = steps[i];
+        // Remettre les pièces capturées
+        if (Array.isArray(step.capturedSpots)) {
+          var enemyColor = oppColor === 'maintso' ? 'mena' : 'maintso';
+          step.capturedSpots.forEach(function(s) { pre[s] = enemyColor; });
+        }
+        // Remettre la pièce à son origine
+        delete pre[step.target];
+        pre[step.origin] = oppColor;
+      }
+      return pre;
+    }
+
+    async function pollAdversaire() {
+      // Ne pas poller si un replay est en cours, ou si le joueur est en train de jouer
+      if (replayRunning) return;
+      if (movingInProgress) return;
+
+      try {
+        var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
+        if (!d.success) return;
+
+        var serverTurn = d.game.turn;
+
+        // ── Cas : c'est le tour de l'adversaire (il est en train de jouer, multi-step) ──
+        // Ne rien montrer tant qu'il n'a pas terminé son tour complet
+        if (serverTurn === myOppColor) {
+          // Le serveur indique que c'est encore le tour adverse → on attend sans rien afficher
+          return;
+        }
+
+        // ── Cas : le tour est revenu à moi ──
+        // Vérifier si l'adversaire vient de terminer un tour qu'on doit rejouer
+        var histColor   = d.game.lastTurnColor || '';
+        var history     = Array.isArray(d.game.lastTurnHistory) ? d.game.lastTurnHistory : [];
+        var histKey     = makeHistKey(histColor, history);
+
+        // Si on est en plein milieu de son propre tour (selectedSpot ou movingPiece), ne pas toucher
+        if (selectedSpot || (localState && localState.movingPiece)) {
+          // Cas : le serveur dit que c'est mon tour, et je jouais encore
+          // Juste mettre à jour si les pièces diffèrent sans replay
+          if (serverTurn === myColor) {
+            var serverPiecesStr = JSON.stringify(d.game.pieces);
+            var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
+            if (serverPiecesStr !== localPiecesStr) {
+              // Réconciliation silencieuse seulement si pas de selectedSpot actif
+              if (!selectedSpot && !localState.movingPiece) {
+                localState = copyState(d.game);
+                applyLocalState();
+              }
+            }
+          }
+          return;
+        }
+
+        // ── Nouveau tour adverse à rejouer ──
+        if (histColor === myOppColor && history.length > 0 && histKey !== lastSeenHistKey) {
+          lastSeenHistKey = histKey;
+
+          // Reconstruire l'état des pièces AVANT le tour adverse (pour l'animation)
+          var preTurnPieces = rebuildPreTurnPieces(d.game.pieces, history, myOppColor);
+
+          // Mettre le localState sur l'état final du serveur (correct)
+          localState = copyState(d.game);
+
+          // Lancer le replay visuel depuis l'état pré-tour
+          playReplaySteps(history, preTurnPieces, myOppColor, function() {
+            // Replay terminé → appliquer l'état final et rendre le board jouable
+            canChangePiece  = true;
+            selectedSpot    = null;
+            lastBlockedSpot = null;
+            pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+            document.getElementById('guides-group').innerHTML = '';
+            document.getElementById('stop-move-btn').classList.remove('active');
+            applyLocalState();
+
+            // Vérifier game over après le replay
+            var myPc  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+            var oppPc = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+            if (myPc === 0) {
+              showGameOverAlert(myOppColor, 500);
+            } else if (oppPc === 0) {
+              showGameOverAlert(myColor, 500);
+            }
+          });
+          return;
+        }
+
+        // ── Cas normal : synchronisation silencieuse si tout est déjà à jour ──
+        var serverPiecesStr = JSON.stringify(d.game.pieces);
+        var localPiecesStr  = localState ? JSON.stringify(localState.pieces) : '';
+        if (serverPiecesStr === localPiecesStr && localState && localState.turn === myColor) return;
+
+        localState      = copyState(d.game);
+        canChangePiece  = true;
+        selectedSpot    = null;
+        lastBlockedSpot = null;
+        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+        document.getElementById('guides-group').innerHTML = '';
+        document.getElementById('stop-move-btn').classList.remove('active');
+        applyLocalState();
+
+        var myPieceCountPoll  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPieceCountPoll = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        if (myPieceCountPoll === 0) {
+          showGameOverAlert(myOppColor, 2000);
+        } else if (oppPieceCountPoll === 0) {
+          showGameOverAlert(myColor, 2000);
+        }
+
+      } catch(e) { console.warn('poll error', e); }
     }
 
     function copyState(game) {
@@ -871,6 +864,7 @@
 
     function handleSpotClick(spotID) {
       if (!localState || localState.turn !== myColor) return;
+      if (replayRunning) return; // bloquer pendant le replay
       if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
 
       var pieces = localState.pieces;
@@ -1038,40 +1032,18 @@
     }
 
     async function doReconcile() {
+      if (replayRunning) return; // ne pas réconcilier pendant un replay
       try {
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (!d.success) return;
 
-        // Seulement maintenant on libère movingInProgress
         movingInProgress = false;
 
         var serverTurn = d.game.turn;
 
         if (serverTurn !== myColor) {
-          // Tour adversaire confirmé par le server — on accepte le state serveur
-          // MAIS on ne ré-affiche QUE si notre localState dit aussi que c'est son tour
-          // (évite d'écraser notre propre optimistic UI si on vient juste d'envoyer notre coup)
-          if (localState && localState.turn !== myColor) {
-            // Déjà dans l'état adversaire — simple sync silencieux
-            localState.pieces = Object.assign({}, d.game.pieces);
-          }
-          return;
-        }
-
-        // C'est notre tour selon le server
-        var serverMoving = d.game.movingPiece || '';
-        if (serverMoving) {
-          // Encore en train de bouger (multi-capture côté server)
-          selectedSpot   = localState ? (localState.movingPiece || serverMoving) : serverMoving;
-          canChangePiece = false;
-          if (localState) localState.movingPiece = selectedSpot;
-          document.getElementById('stop-move-btn').classList.add('active');
-          if (selectedSpot && localState) renderGuides(selectedSpot, localState);
-          if (localState) renderPieces(localState.pieces, localState);
-          updateTurnIndicator(myColor);
-        } else {
-          // Tour propre — on peut maintenant appliquer le state server en autoritaire
-          localState      = copyState(d.game);
+          if (localState.turn !== myColor) return;
+          localState = copyState(d.game);
           selectedSpot    = null;
           lastBlockedSpot = null;
           canChangePiece  = true;
@@ -1079,6 +1051,17 @@
           document.getElementById('guides-group').innerHTML = '';
           document.getElementById('stop-move-btn').classList.remove('active');
           applyLocalState();
+        } else {
+          var serverMoving = d.game.movingPiece || '';
+          if (serverMoving) {
+            selectedSpot   = localState.movingPiece || serverMoving;
+            canChangePiece = false;
+            localState.movingPiece = selectedSpot;
+            document.getElementById('stop-move-btn').classList.add('active');
+          }
+          if (selectedSpot) renderGuides(selectedSpot, localState);
+          renderPieces(localState.pieces, localState);
+          updateTurnIndicator(localState.turn);
         }
       } catch(e) {
         movingInProgress = false;
@@ -1089,7 +1072,7 @@
     //  SECTION 10
     function renderPieces(pieces, stateData) {
       var grp           = document.getElementById('pieces-group');
-      var isMyTurn      = stateData.turn === myColor;
+      var isMyTurn      = stateData.turn === myColor && !replayRunning;
       var globalCapture = playerHasAnyCapture(pieces, myColor);
 
       var newPiecesOnBoard = {};
@@ -1170,7 +1153,7 @@
       });
 
       var board = document.getElementById('game-board');
-      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+      if (!isMyTurn || hasPending || replayRunning) board.classList.add('lock-board');
       else board.classList.remove('lock-board');
     }
 
