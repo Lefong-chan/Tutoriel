@@ -928,11 +928,24 @@
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
         // ── Source du jeu (room type) ──
-        // 'fanorona' = Room Fanorona, 'both' = Room Fanorona & Vela, 'vela' = Room Vela
+        // 'fanorona' = Room Fanorona  → game-fanorona.html ✓
+        // 'both'     = Room Fanorona & Vela → game-fanorona.html ✓
+        // 'vela'     = Room Vela      → game-vela.html (redirect)
         var gameSource = data.source || 'fanorona';
+
+        // Redirect si source = 'vela' (ne devrait pas arriver ici)
+        if (gameSource === 'vela') {
+          window.location.replace(
+            'game-vela.html?gameId=' + encodeURIComponent(gameId_p) +
+            '&color='   + encodeURIComponent(color_p) +
+            '&inviteId='+ encodeURIComponent(inviteId)
+          );
+          return;
+        }
+
         var sourceLabels = { 'fanorona': 'Room Fanorona', 'vela': 'Room Vela', 'both': 'Room Fanorona & Vela' };
         // Alert de vérification (à retirer après validation)
-        alert('[game-fanorona.html]\nSource: ' + (sourceLabels[gameSource] || gameSource) + '\n\n✓ Fanorona → game-fanorona.html (correct)\n✓ Fanorona & Vela → game-fanorona.html (correct)\n✗ Vela → game-fanorona.html (incorrect, ne devrait pas arriver)');
+        alert('[game-fanorona.html]\nSource: ' + (sourceLabels[gameSource] || gameSource) + '\n\n✓ Fanorona → game-fanorona.html\n✓ Fanorona & Vela → game-fanorona.html');
 
         renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
 
