@@ -808,6 +808,7 @@ async function handleStartFanoronaGame(body, res) {
       receiverColor:     receiverColorGame,
       startedAt:         Date.now(),
       source:            gameSource,
+      rematchCount:      0,
       minutes,
       timerMaintso:      msPerPlayer,
       timerMena:         msPerPlayer,
