@@ -319,11 +319,23 @@ async function handleAcceptRematch(body, res) {
   if (rematch.requestedBy === uid)
     return res.status(400).json({ error: "Cannot accept your own request." });
 
-  // firstMover vaovao = mpiresy (game.winner = mpandresy)
-  const prevWinner    = game.winner || null;
-  const loserColor    = prevWinner
-    ? (prevWinner === "maintso" ? "mena" : "maintso")
-    : (game.firstMover || "maintso");
+  // firstMover vaovao = mpiresy
+  // Azontsika ny mpiresy amin'ny alalan'ny game.winner (backend-set)
+  // na ny rematch.requestedBy (ilay nangataka = ilay resy)
+  const prevWinner = game.winner || null;
+  let loserColor;
+  if (prevWinner) {
+    // Winner fantatra → loser = ny hafa
+    loserColor = prevWinner === "maintso" ? "mena" : "maintso";
+  } else if (rematch.requestedBy) {
+    // Ilay nangataka revanche = ilay resy
+    const requesterUid = rematch.requestedBy;
+    loserColor = game.senderUid === requesterUid
+      ? (game.senderColor   || "maintso")
+      : (game.receiverColor || "mena");
+  } else {
+    loserColor = game.firstMover || "maintso";
+  }
   const newFirstMover = loserColor;
 
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
