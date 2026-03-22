@@ -355,11 +355,12 @@ async function handleAcceptRematch(body, res) {
   if (rematch.requestedBy === uid)
     return res.status(400).json({ error: "Cannot accept your own request." });
 
-  // Flip des couleurs
-  const newSenderColor   = game.senderColor   === "maintso" ? "mena" : "maintso";
-  const newReceiverColor = game.receiverColor  === "maintso" ? "mena" : "maintso";
+  // Couleurs inchangées : chaque joueur garde sa couleur
+  // (senderColor et receiverColor ne changent pas)
+  // Le board est par défaut : maintso = rows 3-5, mena = rows 1-2
+  // Maintso commence toujours (turn='maintso')
 
-  // Reset des pièces
+  // Reset des pièces (positions par défaut)
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
   const initialPieces = {};
   R.forEach((r, ri) => {
@@ -387,8 +388,8 @@ async function handleAcceptRematch(body, res) {
     lastTurnHistory: [],
     lastTurnColor:   "",
     winner:          null,
-    senderColor:     newSenderColor,
-    receiverColor:   newReceiverColor,
+    senderColor:     game.senderColor,
+    receiverColor:   game.receiverColor,
     timerRunning:    null,
     timerLastTick:   null,
     rematch:         { status: "accepted", acceptedAt: Date.now() },
