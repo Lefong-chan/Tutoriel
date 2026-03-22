@@ -1166,16 +1166,16 @@
         // ── Mettre à jour les timers joueur depuis Firebase ──
         onPlayerTimersUpdate(game);
 
-        // ── Rematch (Room Fanorona) — traité EN PREMIER, avant tout routing de tour ──
-        // (La demande arrive quelle que soit la valeur de game.turn)
+        // ── Rematch (Room Fanorona) — traité EN PREMIER ──
         if (gameSource === 'fanorona' && game.rematch) {
           handleRematchPush(game.rematch, game);
-          // Si rematch accepté → resetGameForRematch() a déjà tout géré
-          if (game.rematch.status === 'accepted') return;
+          // NB: pas de return ici — on laisse game.winner être vérifié
+          // même après un rematch (pour la partie suivante)
         }
 
         // ── Fin de partie : source unique = game.winner ──
-        if (game.winner) {
+        // rematchJustReset: skip si on vient de reset (winner de la partie précédente)
+        if (game.winner && !rematchJustReset) {
           stopAllTimers();
           stopPlayerTimerRaf();
           renderPieces(localState.pieces, localState);
@@ -1427,12 +1427,23 @@
 
       appeared.forEach(function(aKey) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
+        // no-transition au premier render (pas de position précédente)
+        g.setAttribute('class', 'piece-group no-transition');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
         g.appendChild(c);
         grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+      });
+      // Retirer no-transition après 2 frames (position initiale établie)
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          appeared.forEach(function(aKey) {
+            if (newPiecesOnBoard[aKey] && newPiecesOnBoard[aKey].el) {
+              newPiecesOnBoard[aKey].el.classList.remove('no-transition');
+            }
+          });
+        });
       });
 
       Object.keys(pieces).forEach(function(k) {
@@ -1583,7 +1594,8 @@
     // ════════════════════════════════════════════════════════════
     //  REMATCH — WebSocket driven (Room Fanorona only)
     // ════════════════════════════════════════════════════════════
-    var rematchHandled = false;  // évite double-handling
+    var rematchHandled   = false;  // évite double-handling
+    var rematchJustReset = false;  // flag: resetGameForRematch vient d'être appelé
     var rematchOverlayEl = null;
 
     var rnCountdownTimer = null;
@@ -1643,8 +1655,12 @@
 
       // ── Rematch accepté → reset du jeu ──
       if (rematch.status === 'accepted') {
+        if (rematchJustReset) return; // déjà traité
+        rematchJustReset = true;
         hideRematchNotif();
         resetGameForRematch(game);
+        // Remettre flag à false après un court délai
+        setTimeout(function() { rematchJustReset = false; }, 1500);
         return;
       }
 
@@ -1741,6 +1757,7 @@
       localState = copyState(game);
       onPlayerTimersUpdate(game);
       applyLocalState();
+      // gameOverTriggered déjà = false (reset ci-dessus) → modal OK pour prochaine partie
     }
 
     init();
