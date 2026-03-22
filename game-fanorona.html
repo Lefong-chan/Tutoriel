@@ -928,9 +928,11 @@
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
         // ── Source du jeu (room type) ──
+        // 'fanorona' = Room Fanorona, 'both' = Room Fanorona & Vela, 'vela' = Room Vela
         var gameSource = data.source || 'fanorona';
         var sourceLabels = { 'fanorona': 'Room Fanorona', 'vela': 'Room Vela', 'both': 'Room Fanorona & Vela' };
-        alert('[game-fanorona.html] Source: ' + (sourceLabels[gameSource] || gameSource));
+        // Alert de vérification (à retirer après validation)
+        alert('[game-fanorona.html]\nSource: ' + (sourceLabels[gameSource] || gameSource) + '\n\n✓ Fanorona → game-fanorona.html (correct)\n✓ Fanorona & Vela → game-fanorona.html (correct)\n✗ Vela → game-fanorona.html (incorrect, ne devrait pas arriver)');
 
         renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
 
