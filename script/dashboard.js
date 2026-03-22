@@ -975,15 +975,16 @@
 
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._stopRoomChat) window._stopRoomChat();
-          var destPage2 = (selectedGame === 'fanorona') ? 'game-fanorona.html' : 'game-vela.html';
+          // 'both' → game-fanorona.html, 'fanorona' → game-fanorona.html, 'vela' → game-vela.html
+          var destPage2 = (selectedGame === 'vela') ? 'game-vela.html' : 'game-fanorona.html';
           var senderCol2 = (res.color === 'red') ? 'mena' : 'maintso';
           var receiverCol2 = (res.color === 'red') ? 'maintso' : 'mena';
           var myCol2 = isSender ? senderCol2 : receiverCol2;
           var url2 = destPage2
             + '?gameId='   + encodeURIComponent(res.gameId || inviteId)
             + '&color='    + encodeURIComponent(myCol2)
-            + '&inviteId=' + encodeURIComponent(inviteId);
-          if (selectedGame === 'both') url2 += '&source=both';
+            + '&inviteId=' + encodeURIComponent(inviteId)
+            + '&source='   + encodeURIComponent(selectedGame);
           window.location.href = url2;
         } else if (res.status === 'declined' && isSender) {
           var evtKey = inviteId + ':declined';
@@ -1130,13 +1131,14 @@
         if (res.success) {
           if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
           if (window._stopRoomChat) window._stopRoomChat();
-          var destPage = (selectedGame === 'fanorona') ? 'game-fanorona.html' : 'game-vela.html';
+          // 'both' → game-fanorona.html, 'fanorona' → game-fanorona.html, 'vela' → game-vela.html
+          var destPage = (selectedGame === 'vela') ? 'game-vela.html' : 'game-fanorona.html';
           var senderColor = (selectedColor === 'red') ? 'mena' : 'maintso';
           var url = destPage
             + '?gameId='   + encodeURIComponent(res.gameId)
             + '&color='    + encodeURIComponent(senderColor)
-            + '&inviteId=' + encodeURIComponent(matchupData.inviteId);
-          if (selectedGame === 'both') url += '&source=both';
+            + '&inviteId=' + encodeURIComponent(matchupData.inviteId)
+            + '&source='   + encodeURIComponent(selectedGame);
           window.location.href = url;
         } else {
           showToast('Failed to start game.', 'error');
