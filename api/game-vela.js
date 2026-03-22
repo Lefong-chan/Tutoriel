@@ -43,6 +43,10 @@ export default async function handler(req, res) {
       case "stop-move":          return await handleStopMove(payload, res);
       case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
       case "declare-winner":     return await handleDeclareWinner(payload, res);
+      case "request-rematch":    return await handleRequestRematch(payload, res);
+      case "accept-rematch":     return await handleAcceptRematch(payload, res);
+      case "decline-rematch":    return await handleDeclineRematch(payload, res);
+      case "mark-rematch-done":  return await handleMarkRematchDone(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -282,6 +286,119 @@ async function handleStopMove(body, res) {
 }
 
 // ── Vérifie fin de partie — retourne winner ("maintso"/"mena") ou null ──
+// ══════════════════════════════════════════════════════════════
+//  REMATCH (Room Vela)
+//  firstMover vaovao = mpiresy (izay resy no atao firstMover)
+//  rematchCount ampifamadihana isan'ny revanche (pour comptage)
+// ══════════════════════════════════════════════════════════════
+
+async function handleRequestRematch(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  if (game.source && game.source !== "vela")
+    return res.status(400).json({ error: "Rematch only in Room Vela." });
+  await gameRef.child("rematch").set({ requestedBy: uid, status: "pending", requestedAt: Date.now() });
+  return res.status(200).json({ success: true });
+}
+
+async function handleAcceptRematch(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  const rematch = game.rematch;
+  if (!rematch || rematch.status !== "pending")
+    return res.status(400).json({ error: "No pending rematch request." });
+  if (rematch.requestedBy === uid)
+    return res.status(400).json({ error: "Cannot accept your own request." });
+
+  // ── firstMover vaovao = mpiresy (game.winner = mpandresy → loserId = l'autre) ──
+  // Raha tsy misy winner (ex: timeout handled client-side), default = ancien firstMover
+  const prevWinner    = game.winner || null;
+  const loserColor    = prevWinner
+    ? (prevWinner === "maintso" ? "mena" : "maintso")
+    : (game.firstMover || "maintso");
+  const newFirstMover = loserColor;
+  // maintso commence toujours (turn=maintso), mais firstMover = mpiresy
+
+  // Pieces par défaut
+  const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
+  const initialPieces = {};
+  R.forEach((r, ri) => {
+    C.forEach((c, ci) => {
+      const key = r + c;
+      if (ri < 2)      initialPieces[key] = "mena";
+      else if (ri > 2) initialPieces[key] = "maintso";
+      else {
+        if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
+        else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
+      }
+    });
+  });
+
+  const minutes     = game.minutes || null;
+  const msPerPlayer = minutes ? minutes * 60 * 1000 : null;
+  const rematchCount = (game.rematchCount || 0) + 1;
+
+  const resetData = {
+    pieces:                    initialPieces,
+    turn:                      "maintso",
+    movingPiece:               "",
+    visited:                   [],
+    lastDir:                   "",
+    moveHistory:               [],
+    lastTurnHistory:           [],
+    lastTurnColor:             "",
+    winner:                    null,
+    firstMover:                newFirstMover,
+    nonFirstMoverHasContinued: false,
+    senderColor:               game.senderColor,
+    receiverColor:             game.receiverColor,
+    timerRunning:              null,
+    timerLastTick:             null,
+    rematchCount,
+    rematch:                   { status: "accepted", acceptedAt: Date.now() },
+  };
+  if (msPerPlayer) {
+    resetData.timerMaintso = msPerPlayer;
+    resetData.timerMena    = msPerPlayer;
+  }
+  await gameRef.update(resetData);
+  return res.status(200).json({ success: true });
+}
+
+async function handleDeclineRematch(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  await gameRef.child("rematch").update({ status: "declined", declinedAt: Date.now() });
+  return res.status(200).json({ success: true });
+}
+
+async function handleMarkRematchDone(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  await gameRef.child("rematch").update({ status: "done" });
+  return res.status(200).json({ success: true });
+}
+
 function checkGameOver(pieces, timerMaintso, timerMena, minutes) {
   const maintsoCount = Object.values(pieces).filter(v => v === "maintso").length;
   const menaCount    = Object.values(pieces).filter(v => v === "mena").length;
