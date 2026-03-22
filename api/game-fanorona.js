@@ -45,6 +45,9 @@ export default async function handler(req, res) {
       case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
       case "update-timers":      return await handleUpdateTimers(payload, res);
       case "declare-winner":     return await handleDeclareWinner(payload, res);
+      case "request-rematch":    return await handleRequestRematch(payload, res);
+      case "accept-rematch":     return await handleAcceptRematch(payload, res);
+      case "decline-rematch":    return await handleDeclineRematch(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -317,6 +320,96 @@ function getCaptures(pieces, s, e, color) {
     return res;
   };
   return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+}
+
+// ════════════════════════════════════════════════════════════
+//  REMATCH (Room Fanorona uniquement)
+// ════════════════════════════════════════════════════════════
+
+async function handleRequestRematch(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  if (game.source && game.source !== "fanorona")
+    return res.status(400).json({ error: "Rematch only in Room Fanorona." });
+  await gameRef.child("rematch").set({ requestedBy: uid, status: "pending", requestedAt: Date.now() });
+  return res.status(200).json({ success: true });
+}
+
+async function handleAcceptRematch(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  const rematch = game.rematch;
+  if (!rematch || rematch.status !== "pending")
+    return res.status(400).json({ error: "No pending rematch request." });
+  if (rematch.requestedBy === uid)
+    return res.status(400).json({ error: "Cannot accept your own request." });
+
+  // Flip des couleurs
+  const newSenderColor   = game.senderColor   === "maintso" ? "mena" : "maintso";
+  const newReceiverColor = game.receiverColor  === "maintso" ? "mena" : "maintso";
+
+  // Reset des pièces
+  const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
+  const initialPieces = {};
+  R.forEach((r, ri) => {
+    C.forEach((c, ci) => {
+      const key = r + c;
+      if (ri < 2)      initialPieces[key] = "mena";
+      else if (ri > 2) initialPieces[key] = "maintso";
+      else {
+        if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
+        else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
+      }
+    });
+  });
+
+  const minutes     = game.minutes || null;
+  const msPerPlayer = minutes ? minutes * 60 * 1000 : null;
+
+  const resetData = {
+    pieces:          initialPieces,
+    turn:            "maintso",
+    movingPiece:     "",
+    visited:         [],
+    lastDir:         "",
+    moveHistory:     [],
+    lastTurnHistory: [],
+    lastTurnColor:   "",
+    winner:          null,
+    senderColor:     newSenderColor,
+    receiverColor:   newReceiverColor,
+    timerRunning:    null,
+    timerLastTick:   null,
+    rematch:         { status: "accepted", acceptedAt: Date.now() },
+  };
+  if (msPerPlayer) {
+    resetData.timerMaintso = msPerPlayer;
+    resetData.timerMena    = msPerPlayer;
+  }
+  await gameRef.update(resetData);
+  return res.status(200).json({ success: true });
+}
+
+async function handleDeclineRematch(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  await gameRef.child("rematch").update({ status: "declined", declinedAt: Date.now() });
+  return res.status(200).json({ success: true });
 }
 
 // ── Vérifie fin de partie et retourne le winner ou null ──
