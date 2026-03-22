@@ -1660,12 +1660,18 @@
     function handleRematchPush(rematch, game) {
       if (!rematch) return false;
 
-      // ── Rematch accepté (backend écrit 'done' après reset) ──
-      // On reçoit 'accepted' UNE SEULE FOIS (le push du reset)
-      // Les pushes suivants auront status='done' → pas de reset
+      // ── Rematch accepté ──
+      // Le push avec status='accepted' déclenche le reset.
+      // Aussitôt après, on marque rematch='done' dans Firebase
+      // pour que les pushes suivants ne redéclenchent pas le reset.
       if (rematch.status === 'accepted') {
+        if (rematchHandled) return true; // déjà resetté, ignore
+        rematchHandled = true;
         hideRematchNotif();
         resetGameForRematch(game);
+        // Marquer comme done → pushes suivants tsy mamerina reset
+        callApi(GAME_API_URL, 'mark-rematch-done', { uid: myUid, gameId: gameId })
+          .catch(function(e) { console.warn('mark-rematch-done error:', e); });
         return true; // signale au listener de stopper ici
       }
 
@@ -1696,6 +1702,10 @@
         hideRematchNotif();
         rematchHandled = false;
       }
+      // ── Done : reset du flag pour permettre une nouvelle revanche ──
+      if (rematch.status === 'done') {
+        rematchHandled = false;
+      }
       return false;
     }
 
@@ -1720,8 +1730,9 @@
 
       // Reset des variables d'état
       gameOverTriggered = false;
-      rematchHandled    = false;
       movingInProgress  = false;
+      // rematchHandled reste true jusqu'à mark-rematch-done confirmé
+      // sera reset au prochain 'pending' ou 'declined'
       selectedSpot      = null;
       lastBlockedSpot   = null;
       canChangePiece    = true;
