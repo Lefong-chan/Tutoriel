@@ -285,11 +285,14 @@ async function handleStopMove(body, res) {
   return res.status(200).json({ success: true, winner: stopWinner||null });
 }
 
+// ── Vérifie fin de partie — retourne winner ("maintso"/"mena") ou null ──
 // ══════════════════════════════════════════════════════════════
 //  REMATCH (Room Vela)
-//  Izay resy no manao hetsika voalohany amin'ny revanche :
-//    green (maintso) menany → mena (resy) no manao hetsika voalohany
-//    red   (mena)    menany → maintso (resy) no manao hetsika voalohany
+//  firstMover ampifamadihana isan'ny revanche (tahaka ny fanorona) :
+//    lalao 1 (rematchCount=0) : maintso = firstMover voalohany
+//    revanche 1 (rematchCount=1) : mena = firstMover
+//    revanche 2 (rematchCount=2) : maintso = firstMover
+//    sns...
 // ══════════════════════════════════════════════════════════════
 
 async function handleRequestRematch(body, res) {
@@ -320,19 +323,14 @@ async function handleAcceptRematch(body, res) {
   if (rematch.requestedBy === uid)
     return res.status(400).json({ error: "Cannot accept your own request." });
 
-  // Izay resy no manao hetsika voalohany amin'ny revanche :
-  //   game.winner = "maintso" → maintso menany, koa mena (resy) no manao voalohany
-  //   game.winner = "mena"    → mena menany,    koa maintso (resy) no manao voalohany
-  //   Raha tsy misy winner mahalala → maintso no default
-  const rematchCount = (game.rematchCount || 0) + 1;
-  let newFirstMover;
-  if (game.winner === "maintso") {
-    newFirstMover = "mena";      // maintso menany → mena resy → mena no manao voalohany
-  } else if (game.winner === "mena") {
-    newFirstMover = "maintso";   // mena menany → maintso resy → maintso no manao voalohany
-  } else {
-    newFirstMover = "maintso";   // default raha tsy misy winner mazava
-  }
+  // firstMover ampifamadihana isan'ny revanche (tahaka ny fanorona) :
+  //   lalao 1 (rematchCount=0) : maintso no firstMover
+  //   revanche 1 (rematchCount=1) : mena no firstMover
+  //   revanche 2 (rematchCount=2) : maintso no firstMover
+  //   sns...
+  const rematchCount  = (game.rematchCount || 0) + 1;
+  // rematchCount sisa (1,3,5...) → mena firstMover ; tsy sisa (2,4,6...) → maintso firstMover
+  const newFirstMover = (rematchCount % 2 === 1) ? "mena" : "maintso";
 
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
   const initialPieces = {};
@@ -481,7 +479,7 @@ function ph2CheckAvailableCaptures(pieces, s, visited, lastDir, color) {
   return moves.some(t => {
     if (pieces[t] || (visited && visited.includes(t))) return false;
     const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(t[0]),c2=COLS.indexOf(t[1]);
-    const dir=`${r2-r1},${r2-r1}`;
+    const dir=`${r2-r1},${c2-c1}`;
     if (lastDir && lastDir === dir) return false;
     const caps = ph2GetCaptures(pieces, s, t, color);
     return (caps.approach.length > 0 || caps.withdrawal.length > 0);
