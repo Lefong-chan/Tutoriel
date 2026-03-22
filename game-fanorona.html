@@ -1602,7 +1602,8 @@
     // ════════════════════════════════════════════════════════════
     //  REMATCH — WebSocket driven (Room Fanorona only)
     // ════════════════════════════════════════════════════════════
-    var rematchHandled   = false;  // évite double-handling
+    var rematchHandled   = false;  // évite double affichage notif pending
+    var rematchResetDone = false;  // évite double reset sur 'accepted'
     var rematchOverlayEl = null;
 
     var rnCountdownTimer = null;
@@ -1661,18 +1662,17 @@
       if (!rematch) return false;
 
       // ── Rematch accepté ──
-      // Le push avec status='accepted' déclenche le reset.
-      // Aussitôt après, on marque rematch='done' dans Firebase
-      // pour que les pushes suivants ne redéclenchent pas le reset.
+      // Les deux joueurs reçoivent ce push — chacun fait son reset une seule fois
       if (rematch.status === 'accepted') {
-        if (rematchHandled) return true; // déjà resetté, ignore
-        rematchHandled = true;
+        if (rematchResetDone) return true; // déjà resetté pour ce rematch
+        rematchResetDone = true;
+        rematchHandled   = false; // prêt pour prochain 'pending'
         hideRematchNotif();
         resetGameForRematch(game);
-        // Marquer comme done → pushes suivants tsy mamerina reset
+        // Marquer done dans Firebase → pushes suivants ne re-déclenchent pas
         callApi(GAME_API_URL, 'mark-rematch-done', { uid: myUid, gameId: gameId })
           .catch(function(e) { console.warn('mark-rematch-done error:', e); });
-        return true; // signale au listener de stopper ici
+        return true;
       }
 
       // ── Demande reçue de l'adversaire ──
@@ -1702,9 +1702,10 @@
         hideRematchNotif();
         rematchHandled = false;
       }
-      // ── Done : reset du flag pour permettre une nouvelle revanche ──
+      // ── Done : reset des flags → prêt pour prochaine revanche ──
       if (rematch.status === 'done') {
-        rematchHandled = false;
+        rematchHandled   = false;
+        rematchResetDone = false;
       }
       return false;
     }
@@ -1714,16 +1715,11 @@
       stopAllTimers();
       stopPlayerTimerRaf();
 
-      // ── Nouvelle couleur pour ce joueur ──
-      var newMyColor = (game.senderUid === myUid)
-        ? (game.senderColor   || 'maintso')
-        : (game.receiverColor || 'mena');
-      var newOppColor = newMyColor === 'maintso' ? 'mena' : 'maintso';
+      // ── Couleur inchangée : chaque joueur garde sa couleur ──
+      // (backend ne flip plus les couleurs)
+      // myColor et myOppColor restent identiques
 
-      myColor    = newMyColor;
-      myOppColor = newOppColor;
-
-      // Flip du board si couleur changée
+      // Le board flip reste identique (myColor inchangé)
       var board = document.getElementById('game-board');
       if (myColor === 'mena') board.classList.add('flipped');
       else                    board.classList.remove('flipped');
@@ -1731,8 +1727,6 @@
       // Reset des variables d'état
       gameOverTriggered = false;
       movingInProgress  = false;
-      // rematchHandled reste true jusqu'à mark-rematch-done confirmé
-      // sera reset au prochain 'pending' ou 'declined'
       selectedSpot      = null;
       lastBlockedSpot   = null;
       canChangePiece    = true;
