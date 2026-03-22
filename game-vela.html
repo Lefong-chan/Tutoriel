@@ -587,12 +587,12 @@
     var moveTimerRaf    = null;
     var moveTimerEnd    = null;
     var moveTimerActive = false;
-    var moveTimerGen    = 0;  // generation counter — incremented on each startMoveTimer
+    var moveTimerGen    = 0;
 
     var selTimerRaf    = null;
     var selTimerEnd    = null;
     var selTimerActive = false;
-    var selTimerGen    = 0;   // generation counter — incremented on each startSelTimer
+    var selTimerGen    = 0;
 
     var timerEl = document.getElementById('opp-timer-ls');
 
@@ -610,7 +610,7 @@
 
     // ── Timer A : move multiple (2s) ──
     function stopMoveTimer() {
-      moveTimerGen++;  // invalide tous les ticks en cours
+      moveTimerGen++;
       if (moveTimerRaf) { cancelAnimationFrame(moveTimerRaf); moveTimerRaf = null; }
       moveTimerActive = false;
       moveTimerEnd    = null;
@@ -619,20 +619,20 @@
 
     function startMoveTimer() {
       stopSelTimer(true);
-      moveTimerGen++;  // invalide l'ancien tick RAF immédiatement
+      moveTimerGen++;
       var myGen = moveTimerGen;
       if (moveTimerRaf) cancelAnimationFrame(moveTimerRaf);
       moveTimerActive = true;
       moveTimerEnd    = Date.now() + MOVE_TIMER_DURATION * 1000;
 
       function tick() {
-        if (!moveTimerActive || moveTimerGen !== myGen) return;  // stale tick → stop
+        if (!moveTimerActive || moveTimerGen !== myGen) return;
         var remaining = (moveTimerEnd - Date.now()) / 1000;
         if (remaining <= 0) {
           setTimerDisplay('0.0');
           moveTimerActive = false;
           moveTimerRaf    = null;
-          ph2HandleStopBtn(true);  // forceStop=true : avy amin'ny timer
+          ph2HandleStopBtn(true);
           return;
         }
         setTimerDisplay(remaining.toFixed(1));
@@ -643,7 +643,7 @@
 
     // ── Timer B : sélection capture (4s) — ONLY si !ph2_canChangePiece ──
     function stopSelTimer(silent) {
-      selTimerGen++;  // invalide tous les ticks en cours
+      selTimerGen++;
       if (selTimerRaf) { cancelAnimationFrame(selTimerRaf); selTimerRaf = null; }
       selTimerActive = false;
       selTimerEnd    = null;
@@ -653,7 +653,7 @@
     function startSelTimer() {
       if (ph2_canChangePiece) return;
       stopMoveTimer();
-      selTimerGen++;  // invalide l'ancien tick RAF immédiatement
+      selTimerGen++;
       var myGen = selTimerGen;
       if (selTimerRaf) cancelAnimationFrame(selTimerRaf);
       selTimerActive = true;
@@ -662,7 +662,7 @@
       var returnSpot = ph2_localState.movingPiece;
 
       function tick() {
-        if (!selTimerActive || selTimerGen !== myGen) return;  // stale tick → stop
+        if (!selTimerActive || selTimerGen !== myGen) return;
         var remaining = (selTimerEnd - Date.now()) / 1000;
         if (remaining <= 0) {
           setTimerDisplay('0.0');
@@ -1549,23 +1549,27 @@
     // ─────────────────────────────────────────────────────────────
     function onRealtimePh2(game) {
       // ── Filtrage echo AVANT tout copyState ──
+      // Raha mbola ny anjara-nao (canContinue) → tsy overwrite ny local state
       if (game.turn === myColor && ph2_movingInProgress) {
         ph2_movingInProgress = false;
         return;
       }
 
-      // ── SYNC COMPLÈTE ──
-      var prevTurn = ph2_localState ? ph2_localState.turn : null;
-      ph2_localState = ph2CopyState(game);
-      updateTurnIndicator(ph2_localState.turn);
-
+      // ── Tour adversaire : sync complète ──
       if (game.turn !== myColor) {
-        // ── Tour adversaire : toujours afficher le mouvement reçu ──
         ph2_movingInProgress = false;
+        ph2_localState = ph2CopyState(game);
+        updateTurnIndicator(ph2_localState.turn);
         stopAllTimers();
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
         return;
       }
+
+      // ── Notre tour, ph2_movingInProgress=false ──
+      // (anjaran'ny adversaire vita, lasa anjara-nao)
+      var prevTurn = ph2_localState ? ph2_localState.turn : null;
+      ph2_localState = ph2CopyState(game);
+      updateTurnIndicator(ph2_localState.turn);
 
       if (prevTurn === myColor && (ph2_selectedSpot || ph2_localState.movingPiece)) {
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
@@ -1573,19 +1577,15 @@
         return;
       }
 
+      // Adversaire vient de finir → reset UI, activation tour local
       ph2_canChangePiece  = true;
       ph2_selectedSpot    = null;
       ph2_lastBlockedSpot = null;
       ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
       document.getElementById('guides-group').innerHTML = '';
       document.getElementById('stop-move-btn').classList.remove('active');
-      // L'adversaire vient de finir → stopper tous les timers
       stopAllTimers();
       ph2ApplyLocalState();
-
-      var myPCph2  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-      var oppPCph2 = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-      // fin de partie gérée via game.winner
     }
 
     function ph2CopyState(game) {
@@ -1828,7 +1828,6 @@
         g.setAttribute('transform', 'translate(' + (ci*50) + ',' + (ri*50) + ')');
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
-        // Raha pending captures : désactiver tous les circles sauf les capture-targets
         circle.style.pointerEvents = hasPending ? 'none' : 'all';
         circle.onclick = (function(s) {
           return function(e) { e.stopPropagation(); ph2HandleSpotClick(s); };
@@ -1849,7 +1848,7 @@
 
         if (isApp || isWith) {
           circle.classList.add('capture-target');
-          circle.style.pointerEvents = 'all';  // re-activer amin'ny capture-targets ihany
+          circle.style.pointerEvents = 'all';
           var ct = isApp ? 'approach' : 'withdrawal';
           circle.onclick = (function(type) {
             return function(e) { e.stopPropagation(); ph2ConfirmCapture(type); };
