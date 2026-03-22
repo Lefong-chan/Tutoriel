@@ -992,10 +992,10 @@
           }
         }
 
-        // Mettre à jour firstMover si reçu
-        if (game.firstMover && !firstMover) firstMover = game.firstMover;
+        // Mettre à jour firstMover TOUJOURS (avant isPhase2 qui en dépend)
+        if (game.firstMover) firstMover = game.firstMover;
 
-        // ── Timers joueur (toutes phases, Phase 1 n'affecte rien si pas de minutes) ──
+        // ── Timers joueur ──
         onPlayerTimersUpdate(game);
 
         // ── Fin de partie via game.winner (source unique) ──
@@ -1006,7 +1006,7 @@
           return;
         }
 
-        // ── Dispatch selon la phase ──
+        // ── Dispatch selon la phase (firstMover déjà mis à jour) ──
         if (isPhase2(game.pieces)) {
           onRealtimePh2(game);
         } else {
@@ -1019,32 +1019,29 @@
     //  PHASE 1 — Listener realtime
     // ─────────────────────────────────────────────────────────────
     function onRealtimePh1(game) {
-      // ── Filtrage echo de mon propre mouvement en cours ──
-      if (movingInProgress) {
-        if (game.turn !== myColor) {
-          movingInProgress = false;
-          // Mon move confirmé → continuer vers sync complète
-        } else {
-          // Toujours mon tour (capture multiple en cours) → ignorer
-          return;
-        }
-      }
-
       // ── SYNC COMPLÈTE ──
       var prevTurn = localState ? localState.turn : null;
       localState = copyStatePh1(game);
-      if (game.firstMover) firstMover = game.firstMover;
       updateTurnIndicator(localState.turn);
 
       if (game.turn !== myColor) {
-        // ── Tour adversaire : afficher le mouvement reçu ──
+        // ── Tour adversaire : toujours afficher le mouvement reçu ──
+        // (pas de filtrage echo — en Phase 1 l'adversaire peut jouer
+        //  sans que movingInProgress soit reset côté client)
+        movingInProgress = false;
         renderPiecesPh1(localState.pieces, localState);
-
-        var myPCadv = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
         return;
       }
 
       // ── Notre tour ──
+      // Filtrage echo : si mon move est en cours (capture multiple), ignorer
+      if (movingInProgress) {
+        movingInProgress = false; // reset pour le prochain push
+        renderPiecesPh1(localState.pieces, localState);
+        if (selectedSpot) renderGuidesPh1(selectedSpot, localState);
+        return;
+      }
+
       if (prevTurn === myColor && (selectedSpot || localState.movingPiece)) {
         renderPiecesPh1(localState.pieces, localState);
         if (selectedSpot) renderGuidesPh1(selectedSpot, localState);
@@ -1427,31 +1424,28 @@
     //  PHASE 2 — Listener realtime (identique à game-fanorona)
     // ─────────────────────────────────────────────────────────────
     function onRealtimePh2(game) {
-      // ── Filtrage echo de mon propre mouvement en cours ──
-      if (ph2_movingInProgress) {
-        if (game.turn !== myColor) {
-          ph2_movingInProgress = false;
-          // Mon move confirmé → continuer vers sync complète
-        } else {
-          return;
-        }
-      }
-
       // ── SYNC COMPLÈTE ──
       var prevTurn = ph2_localState ? ph2_localState.turn : null;
       ph2_localState = ph2CopyState(game);
       updateTurnIndicator(ph2_localState.turn);
 
       if (game.turn !== myColor) {
-        // ── Tour adversaire : stopper tous les timers ──
+        // ── Tour adversaire : toujours afficher le mouvement reçu ──
+        ph2_movingInProgress = false;
         stopAllTimers();
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
-
-        var myPCadv = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
         return;
       }
 
       // ── Notre tour ──
+      // Filtrage echo : si mon move est en cours, ignorer
+      if (ph2_movingInProgress) {
+        ph2_movingInProgress = false;
+        ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+        if (ph2_selectedSpot) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
+        return;
+      }
+
       if (prevTurn === myColor && (ph2_selectedSpot || ph2_localState.movingPiece)) {
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
         if (ph2_selectedSpot) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
