@@ -587,10 +587,12 @@
     var moveTimerRaf    = null;
     var moveTimerEnd    = null;
     var moveTimerActive = false;
+    var moveTimerGen    = 0;  // generation counter — incremented on each startMoveTimer
 
     var selTimerRaf    = null;
     var selTimerEnd    = null;
     var selTimerActive = false;
+    var selTimerGen    = 0;   // generation counter — incremented on each startSelTimer
 
     var timerEl = document.getElementById('opp-timer-ls');
 
@@ -608,6 +610,7 @@
 
     // ── Timer A : move multiple (2s) ──
     function stopMoveTimer() {
+      moveTimerGen++;  // invalide tous les ticks en cours
       if (moveTimerRaf) { cancelAnimationFrame(moveTimerRaf); moveTimerRaf = null; }
       moveTimerActive = false;
       moveTimerEnd    = null;
@@ -616,18 +619,20 @@
 
     function startMoveTimer() {
       stopSelTimer(true);
+      moveTimerGen++;  // invalide l'ancien tick RAF immédiatement
+      var myGen = moveTimerGen;
       if (moveTimerRaf) cancelAnimationFrame(moveTimerRaf);
       moveTimerActive = true;
       moveTimerEnd    = Date.now() + MOVE_TIMER_DURATION * 1000;
 
       function tick() {
-        if (!moveTimerActive) return;
+        if (!moveTimerActive || moveTimerGen !== myGen) return;  // stale tick → stop
         var remaining = (moveTimerEnd - Date.now()) / 1000;
         if (remaining <= 0) {
           setTimerDisplay('0.0');
           moveTimerActive = false;
           moveTimerRaf    = null;
-          ph2HandleStopBtn();
+          ph2HandleStopBtn(true);  // forceStop=true : avy amin'ny timer
           return;
         }
         setTimerDisplay(remaining.toFixed(1));
@@ -638,6 +643,7 @@
 
     // ── Timer B : sélection capture (4s) — ONLY si !ph2_canChangePiece ──
     function stopSelTimer(silent) {
+      selTimerGen++;  // invalide tous les ticks en cours
       if (selTimerRaf) { cancelAnimationFrame(selTimerRaf); selTimerRaf = null; }
       selTimerActive = false;
       selTimerEnd    = null;
@@ -647,6 +653,8 @@
     function startSelTimer() {
       if (ph2_canChangePiece) return;
       stopMoveTimer();
+      selTimerGen++;  // invalide l'ancien tick RAF immédiatement
+      var myGen = selTimerGen;
       if (selTimerRaf) cancelAnimationFrame(selTimerRaf);
       selTimerActive = true;
       selTimerEnd    = Date.now() + SEL_TIMER_DURATION * 1000;
@@ -654,7 +662,7 @@
       var returnSpot = ph2_localState.movingPiece;
 
       function tick() {
-        if (!selTimerActive) return;
+        if (!selTimerActive || selTimerGen !== myGen) return;  // stale tick → stop
         var remaining = (selTimerEnd - Date.now()) / 1000;
         if (remaining <= 0) {
           setTimerDisplay('0.0');
@@ -1541,7 +1549,6 @@
     // ─────────────────────────────────────────────────────────────
     function onRealtimePh2(game) {
       // ── Filtrage echo AVANT tout copyState ──
-      // Si c'est encore notre tour ET qu'on est en train de jouer → ignorer le push
       if (game.turn === myColor && ph2_movingInProgress) {
         ph2_movingInProgress = false;
         return;
@@ -1723,32 +1730,43 @@
       }
     }
 
-    function ph2HandleStopBtn() {
-      if (!ph2_localState || ph2_localState.turn !== myColor || !ph2_localState.movingPiece) return;
-      var piecesSnapshot = Object.assign({}, ph2_localState.pieces);
+    function ph2HandleStopBtn(forceStop) {
+      var canStop = ph2_localState && ph2_localState.turn === myColor && ph2_localState.movingPiece;
 
-      // ── Stopper tous les timers immédiatement ──
+      if (!canStop && !forceStop) return;
+
+      var piecesSnapshot = (ph2_localState && ph2_localState.pieces)
+        ? Object.assign({}, ph2_localState.pieces)
+        : null;
+
       stopAllTimers();
 
-      ph2_movingInProgress       = true;
-      ph2_localState.turn        = myOppColor;
-      ph2_localState.movingPiece = '';
-      ph2_localState.visited     = [];
-      ph2_localState.lastDir     = '';
+      if (ph2_localState) {
+        ph2_movingInProgress       = true;
+        ph2_localState.turn        = myOppColor;
+        ph2_localState.movingPiece = '';
+        ph2_localState.visited     = [];
+        ph2_localState.lastDir     = '';
+      }
       ph2_selectedSpot    = null;
       ph2_lastBlockedSpot = null;
       ph2_canChangePiece  = true;
+      ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
       document.getElementById('stop-move-btn').classList.remove('active');
       document.getElementById('guides-group').innerHTML = '';
-      updateTurnIndicator(ph2_localState.turn);
-      ph2RenderPieces(ph2_localState.pieces, ph2_localState);
 
-      callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
-        .catch(function(e) { console.warn('stop-move error', e); });
+      if (ph2_localState) {
+        updateTurnIndicator(ph2_localState.turn);
+        ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+      } else {
+        var board = document.getElementById('game-board');
+        if (board) board.classList.remove('lock-board');
+      }
 
-      var ph2StopOppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-      var ph2StopMyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-      // fin de partie gérée via game.winner
+      if (canStop && piecesSnapshot) {
+        callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
+          .catch(function(e) { console.warn('stop-move error', e); });
+      }
     }
 
     function ph2SendMoveToBackend(origin, target, capturedSpots, dir) {
