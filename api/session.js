@@ -797,7 +797,9 @@ async function handleStartFanoronaGame(body, res) {
       ? Number(invite.minutes) : 5;
     const msPerPlayer = minutes * 60 * 1000;
     const gameSource = invite.game || 'fanorona';
-    await gameRef.set({
+    // Pour Vela : firstMover = maintso par défaut (lalao voalohany)
+    // Rehefa revanche : firstMover = loserColor (backend handleAcceptRematch)
+    const gameData = {
       pieces:            initialPieces,
       turn:              "maintso",
       senderUid:         invite.fromUid,
@@ -814,7 +816,13 @@ async function handleStartFanoronaGame(body, res) {
       timerMena:         msPerPlayer,
       timerRunning:      null,
       timerLastTick:     null,
-    });
+    };
+    // Vela : firstMover voatahiry avy hatrany (tsy miandry move voalohany)
+    if (gameSource === 'vela') {
+      gameData.firstMover                = 'maintso';
+      gameData.nonFirstMoverHasContinued = false;
+    }
+    await gameRef.set(gameData);
   }
 
   await inviteRef.update({ status: "started", gameId: inviteId });
