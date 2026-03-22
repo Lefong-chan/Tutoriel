@@ -319,24 +319,36 @@ async function handleAcceptRematch(body, res) {
   if (rematch.requestedBy === uid)
     return res.status(400).json({ error: "Cannot accept your own request." });
 
-  // firstMover vaovao = mpiresy
-  // Azontsika ny mpiresy amin'ny alalan'ny game.winner (backend-set)
-  // na ny rematch.requestedBy (ilay nangataka = ilay resy)
+  // firstMover vaovao = mpiresy (izay resy no manao hetsika voalohany)
+  // Mitovy amin'ny fanorona ny lojika (rematchCount ampifamadihana)
+  // NEFA: ao amin'ny vela, firstMover = loserColor (tsy turn fotsiny)
+  //
+  // Fanorona: turn = mifamadika (maintso→mena→maintso...)
+  // Vela:     turn = maintso foana, firstMover = mifamadika selon winner
+  //   - lalao 1:     firstMover = maintso (par défaut)
+  //   - revanche 1:  firstMover = loserColor (izay resy)
+  //   - revanche 2:  firstMover = loserColor (izay resy amin'ny revanche 1)
+  //
+  // game.winner soratana tsara alohan'ny accept-rematch
+  // Raha tsy misy (timer expire client-side), nampiasaina requestedBy
+  const rematchCount = (game.rematchCount || 0) + 1;
+
+  // Loser = mpiresy
   const prevWinner = game.winner || null;
-  let loserColor;
+  let newFirstMover;
   if (prevWinner) {
-    // Winner fantatra → loser = ny hafa
-    loserColor = prevWinner === "maintso" ? "mena" : "maintso";
+    // winner fantatra → loser = ny hafa
+    newFirstMover = prevWinner === "maintso" ? "mena" : "maintso";
   } else if (rematch.requestedBy) {
-    // Ilay nangataka revanche = ilay resy
-    const requesterUid = rematch.requestedBy;
-    loserColor = game.senderUid === requesterUid
+    // ilay nangataka = ilay resy (request avy amin'ny mpiresy)
+    newFirstMover = game.senderUid === rematch.requestedBy
       ? (game.senderColor   || "maintso")
       : (game.receiverColor || "mena");
   } else {
-    loserColor = game.firstMover || "maintso";
+    // fallback: mifamadika amin'ny rematchCount
+    const prevFirst = game.firstMover || "maintso";
+    newFirstMover   = prevFirst === "maintso" ? "mena" : "maintso";
   }
-  const newFirstMover = loserColor;
 
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
   const initialPieces = {};
@@ -354,8 +366,6 @@ async function handleAcceptRematch(body, res) {
 
   const minutes     = game.minutes || null;
   const msPerPlayer = minutes ? minutes * 60 * 1000 : null;
-  const rematchCount = (game.rematchCount || 0) + 1;
-
   const resetData = {
     pieces:                    initialPieces,
     turn:                      "maintso",
