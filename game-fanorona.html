@@ -1167,19 +1167,16 @@
         onPlayerTimersUpdate(game);
 
         // ── Rematch (Room Fanorona) — traité EN PREMIER ──
+        // handleRematchPush retourne true si le jeu vient d'être resetté
+        // (dans ce cas on ignore game.winner qui est l'ancien)
         if (gameSource === 'fanorona' && game.rematch) {
-          handleRematchPush(game.rematch, game);
-          // NB: pas de return ici — on laisse game.winner être vérifié
-          // même après un rematch (pour la partie suivante)
+          var rematchDidReset = handleRematchPush(game.rematch, game);
+          if (rematchDidReset) return;
         }
 
         // ── Fin de partie : source unique = game.winner ──
         // game.winner = undefined si Firebase a supprimé le champ (null → deleted)
-        // rematchJustReset = true uniquement pour LE push du reset lui-même
-        if (rematchJustReset) {
-          rematchJustReset = false; // reset après UN seul push ignoré
-          // on continue sans return → reset UI s'applique normalement
-        } else if (game.winner) {
+        if (game.winner) {
           stopAllTimers();
           stopPlayerTimerRaf();
           renderPieces(localState.pieces, localState);
@@ -1605,10 +1602,8 @@
     // ════════════════════════════════════════════════════════════
     //  REMATCH — WebSocket driven (Room Fanorona only)
     // ════════════════════════════════════════════════════════════
-    var rematchHandled      = false;  // évite double-handling
-    var rematchJustReset    = false;  // skip winner check après reset
-    var rematchAcceptedDone = false;  // 'accepted' traité une seule fois
-    var rematchOverlayEl    = null;
+    var rematchHandled   = false;  // évite double-handling
+    var rematchOverlayEl = null;
 
     var rnCountdownTimer = null;
     var rnCountdownVal   = 10;
@@ -1663,29 +1658,25 @@
     }
 
     function handleRematchPush(rematch, game) {
-      if (!rematch) return;
+      if (!rematch) return false;
 
-      // ── Rematch accepté → reset du jeu (une seule fois) ──
+      // ── Rematch accepté (backend écrit 'done' après reset) ──
+      // On reçoit 'accepted' UNE SEULE FOIS (le push du reset)
+      // Les pushes suivants auront status='done' → pas de reset
       if (rematch.status === 'accepted') {
-        if (rematchAcceptedDone) return; // déjà traité
-        rematchAcceptedDone = true;
-        rematchJustReset    = true;  // skip winner check pour CE push
         hideRematchNotif();
         resetGameForRematch(game);
-        return;
+        return true; // signale au listener de stopper ici
       }
 
       // ── Demande reçue de l'adversaire ──
       if (rematch.status === 'pending' && rematch.requestedBy !== myUid) {
-        if (rematchHandled) return;
+        if (rematchHandled) return false;
         rematchHandled = true;
-
-        // Récupérer le nom de l'adversaire
         var oppName = myColor === 'maintso'
           ? (game.receiverUsername || 'Adversaire')
           : (game.senderUsername   || 'Adversaire');
         showRematchNotif(oppName);
-
         document.getElementById('rematch-accept-btn').onclick = function() {
           hideRematchNotif();
           callApi(GAME_API_URL, 'accept-rematch', { uid: myUid, gameId: gameId })
@@ -1697,7 +1688,7 @@
             .catch(function(e) { console.warn('decline-rematch error:', e); });
           rematchHandled = false;
         };
-        return;
+        return false;
       }
 
       // ── Demande refusée ──
@@ -1705,6 +1696,7 @@
         hideRematchNotif();
         rematchHandled = false;
       }
+      return false;
     }
 
     function resetGameForRematch(game) {
@@ -1727,10 +1719,9 @@
       else                    board.classList.remove('flipped');
 
       // Reset des variables d'état
-      gameOverTriggered   = false;
-      rematchHandled      = false;
-      rematchAcceptedDone = false;  // prêt pour une prochaine revanche
-      movingInProgress    = false;
+      gameOverTriggered = false;
+      rematchHandled    = false;
+      movingInProgress  = false;
       selectedSpot      = null;
       lastBlockedSpot   = null;
       canChangePiece    = true;
@@ -1769,7 +1760,6 @@
       localState = copyState(game);
       onPlayerTimersUpdate(game);
       applyLocalState();
-      // gameOverTriggered déjà = false (reset ci-dessus) → modal OK pour prochaine partie
     }
 
     init();
