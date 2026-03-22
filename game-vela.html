@@ -341,6 +341,69 @@
       color: #ff6b6b;
       text-shadow: 0 0 10px rgba(255,100,100,0.6);
     }
+
+    /* ── Rematch notif — style gin (identique dashboard) ── */
+    .rematch-notif {
+      position: fixed; top: 14px; right: 14px; width: 272px;
+      background: white; border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(91,33,182,0.2), 0 2px 8px rgba(0,0,0,0.08);
+      border: 1.5px solid #ede9f8; z-index: 10000; overflow: hidden;
+      opacity: 0; transform: translateX(110%);
+      transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    .rematch-notif.rn-visible { opacity: 1; transform: translateX(0); pointer-events: auto; }
+    .rn-progress-wrap { height: 3px; background: #f0ebff; overflow: hidden; }
+    .rn-progress-bar {
+      height: 100%; width: 100%;
+      background: linear-gradient(to right, #5b21b6, #a78bfa);
+      transform-origin: left;
+      transition: transform 10s linear;
+    }
+    .rn-body { padding: 10px 12px 12px; }
+    .rn-row-top { display: flex; align-items: flex-start; gap: 9px; }
+    .rn-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: linear-gradient(135deg, #5b21b6, #7c3aed);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .rn-icon i { color: white; font-size: 0.82em; }
+    .rn-text-wrap { flex: 1; min-width: 0; }
+    .rn-label {
+      font-size: 0.65em; font-weight: 700; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px;
+    }
+    .rn-msg { font-size: 0.82em; font-weight: 600; color: #1e293b; line-height: 1.35; }
+    .rn-username { color: #7c3aed; font-weight: 800; }
+    .rn-countdown {
+      font-size: 0.78em; font-weight: 800; color: #7c3aed;
+      background: #f5f0ff; border-radius: 6px; padding: 2px 7px;
+      flex-shrink: 0; align-self: flex-start; margin-top: 1px; line-height: 1.6;
+    }
+    .rn-actions {
+      display: flex; gap: 7px;
+      max-height: 0; overflow: hidden; opacity: 0;
+      transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+      margin-top: 0;
+    }
+    .rematch-notif.rn-expanded .rn-actions { max-height: 50px; opacity: 1; margin-top: 9px; }
+    .rn-btn-accept {
+      flex: 1; padding: 7px 8px; border: none; border-radius: 9px;
+      background: linear-gradient(to right, #5b21b6, #7c3aed);
+      color: white; font-size: 0.8em; font-weight: 700; cursor: pointer;
+      transition: opacity 0.18s; display: flex; align-items: center;
+      justify-content: center; gap: 5px;
+    }
+    .rn-btn-accept:hover { opacity: 0.85; }
+    .rn-btn-decline {
+      width: 34px; height: 34px; border: none; border-radius: 9px;
+      background: #f1f5f9; color: #64748b; font-size: 0.95em;
+      cursor: pointer; transition: background 0.18s;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .rn-btn-decline:hover { background: #fee2e2; color: #ef4444; }
+    @media (max-width: 600px) { .rematch-notif { width: calc(100vw - 24px); right: 12px; } }
   </style>
 </head>
 <body>
@@ -424,6 +487,25 @@
   </div>
 
   <div id="error-msg"></div>
+
+  <!-- Rematch notif (style gin dashboard) -->
+  <div class="rematch-notif" id="rematch-notif">
+    <div class="rn-progress-wrap"><div class="rn-progress-bar" id="rnProgressBar"></div></div>
+    <div class="rn-body">
+      <div class="rn-row-top">
+        <div class="rn-icon"><i class="fas fa-redo-alt"></i></div>
+        <div class="rn-text-wrap">
+          <div class="rn-label">Revanche</div>
+          <div class="rn-msg"><span class="rn-username" id="rn-username">Adversaire</span> propose une revanche&nbsp;!</div>
+        </div>
+        <div class="rn-countdown" id="rn-countdown">10</div>
+      </div>
+      <div class="rn-actions">
+        <button class="rn-btn-accept" id="rematch-accept-btn"><i class="fas fa-check"></i> Accepter</button>
+        <button class="rn-btn-decline" id="rematch-decline-btn"><i class="fas fa-times"></i></button>
+      </div>
+    </div>
+  </div>
 </div>
 
   <script>
@@ -738,6 +820,7 @@
 
       setTimeout(function() {
         var overlay = document.createElement('div');
+        overlay.setAttribute('data-gameover-overlay','1');
         overlay.style.cssText = [
           'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
           'display:flex','justify-content:center','align-items:center',
@@ -758,6 +841,9 @@
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
         title.textContent = myMsg;
 
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+
         var btn = document.createElement('button');
         btn.textContent = 'OK';
         btn.style.cssText = [
@@ -767,9 +853,37 @@
           'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
         ].join(';');
         btn.onclick = function() { window.location.href = 'dashboard.html'; };
+        btnRow.appendChild(btn);
+
+        // Revanche — Room Vela uniquement
+        if (gameSource === 'vela') {
+          var btnRevanche = document.createElement('button');
+          btnRevanche.innerHTML = '&#128260; Revanche';
+          btnRevanche.style.cssText = [
+            'background:#f59e0b','color:white','border:none',
+            'border-radius:10px','padding:12px 24px',
+            'font-size:1.1em','font-weight:700','cursor:pointer',
+            'box-shadow:0 2px 10px rgba(245,158,11,0.4)'
+          ].join(';');
+          btnRevanche.onclick = function() {
+            btnRevanche.disabled = true;
+            btnRevanche.textContent = '...';
+            callApi(GAME_API_URL, 'request-rematch', { uid: myUid, gameId: gameId })
+              .then(function() {
+                btnRevanche.textContent = 'Demande envoyée';
+                btnRevanche.style.background = '#64748b';
+              })
+              .catch(function(e) {
+                btnRevanche.disabled = false;
+                btnRevanche.textContent = 'Revanche';
+                console.warn('request-rematch error:', e);
+              });
+          };
+          btnRow.appendChild(btnRevanche);
+        }
 
         box.appendChild(title);
-        box.appendChild(btn);
+        box.appendChild(btnRow);
         overlay.appendChild(box);
         document.body.appendChild(overlay);
       }, delay);
@@ -823,6 +937,7 @@
 
     // ── État partagé (render commun) ──
     var piecesOnBoard = {};
+    var gameSource    = 'vela';  // global — set in init(), used in listener & showGameOverAlert
 
     // ── Phase 1 — variables ──
     var localState       = null;
@@ -876,7 +991,7 @@
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
         // ── Source : 'fanorona' | 'both' | 'vela' ──
-        var gameSource = data.source || params.get('source') || 'vela';
+        gameSource = data.source || params.get('source') || 'vela';
 
         // Redirect si 'fanorona' ou 'both' → game-fanorona.html
         if (gameSource === 'fanorona' || gameSource === 'both') {
@@ -993,8 +1108,14 @@
         // Mettre à jour firstMover TOUJOURS (avant isPhase2 qui en dépend)
         if (game.firstMover) firstMover = game.firstMover;
 
-        // ── Timers joueur (toutes phases, Phase 1 n'affecte rien si pas de minutes) ──
+        // ── Timers joueur ──
         onPlayerTimersUpdate(game);
+
+        // ── Rematch (Room Vela) — traité EN PREMIER, avant winner check ──
+        if (gameSource === 'vela' && game.rematch) {
+          var rematchDidReset = handleRematchPush(game.rematch, game);
+          if (rematchDidReset) return;
+        }
 
         // ── Fin de partie via game.winner (source unique) ──
         if (game.winner) {
@@ -1419,13 +1540,11 @@
     //  PHASE 2 — Listener realtime (identique à game-fanorona)
     // ─────────────────────────────────────────────────────────────
     function onRealtimePh2(game) {
-      // ── Filtrage echo de mon propre mouvement en cours ──
-      if (ph2_movingInProgress) {
-        if (game.turn !== myColor) {
-          ph2_movingInProgress = false;
-        } else {
-          return;
-        }
+      // ── Filtrage echo AVANT tout copyState ──
+      // Si c'est encore notre tour ET qu'on est en train de jouer → ignorer le push
+      if (game.turn === myColor && ph2_movingInProgress) {
+        ph2_movingInProgress = false;
+        return;
       }
 
       // ── SYNC COMPLÈTE ──
@@ -1434,28 +1553,32 @@
       updateTurnIndicator(ph2_localState.turn);
 
       if (game.turn !== myColor) {
-        // ── Tour adversaire : afficher le mouvement reçu ──
+        // ── Tour adversaire : toujours afficher le mouvement reçu ──
+        ph2_movingInProgress = false;
         stopAllTimers();
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
         return;
       }
 
-      // ── Notre tour ──
       if (prevTurn === myColor && (ph2_selectedSpot || ph2_localState.movingPiece)) {
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
         if (ph2_selectedSpot) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
         return;
       }
 
-      // L'adversaire vient de finir son tour → reset UI complet
       ph2_canChangePiece  = true;
       ph2_selectedSpot    = null;
       ph2_lastBlockedSpot = null;
       ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
       document.getElementById('guides-group').innerHTML = '';
       document.getElementById('stop-move-btn').classList.remove('active');
+      // L'adversaire vient de finir → stopper tous les timers
       stopAllTimers();
       ph2ApplyLocalState();
+
+      var myPCph2  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+      var oppPCph2 = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+      // fin de partie gérée via game.winner
     }
 
     function ph2CopyState(game) {
@@ -1856,6 +1979,170 @@
       l.setAttribute('x2',x2); l.setAttribute('y2',y2);
       l.setAttribute('class','cross-line');
       return l;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  REMATCH — WebSocket driven (Room Vela only)
+    // ════════════════════════════════════════════════════════════
+    var rematchHandled   = false;
+    var rematchResetDone = false;
+    var rematchOverlayEl = null;
+
+    var rnCountdownTimer = null;
+    var rnCountdownVal   = 10;
+
+    function showRematchNotif(oppUsername) {
+      var notif       = document.getElementById('rematch-notif');
+      var progressBar = document.getElementById('rnProgressBar');
+      var countdownEl = document.getElementById('rn-countdown');
+      var usernameEl  = document.getElementById('rn-username');
+      if (!notif) return;
+
+      usernameEl.textContent  = oppUsername || 'Adversaire';
+      countdownEl.textContent = '10';
+      rnCountdownVal = 10;
+
+      notif.classList.remove('rn-expanded', 'rn-visible');
+      progressBar.style.transition = 'none';
+      progressBar.style.transform  = 'scaleX(1)';
+
+      setTimeout(function() {
+        notif.classList.add('rn-visible');
+        setTimeout(function() {
+          notif.classList.add('rn-expanded');
+          void progressBar.offsetHeight;
+          progressBar.style.transition = 'transform 10s linear';
+          progressBar.style.transform  = 'scaleX(0)';
+        }, 350);
+      }, 10);
+
+      if (rnCountdownTimer) clearInterval(rnCountdownTimer);
+      rnCountdownTimer = setInterval(function() {
+        rnCountdownVal--;
+        countdownEl.textContent = rnCountdownVal;
+        if (rnCountdownVal <= 0) {
+          clearInterval(rnCountdownTimer);
+          hideRematchNotif();
+          callApi(GAME_API_URL, 'decline-rematch', { uid: myUid, gameId: gameId })
+            .catch(function(e) { console.warn('auto-decline rematch:', e); });
+          rematchHandled = false;
+        }
+      }, 1000);
+    }
+
+    function hideRematchNotif() {
+      var notif = document.getElementById('rematch-notif');
+      if (notif) notif.classList.remove('rn-visible', 'rn-expanded');
+      if (rnCountdownTimer) { clearInterval(rnCountdownTimer); rnCountdownTimer = null; }
+    }
+
+    function handleRematchPush(rematch, game) {
+      if (!rematch) return false;
+
+      if (rematch.status === 'accepted') {
+        if (rematchResetDone) return true;
+        rematchResetDone = true;
+        rematchHandled   = false;
+        hideRematchNotif();
+        resetGameForRematch(game);
+        callApi(GAME_API_URL, 'mark-rematch-done', { uid: myUid, gameId: gameId })
+          .catch(function(e) { console.warn('mark-rematch-done error:', e); });
+        return true;
+      }
+
+      if (rematch.status === 'pending' && rematch.requestedBy !== myUid) {
+        if (rematchHandled) return false;
+        rematchHandled = true;
+        var oppName = myColor === 'maintso'
+          ? (game.receiverUsername || 'Adversaire')
+          : (game.senderUsername   || 'Adversaire');
+        showRematchNotif(oppName);
+        document.getElementById('rematch-accept-btn').onclick = function() {
+          hideRematchNotif();
+          callApi(GAME_API_URL, 'accept-rematch', { uid: myUid, gameId: gameId })
+            .catch(function(e) { console.warn('accept-rematch error:', e); });
+        };
+        document.getElementById('rematch-decline-btn').onclick = function() {
+          hideRematchNotif();
+          callApi(GAME_API_URL, 'decline-rematch', { uid: myUid, gameId: gameId })
+            .catch(function(e) { console.warn('decline-rematch error:', e); });
+          rematchHandled = false;
+        };
+        return false;
+      }
+
+      if (rematch.status === 'declined') {
+        hideRematchNotif();
+        rematchHandled = false;
+      }
+      if (rematch.status === 'done') {
+        rematchHandled   = false;
+        rematchResetDone = false;
+      }
+      return false;
+    }
+
+    function resetGameForRematch(game) {
+      stopAllTimers();
+      stopPlayerTimerRaf();
+
+      // myColor inchangé (chaque joueur garde sa couleur)
+      var board = document.getElementById('game-board');
+      if (myColor === 'mena') board.classList.add('flipped');
+      else                    board.classList.remove('flipped');
+
+      // firstMover vaovao = mpiresy (avy amin'ny backend)
+      if (game.firstMover) firstMover = game.firstMover;
+
+      // Reset variables Phase 1
+      gameOverTriggered = false;
+      movingInProgress  = false;
+      selectedSpot      = null;
+      lastBlockedSpot   = null;
+      canChangePiece    = true;
+      pendingCaptures   = { approach: [], withdrawal: [], moveData: null };
+      piecesOnBoard     = {};
+
+      // Reset variables Phase 2
+      ph2_movingInProgress = false;
+      ph2_selectedSpot     = null;
+      ph2_lastBlockedSpot  = null;
+      ph2_canChangePiece   = true;
+      ph2_pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
+      ph2_localState       = null;
+
+      // Timer reset
+      playerTimerEnabled = false;
+      myTimerMs  = 0; oppTimerMs = 0;
+      timerRunningColor = null; timerLastTickMs = null;
+
+      // DOM reset — SVG pieces supprimées physiquement
+      var piecesGrp = document.getElementById('pieces-group');
+      if (piecesGrp) piecesGrp.innerHTML = '';
+      document.getElementById('guides-group').innerHTML = '';
+      document.getElementById('stop-move-btn').classList.remove('active');
+      document.getElementById('stop-move-btn').style.pointerEvents = '';
+      document.querySelectorAll('[data-gameover-overlay]').forEach(function(el) { el.remove(); });
+      var board2 = document.getElementById('game-board');
+      if (board2) board2.classList.remove('lock-board');
+
+      drawBoardSpots();
+
+      var localUser = JSON.parse(localStorage.getItem('user') || '{}');
+      callApi(SESSION_API_URL, 'get-fanorona-game', { uid: myUid, gameId: gameId })
+        .then(function(d) {
+          renderPlayersBar(myColor, localUser.username || myUid, d.opponentUsername || '???');
+        }).catch(function() {});
+
+      // Nouvelle state — dispatch selon phase
+      localState = copyStatePh1(game);
+      onPlayerTimersUpdate(game);
+      if (isPhase2(game.pieces)) {
+        ph2_localState = ph2CopyState(game);
+        ph2ApplyLocalState();
+      } else {
+        applyLocalStatePh1();
+      }
     }
 
     init();
