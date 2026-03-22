@@ -1174,8 +1174,12 @@
         }
 
         // ── Fin de partie : source unique = game.winner ──
-        // rematchJustReset: skip si on vient de reset (winner de la partie précédente)
-        if (game.winner && !rematchJustReset) {
+        // game.winner = undefined si Firebase a supprimé le champ (null → deleted)
+        // rematchJustReset = true uniquement pour LE push du reset lui-même
+        if (rematchJustReset) {
+          rematchJustReset = false; // reset après UN seul push ignoré
+          // on continue sans return → reset UI s'applique normalement
+        } else if (game.winner) {
           stopAllTimers();
           stopPlayerTimerRaf();
           renderPieces(localState.pieces, localState);
@@ -1418,7 +1422,11 @@
           if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
         }
         if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          var entry = piecesOnBoard[vKey];
+          // Assurer que no-transition est retiré avant de bouger
+          // (peut rester après un reset si la pièce n'avait pas encore bougé)
+          entry.el.classList.remove('no-transition');
+          newPiecesOnBoard[target] = entry;
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
           piecesOnBoard[vKey].el.remove();
@@ -1435,16 +1443,19 @@
         grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
       });
-      // Retirer no-transition après 2 frames (position initiale établie)
-      requestAnimationFrame(function() {
+      // Retirer no-transition après 2 frames
+      // snapshot de appeared et newPiecesOnBoard pour éviter closure stale
+      (function(snapAppeared, snapBoard) {
         requestAnimationFrame(function() {
-          appeared.forEach(function(aKey) {
-            if (newPiecesOnBoard[aKey] && newPiecesOnBoard[aKey].el) {
-              newPiecesOnBoard[aKey].el.classList.remove('no-transition');
-            }
+          requestAnimationFrame(function() {
+            snapAppeared.forEach(function(aKey) {
+              if (snapBoard[aKey] && snapBoard[aKey].el) {
+                snapBoard[aKey].el.classList.remove('no-transition');
+              }
+            });
           });
         });
-      });
+      })(appeared.slice(), newPiecesOnBoard);
 
       Object.keys(pieces).forEach(function(k) {
         if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
@@ -1594,9 +1605,10 @@
     // ════════════════════════════════════════════════════════════
     //  REMATCH — WebSocket driven (Room Fanorona only)
     // ════════════════════════════════════════════════════════════
-    var rematchHandled   = false;  // évite double-handling
-    var rematchJustReset = false;  // flag: resetGameForRematch vient d'être appelé
-    var rematchOverlayEl = null;
+    var rematchHandled      = false;  // évite double-handling
+    var rematchJustReset    = false;  // skip winner check après reset
+    var rematchAcceptedDone = false;  // 'accepted' traité une seule fois
+    var rematchOverlayEl    = null;
 
     var rnCountdownTimer = null;
     var rnCountdownVal   = 10;
@@ -1653,14 +1665,13 @@
     function handleRematchPush(rematch, game) {
       if (!rematch) return;
 
-      // ── Rematch accepté → reset du jeu ──
+      // ── Rematch accepté → reset du jeu (une seule fois) ──
       if (rematch.status === 'accepted') {
-        if (rematchJustReset) return; // déjà traité
-        rematchJustReset = true;
+        if (rematchAcceptedDone) return; // déjà traité
+        rematchAcceptedDone = true;
+        rematchJustReset    = true;  // skip winner check pour CE push
         hideRematchNotif();
         resetGameForRematch(game);
-        // Remettre flag à false après un court délai
-        setTimeout(function() { rematchJustReset = false; }, 1500);
         return;
       }
 
@@ -1716,9 +1727,10 @@
       else                    board.classList.remove('flipped');
 
       // Reset des variables d'état
-      gameOverTriggered = false;
-      rematchHandled    = false;
-      movingInProgress  = false;
+      gameOverTriggered   = false;
+      rematchHandled      = false;
+      rematchAcceptedDone = false;  // prêt pour une prochaine revanche
+      movingInProgress    = false;
       selectedSpot      = null;
       lastBlockedSpot   = null;
       canChangePiece    = true;
