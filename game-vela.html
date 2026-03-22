@@ -875,6 +875,11 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
+        // ── Source du jeu (room type) ──
+        var gameSource = data.source || 'vela';
+        var sourceLabels = { 'fanorona': 'Room Fanorona', 'vela': 'Room Vela', 'both': 'Room Fanorona & Vela' };
+        alert('[game-vela.html] Source: ' + (sourceLabels[gameSource] || gameSource));
+
         renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
 
         if (myColor === 'mena') document.getElementById('game-board').classList.add('flipped');
