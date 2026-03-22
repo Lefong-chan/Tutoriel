@@ -1810,7 +1810,8 @@
         g.setAttribute('transform', 'translate(' + (ci*50) + ',' + (ri*50) + ')');
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
-        circle.style.pointerEvents = 'all';
+        // Raha pending captures : désactiver tous les circles sauf les capture-targets
+        circle.style.pointerEvents = hasPending ? 'none' : 'all';
         circle.onclick = (function(s) {
           return function(e) { e.stopPropagation(); ph2HandleSpotClick(s); };
         })(spot);
@@ -1830,7 +1831,7 @@
 
         if (isApp || isWith) {
           circle.classList.add('capture-target');
-          circle.style.pointerEvents = 'all';
+          circle.style.pointerEvents = 'all';  // re-activer amin'ny capture-targets ihany
           var ct = isApp ? 'approach' : 'withdrawal';
           circle.onclick = (function(type) {
             return function(e) { e.stopPropagation(); ph2ConfirmCapture(type); };
