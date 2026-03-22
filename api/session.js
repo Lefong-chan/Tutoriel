@@ -811,7 +811,13 @@ async function handleStartFanoronaGame(body, res) {
 
   await inviteRef.update({ status: "started", gameId: inviteId });
 
-  return res.status(200).json({ success: true, gameId: inviteId });
+  // gamePage : page mifandrify amin'ny game type
+  // 'fanorona' → game-fanorona.html
+  // 'both'     → game-fanorona.html  (Fanorona & Vela : manomboka amin'ny Fanorona)
+  // 'vela'     → game-vela.html
+  const inviteGameType = (await rtdbGet(inviteRef))?.game || invite.game || 'fanorona';
+  const gamePage = inviteGameType === 'vela' ? 'game-vela.html' : 'game-fanorona.html';
+  return res.status(200).json({ success: true, gameId: inviteId, gamePage, gameType: inviteGameType });
 }
 
 async function handleGetFanoronaGame(body, res) {
