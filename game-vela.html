@@ -1398,7 +1398,9 @@
           if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
         }
         if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          var entry = piecesOnBoard[vKey];
+          entry.el.classList.remove('no-transition');
+          newPiecesOnBoard[target] = entry;
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
           piecesOnBoard[vKey].el.remove();
@@ -1407,7 +1409,7 @@
 
       appeared.forEach(function(aKey) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
+        g.setAttribute('class', 'piece-group no-transition');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
         g.appendChild(c);
@@ -1419,6 +1421,18 @@
         if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
       });
       piecesOnBoard = newPiecesOnBoard;
+
+      // Retirer no-transition après 2 frames (snapshot pour éviter closure stale)
+      (function(snapAppeared, snapBoard) {
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            snapAppeared.forEach(function(aKey) {
+              if (snapBoard[aKey] && snapBoard[aKey].el)
+                snapBoard[aKey].el.classList.remove('no-transition');
+            });
+          });
+        });
+      })(appeared.slice(), newPiecesOnBoard);
 
       var hasPending = pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0;
 
@@ -1752,7 +1766,9 @@
           if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
         }
         if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          var entry = piecesOnBoard[vKey];
+          entry.el.classList.remove('no-transition');
+          newPiecesOnBoard[target] = entry;
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
           piecesOnBoard[vKey].el.remove();
@@ -1761,7 +1777,7 @@
 
       appeared.forEach(function(aKey) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
+        g.setAttribute('class', 'piece-group no-transition');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
         g.appendChild(c);
@@ -1773,6 +1789,17 @@
         if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
       });
       piecesOnBoard = newPiecesOnBoard;
+
+      (function(snapAppeared, snapBoard) {
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            snapAppeared.forEach(function(aKey) {
+              if (snapBoard[aKey] && snapBoard[aKey].el)
+                snapBoard[aKey].el.classList.remove('no-transition');
+            });
+          });
+        });
+      })(appeared.slice(), newPiecesOnBoard);
 
       var hasPending = ph2_pendingCaptures.approach.length > 0 || ph2_pendingCaptures.withdrawal.length > 0;
 
