@@ -91,6 +91,7 @@ async function handleGetState(body, res) {
 }
 
 // ── Détermine si on est en Phase 2 ──
+// Phase 2 : lorsque les pièces du nonFirstMover sont <= 5
 function isPhase2(game) {
   const firstMover = game.firstMover;
   if (!firstMover) return false;
@@ -98,6 +99,40 @@ function isPhase2(game) {
   const pieces = game.pieces || {};
   const count = Object.values(pieces).filter(v => v === nonFMColor).length;
   return count <= 5;
+}
+
+// ── Vérifie si le firstMover a au moins une capture possible (Phase 1) ──
+// Si aucune capture possible → firstMover gagne immédiatement
+function ph1FirstMoverHasAnyCapture(pieces, fmColor) {
+  return Object.entries(pieces).some(([pos, col]) => {
+    if (col !== fmColor) return false;
+    const moves = ALLOWED_MOVES[pos] || [];
+    return moves.some(t => {
+      if (pieces[t]) return false; // cible occupée
+      return ph1GetCapture(pieces, pos, t, fmColor) !== null;
+    });
+  });
+}
+
+// ── Capture simple Phase 1 : approche OU retrait, une seule pièce ennemie adjacente ──
+// Retourne la case capturée (string) ou null si aucune capture
+function ph1GetCapture(pieces, s, e, color) {
+  const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(e[0]),c2=COLS.indexOf(e[1]);
+  const enemy = color==="maintso"?"mena":"maintso";
+  const dr=r2-r1, dc=c2-c1;
+  // approche : pièce ennemie juste après la cible
+  const ar=r2+dr, ac=c2+dc;
+  if (ar>=0&&ar<5&&ac>=0&&ac<9) {
+    const ap=ROWS[ar]+COLS[ac];
+    if (pieces[ap]===enemy) return ap;
+  }
+  // retrait : pièce ennemie juste avant l'origine
+  const wr=r1-dr, wc=c1-dc;
+  if (wr>=0&&wr<5&&wc>=0&&wc<9) {
+    const wp=ROWS[wr]+COLS[wc];
+    if (pieces[wp]===enemy) return wp;
+  }
+  return null;
 }
 
 async function handleMakeMove(body, res) {
@@ -126,10 +161,11 @@ async function handleMakeMove(body, res) {
   const phase2 = isPhase2(game);
 
   if (phase2) {
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────
     //  PHASE 2 : règles Fanorona standard
-    //  (les deux joueurs capturent, capture multiple possible)
-    // ────────────────────────────────────────────────
+    //  Les deux joueurs capturent, capture multiple possible.
+    //  Si pas de capture disponible → le joueur peut se déplacer librement.
+    // ────────────────────────────────────────────────────────────
     if (Array.isArray(capturedSpots)) {
       capturedSpots.forEach(s => delete pieces[s]);
     }
@@ -175,48 +211,62 @@ async function handleMakeMove(body, res) {
     }
 
   } else {
-    // ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────
     //  PHASE 1 : règles Fanorona-Vela
-    //  - firstMover : capture (une pièce), capture multiple si nonFirstMover a déjà continué
-    //  - nonFirstMover : déplacement libre, pas de capture
-    // ────────────────────────────────────────────────
-    const amIFirstMov      = firstMover === myColor;
-    const canCapture       = amIFirstMov;
-    const effectiveCaptured = canCapture && Array.isArray(capturedSpots) ? capturedSpots : [];
-
-    if (effectiveCaptured.length > 0) {
-      // Phase 1 : firstMover ne capture qu'une seule pièce par coup
-      delete pieces[effectiveCaptured[0]];
-    }
-
-    const newVisited  = [...visited, origin];
-    const wasCapture  = effectiveCaptured.length > 0;
-    const nfmHasCont  = game.nonFirstMoverHasContinued || false;
-
-    // canContinue : dépend de si nonFirstMover a déjà continué (activé la capture multiple)
-    const nonFMColor  = firstMover === "maintso" ? "mena" : "maintso";
-    const advColor    = amIFirstMov ? nonFMColor : firstMover;
-    const advCount    = Object.values(pieces).filter(v => v === advColor).length;
-    const multiActive = amIFirstMov ? nfmHasCont : (advCount <= 5);
-    const canContinue = multiActive && wasCapture
-      && ph2CheckAvailableCaptures(pieces, target, newVisited, dir, myColor);
-
+    //
+    //  firstMover  : capture une pièce par coup (approche ou retrait simple).
+    //                Après son coup, si PLUS AUCUNE capture disponible sur le plateau
+    //                → il GAGNE IMMÉDIATEMENT (pas de déplacement libre en phase 1).
+    //
+    //  nonFirstMover : déplacement libre uniquement, pas de capture, pas de canContinue.
+    //                  Toujours perdant si le firstMover gagne.
+    // ────────────────────────────────────────────────────────────
+    const amIFirstMov = firstMover === myColor;
     const prevHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-    const histEntry   = { origin, target, capturedSpots: effectiveCaptured };
 
-    if (canContinue) {
-      const newNFM = nfmHasCont || (!amIFirstMov);
-      await gameRef.update({
-        pieces,
-        movingPiece:               target,
-        visited:                   newVisited,
-        lastDir:                   dir || "",
-        moveHistory:               [...prevHistory, histEntry],
-        firstMover,
-        nonFirstMoverHasContinued: newNFM,
-      });
-      return res.status(200).json({ success: true, continuing: true });
-    } else {
+    if (amIFirstMov) {
+      // ── firstMover : applique la capture (une seule pièce) ──
+      const effectiveCaptured = Array.isArray(capturedSpots) && capturedSpots.length > 0
+        ? capturedSpots
+        : [];
+
+      if (effectiveCaptured.length > 0) {
+        delete pieces[effectiveCaptured[0]];
+      }
+
+      const histEntry = { origin, target, capturedSpots: effectiveCaptured };
+
+      // Après ce coup, y a-t-il encore une capture possible pour le firstMover ?
+      const stillHasCapture = ph1FirstMoverHasAnyCapture(pieces, myColor);
+
+      if (!stillHasCapture) {
+        // ── firstMover gagne : plus aucune capture disponible en phase 1 ──
+        const nowMsW    = Date.now();
+        const timerUpdW = { timerRunning: null, timerLastTick: nowMsW };
+        if (game.timerRunning && game.timerLastTick) {
+          const elW = Math.max(0, nowMsW - game.timerLastTick);
+          if (game.timerRunning === "maintso") timerUpdW.timerMaintso = Math.max(0, (game.timerMaintso||0)-elW);
+          else timerUpdW.timerMena = Math.max(0, (game.timerMena||0)-elW);
+        }
+        const payloadW = {
+          pieces,
+          winner:                    myColor,
+          turn:                      myColor,
+          movingPiece:               "",
+          visited:                   [],
+          lastDir:                   "",
+          moveHistory:               [],
+          lastTurnHistory:           [...prevHistory, histEntry],
+          lastTurnColor:             myColor,
+          firstMover,
+          nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
+          ...timerUpdW,
+        };
+        await gameRef.update(payloadW);
+        return res.status(200).json({ success: true, continuing: false, winner: myColor });
+      }
+
+      // ── firstMover a encore des captures possibles : passe le tour ──
       const nextColor = myColor === "maintso" ? "mena" : "maintso";
       const nowMs1    = Date.now();
       const timerUpd1 = { timerRunning: nextColor, timerLastTick: nowMs1 };
@@ -235,7 +285,35 @@ async function handleMakeMove(body, res) {
         pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
         moveHistory: [], lastTurnHistory: [...prevHistory, histEntry],
         lastTurnColor: myColor, firstMover,
-        nonFirstMoverHasContinued: nfmHasCont,
+        nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
+        ...timerUpd1,
+      };
+      if (winner1) payload1.winner = winner1;
+      await gameRef.update(payload1);
+      return res.status(200).json({ success: true, continuing: false, winner: winner1||null });
+
+    } else {
+      // ── nonFirstMover : déplacement libre, pas de capture, pas de canContinue ──
+      const histEntry = { origin, target, capturedSpots: [] };
+      const nextColor = myColor === "maintso" ? "mena" : "maintso";
+      const nowMs1    = Date.now();
+      const timerUpd1 = { timerRunning: nextColor, timerLastTick: nowMs1 };
+      if (game.timerRunning && game.timerLastTick) {
+        const el1 = Math.max(0, nowMs1 - game.timerLastTick);
+        if (game.timerRunning === "maintso") timerUpd1.timerMaintso = Math.max(0, (game.timerMaintso||0)-el1);
+        else timerUpd1.timerMena = Math.max(0, (game.timerMena||0)-el1);
+      }
+      const winner1 = checkGameOver(
+        pieces,
+        timerUpd1.timerMaintso !== undefined ? timerUpd1.timerMaintso : (game.timerMaintso||0),
+        timerUpd1.timerMena    !== undefined ? timerUpd1.timerMena    : (game.timerMena||0),
+        game.minutes
+      );
+      const payload1 = {
+        pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
+        moveHistory: [], lastTurnHistory: [...prevHistory, histEntry],
+        lastTurnColor: myColor, firstMover,
+        nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
         ...timerUpd1,
       };
       if (winner1) payload1.winner = winner1;
@@ -286,7 +364,7 @@ async function handleStopMove(body, res) {
   return res.status(200).json({ success: true, winner: stopWinner||null });
 }
 
-// ── Update timers (kept in sync with game-fanorona) ──
+// ── Update timers ──
 async function handleUpdateTimers(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
@@ -345,18 +423,15 @@ async function handleAcceptRematch(body, res) {
   if (rematch.requestedBy === uid)
     return res.status(400).json({ error: "Cannot accept your own request." });
 
-  // Izay resy no manao hetsika voalohany amin'ny revanche :
-  //   game.winner = "maintso" → maintso menany, koa mena (resy) no manao voalohany
-  //   game.winner = "mena"    → mena menany,    koa maintso (resy) no manao voalohany
-  //   Raha tsy misy winner mahalala → maintso no default
+  // Izay resy no manao hetsika voalohany amin'ny revanche
   const rematchCount = (game.rematchCount || 0) + 1;
   let newFirstMover;
   if (game.winner === "maintso") {
-    newFirstMover = "mena";      // maintso menany → mena resy → mena no manao voalohany
+    newFirstMover = "mena";
   } else if (game.winner === "mena") {
-    newFirstMover = "maintso";   // mena menany → maintso resy → maintso no manao voalohany
+    newFirstMover = "maintso";
   } else {
-    newFirstMover = "maintso";   // default raha tsy misy winner mazava
+    newFirstMover = "maintso";
   }
 
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
@@ -490,6 +565,7 @@ const ALLOWED_MOVES = {
   'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
 };
 
+// ── Phase 2 : capture standard Fanorona (approche ET retrait, multiple) ──
 function ph2GetCaptures(pieces, s, e, color) {
   const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(e[0]),c2=COLS.indexOf(e[1]);
   const enemy = color==="maintso"?"mena":"maintso", dr=r2-r1, dc=c2-c1;
@@ -506,7 +582,7 @@ function ph2CheckAvailableCaptures(pieces, s, visited, lastDir, color) {
   return moves.some(t => {
     if (pieces[t] || (visited && visited.includes(t))) return false;
     const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(t[0]),c2=COLS.indexOf(t[1]);
-    const dir=`${r2-r1},${c2-c1}`;   // ← NANAVAO: c2-c1 (tsy r2-r1 in'droa)
+    const dir=`${r2-r1},${c2-c1}`;
     if (lastDir && lastDir === dir) return false;
     const caps = ph2GetCaptures(pieces, s, t, color);
     return (caps.approach.length > 0 || caps.withdrawal.length > 0);
