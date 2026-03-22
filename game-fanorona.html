@@ -1714,13 +1714,21 @@
       myTimerMs  = 0; oppTimerMs = 0;
       timerRunningColor = null; timerLastTickMs = null;
 
-      // Reset DOM
+      // ── Reset DOM complet — SVG pieces supprimées physiquement ──
+      // (piecesOnBoard = {} seul ne suffit pas : les <g> SVG restent dans le DOM
+      //  et renderPieces crée de nouveaux <g> → doubles visibles)
+      var piecesGrp = document.getElementById('pieces-group');
+      if (piecesGrp) piecesGrp.innerHTML = '';  // supprime TOUS les <g> pièces
+
       document.getElementById('guides-group').innerHTML = '';
       document.getElementById('stop-move-btn').classList.remove('active');
       document.getElementById('stop-move-btn').style.pointerEvents = '';
       document.querySelectorAll('[data-gameover-overlay]').forEach(function(el) { el.remove(); });
       var board2 = document.getElementById('game-board');
       if (board2) board2.classList.remove('lock-board');
+
+      // Recréer les spots cliquables (board spots inchangés mais on les refait pour le flip)
+      drawBoardSpots();
 
       // Mise à jour players bar (couleurs flippées)
       var localUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -1729,7 +1737,7 @@
           renderPlayersBar(myColor, localUser.username || myUid, d.opponentUsername || '???');
         }).catch(function() {});
 
-      // Nouvelle state
+      // Nouvelle state + render
       localState = copyState(game);
       onPlayerTimersUpdate(game);
       applyLocalState();
