@@ -328,54 +328,68 @@
       text-shadow: 0 0 10px rgba(255,100,100,0.6);
     }
 
-    /* ── Rematch request overlay (WebSocket push) ── */
-    #rematch-request-overlay {
-      display: none;
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.65);
-      backdrop-filter: blur(4px);
-      z-index: 10000;
-      justify-content: center;
-      align-items: center;
+    /* ── Rematch notif — style gin (identique dashboard) ── */
+    .rematch-notif {
+      position: fixed; top: 14px; right: 14px; width: 272px;
+      background: white; border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(91,33,182,0.2), 0 2px 8px rgba(0,0,0,0.08);
+      border: 1.5px solid #ede9f8; z-index: 10000; overflow: hidden;
+      opacity: 0; transform: translateX(110%);
+      transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
     }
-    #rematch-request-overlay.visible { display: flex; }
-    .rematch-box {
-      background: #1a3a5c;
-      border-radius: 18px;
-      padding: 32px 36px;
-      text-align: center;
-      color: white;
-      font-family: sans-serif;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
-      max-width: 320px;
-      width: 88vw;
+    .rematch-notif.rn-visible { opacity: 1; transform: translateX(0); pointer-events: auto; }
+    .rn-progress-wrap { height: 3px; background: #f0ebff; overflow: hidden; }
+    .rn-progress-bar {
+      height: 100%; width: 100%;
+      background: linear-gradient(to right, #5b21b6, #a78bfa);
+      transform-origin: left;
+      transition: transform 10s linear;
     }
-    .rematch-box h3 {
-      font-size: 1.2em;
-      font-weight: 800;
-      margin-bottom: 8px;
+    .rn-body { padding: 10px 12px 12px; }
+    .rn-row-top { display: flex; align-items: flex-start; gap: 9px; }
+    .rn-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: linear-gradient(135deg, #5b21b6, #7c3aed);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
     }
-    .rematch-box p {
-      font-size: 0.88em;
-      opacity: 0.75;
-      margin-bottom: 24px;
-      line-height: 1.5;
+    .rn-icon i { color: white; font-size: 0.82em; }
+    .rn-text-wrap { flex: 1; min-width: 0; }
+    .rn-label {
+      font-size: 0.65em; font-weight: 700; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px;
     }
-    .rematch-btns { display: flex; gap: 12px; justify-content: center; }
-    .rematch-accept {
-      flex: 1; padding: 12px;
-      background: #10b981; color: white; border: none;
-      border-radius: 10px; font-size: 1em; font-weight: 700;
-      cursor: pointer; transition: opacity 0.2s;
+    .rn-msg { font-size: 0.82em; font-weight: 600; color: #1e293b; line-height: 1.35; }
+    .rn-username { color: #7c3aed; font-weight: 800; }
+    .rn-countdown {
+      font-size: 0.78em; font-weight: 800; color: #7c3aed;
+      background: #f5f0ff; border-radius: 6px; padding: 2px 7px;
+      flex-shrink: 0; align-self: flex-start; margin-top: 1px; line-height: 1.6;
     }
-    .rematch-accept:hover { opacity: 0.85; }
-    .rematch-decline {
-      width: 44px; padding: 12px;
-      background: rgba(255,255,255,0.12); color: white; border: none;
-      border-radius: 10px; font-size: 1.1em; font-weight: 700;
-      cursor: pointer; transition: opacity 0.2s;
+    .rn-actions {
+      display: flex; gap: 7px;
+      max-height: 0; overflow: hidden; opacity: 0;
+      transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+      margin-top: 0;
     }
-    .rematch-decline:hover { opacity: 0.7; }
+    .rematch-notif.rn-expanded .rn-actions { max-height: 50px; opacity: 1; margin-top: 9px; }
+    .rn-btn-accept {
+      flex: 1; padding: 7px 8px; border: none; border-radius: 9px;
+      background: linear-gradient(to right, #5b21b6, #7c3aed);
+      color: white; font-size: 0.8em; font-weight: 700; cursor: pointer;
+      transition: opacity 0.18s; display: flex; align-items: center;
+      justify-content: center; gap: 5px;
+    }
+    .rn-btn-accept:hover { opacity: 0.85; }
+    .rn-btn-decline {
+      width: 34px; height: 34px; border: none; border-radius: 9px;
+      background: #f1f5f9; color: #64748b; font-size: 0.95em;
+      cursor: pointer; transition: background 0.18s;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .rn-btn-decline:hover { background: #fee2e2; color: #ef4444; }
+    @media (max-width: 600px) { .rematch-notif { width: calc(100vw - 24px); right: 12px; } }
   </style>
 </head>
 <body>
@@ -460,14 +474,21 @@
 
   <div id="error-msg"></div>
 
-  <!-- Rematch request overlay -->
-  <div id="rematch-request-overlay">
-    <div class="rematch-box">
-      <h3>&#127942; Revanche !</h3>
-      <p id="rematch-request-msg">L'adversaire propose une revanche.</p>
-      <div class="rematch-btns">
-        <button class="rematch-accept" id="rematch-accept-btn">Accepter</button>
-        <button class="rematch-decline" id="rematch-decline-btn">&#10005;</button>
+  <!-- Rematch notif (style gin dashboard) -->
+  <div class="rematch-notif" id="rematch-notif">
+    <div class="rn-progress-wrap"><div class="rn-progress-bar" id="rnProgressBar"></div></div>
+    <div class="rn-body">
+      <div class="rn-row-top">
+        <div class="rn-icon"><i class="fas fa-redo-alt"></i></div>
+        <div class="rn-text-wrap">
+          <div class="rn-label">Revanche</div>
+          <div class="rn-msg"><span class="rn-username" id="rn-username">Adversaire</span> propose une revanche&nbsp;!</div>
+        </div>
+        <div class="rn-countdown" id="rn-countdown">10</div>
+      </div>
+      <div class="rn-actions">
+        <button class="rn-btn-accept" id="rematch-accept-btn"><i class="fas fa-check"></i> Accepter</button>
+        <button class="rn-btn-decline" id="rematch-decline-btn"><i class="fas fa-times"></i></button>
       </div>
     </div>
   </div>
@@ -1145,8 +1166,15 @@
         // ── Mettre à jour les timers joueur depuis Firebase ──
         onPlayerTimersUpdate(game);
 
-        // ── Fin de partie : source unique = game.winner écrit par le backend ──
-        // Les deux joueurs reçoivent le même push Firebase → modal garanti pour les deux
+        // ── Rematch (Room Fanorona) — traité EN PREMIER, avant tout routing de tour ──
+        // (La demande arrive quelle que soit la valeur de game.turn)
+        if (gameSource === 'fanorona' && game.rematch) {
+          handleRematchPush(game.rematch, game);
+          // Si rematch accepté → resetGameForRematch() a déjà tout géré
+          if (game.rematch.status === 'accepted') return;
+        }
+
+        // ── Fin de partie : source unique = game.winner ──
         if (game.winner) {
           stopAllTimers();
           stopPlayerTimerRaf();
@@ -1167,11 +1195,6 @@
           renderPieces(localState.pieces, localState);
           if (selectedSpot) renderGuides(selectedSpot, localState);
           return;
-        }
-
-        // ── Rematch (Room Fanorona) — reçu via Firebase push ──
-        if (gameSource === 'fanorona' && game.rematch) {
-          handleRematchPush(game.rematch, game);
         }
 
         // L'adversaire vient de finir son tour → reset UI complet
@@ -1563,35 +1586,88 @@
     var rematchHandled = false;  // évite double-handling
     var rematchOverlayEl = null;
 
+    var rnCountdownTimer = null;
+    var rnCountdownVal   = 10;
+
+    function showRematchNotif(oppUsername) {
+      var notif      = document.getElementById('rematch-notif');
+      var progressBar = document.getElementById('rnProgressBar');
+      var countdownEl = document.getElementById('rn-countdown');
+      var usernameEl  = document.getElementById('rn-username');
+      if (!notif) return;
+
+      usernameEl.textContent = oppUsername || 'Adversaire';
+      countdownEl.textContent = '10';
+      rnCountdownVal = 10;
+
+      // Reset animation
+      notif.classList.remove('rn-expanded', 'rn-visible');
+      progressBar.style.transition = 'none';
+      progressBar.style.transform  = 'scaleX(1)';
+
+      // Show
+      setTimeout(function() {
+        notif.classList.add('rn-visible');
+        setTimeout(function() {
+          notif.classList.add('rn-expanded');
+          void progressBar.offsetHeight;
+          progressBar.style.transition = 'transform 10s linear';
+          progressBar.style.transform  = 'scaleX(0)';
+        }, 350);
+      }, 10);
+
+      // Countdown
+      if (rnCountdownTimer) clearInterval(rnCountdownTimer);
+      rnCountdownTimer = setInterval(function() {
+        rnCountdownVal--;
+        countdownEl.textContent = rnCountdownVal;
+        if (rnCountdownVal <= 0) {
+          clearInterval(rnCountdownTimer);
+          hideRematchNotif();
+          // Auto-decline
+          callApi(GAME_API_URL, 'decline-rematch', { uid: myUid, gameId: gameId })
+            .catch(function(e) { console.warn('auto-decline rematch:', e); });
+          rematchHandled = false;
+        }
+      }, 1000);
+    }
+
+    function hideRematchNotif() {
+      var notif = document.getElementById('rematch-notif');
+      if (notif) notif.classList.remove('rn-visible', 'rn-expanded');
+      if (rnCountdownTimer) { clearInterval(rnCountdownTimer); rnCountdownTimer = null; }
+    }
+
     function handleRematchPush(rematch, game) {
       if (!rematch) return;
 
       // ── Rematch accepté → reset du jeu ──
       if (rematch.status === 'accepted') {
-        // Fermer l'overlay si ouvert
-        var ov = document.getElementById('rematch-request-overlay');
-        if (ov) ov.classList.remove('visible');
-        // Réinitialiser toutes les variables et l'UI
+        hideRematchNotif();
         resetGameForRematch(game);
         return;
       }
 
-      // ── Demande de revanche reçue (de l'adversaire) ──
+      // ── Demande reçue de l'adversaire ──
       if (rematch.status === 'pending' && rematch.requestedBy !== myUid) {
-        if (rematchHandled) return;  // déjà affiché
+        if (rematchHandled) return;
         rematchHandled = true;
-        var ov2 = document.getElementById('rematch-request-overlay');
-        if (ov2) ov2.classList.add('visible');
+
+        // Récupérer le nom de l'adversaire
+        var oppName = myColor === 'maintso'
+          ? (game.receiverUsername || 'Adversaire')
+          : (game.senderUsername   || 'Adversaire');
+        showRematchNotif(oppName);
 
         document.getElementById('rematch-accept-btn').onclick = function() {
+          hideRematchNotif();
           callApi(GAME_API_URL, 'accept-rematch', { uid: myUid, gameId: gameId })
             .catch(function(e) { console.warn('accept-rematch error:', e); });
-          if (ov2) ov2.classList.remove('visible');
         };
         document.getElementById('rematch-decline-btn').onclick = function() {
+          hideRematchNotif();
           callApi(GAME_API_URL, 'decline-rematch', { uid: myUid, gameId: gameId })
             .catch(function(e) { console.warn('decline-rematch error:', e); });
-          if (ov2) ov2.classList.remove('visible');
           rematchHandled = false;
         };
         return;
@@ -1599,15 +1675,8 @@
 
       // ── Demande refusée ──
       if (rematch.status === 'declined') {
-        var ov3 = document.getElementById('rematch-request-overlay');
-        if (ov3) ov3.classList.remove('visible');
+        hideRematchNotif();
         rematchHandled = false;
-        // Afficher un petit message dans le modal gameover si encore ouvert
-        var declinedMsg = document.getElementById('revanche-declined-msg');
-        if (!declinedMsg) {
-          var go = document.querySelector('[data-gameover-box]');
-          // Pas de box = gameover déjà fermé, on ignore
-        }
       }
     }
 
