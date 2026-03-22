@@ -793,7 +793,9 @@ async function handleStartFanoronaGame(body, res) {
     const senderColorRaw   = invite.color || 'green';
     const senderColorGame  = senderColorRaw  === 'red' ? 'mena' : 'maintso';
     const receiverColorGame = senderColorGame === 'mena' ? 'maintso' : 'mena';
-    // invite.game = 'fanorona' | 'vela' | 'both'
+    const minutes = (invite.minutes && [5,10,15].includes(Number(invite.minutes)))
+      ? Number(invite.minutes) : 5;
+    const msPerPlayer = minutes * 60 * 1000;
     const gameSource = invite.game || 'fanorona';
     await gameRef.set({
       pieces:            initialPieces,
@@ -806,18 +808,20 @@ async function handleStartFanoronaGame(body, res) {
       receiverColor:     receiverColorGame,
       startedAt:         Date.now(),
       source:            gameSource,
+      minutes,
+      timerMaintso:      msPerPlayer,
+      timerMena:         msPerPlayer,
+      timerRunning:      null,
+      timerLastTick:     null,
     });
   }
 
   await inviteRef.update({ status: "started", gameId: inviteId });
 
-  // gamePage : page mifandrify amin'ny game type
-  // 'fanorona' → game-fanorona.html
-  // 'both'     → game-fanorona.html  (Fanorona & Vela : manomboka amin'ny Fanorona)
-  // 'vela'     → game-vela.html
-  const inviteGameType = (await rtdbGet(inviteRef))?.game || invite.game || 'fanorona';
-  const gamePage = inviteGameType === 'vela' ? 'game-vela.html' : 'game-fanorona.html';
-  return res.status(200).json({ success: true, gameId: inviteId, gamePage, gameType: inviteGameType });
+  const finalGame   = await rtdbGet(gameRef);
+  const finalSource = (finalGame && finalGame.source) || invite.game || 'fanorona';
+  const gamePage    = finalSource === 'vela' ? 'game-vela.html' : 'game-fanorona.html';
+  return res.status(200).json({ success: true, gameId: inviteId, gamePage, gameType: finalSource });
 }
 
 async function handleGetFanoronaGame(body, res) {
