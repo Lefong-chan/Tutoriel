@@ -288,7 +288,11 @@ async function handleStopMove(body, res) {
 // ── Vérifie fin de partie — retourne winner ("maintso"/"mena") ou null ──
 // ══════════════════════════════════════════════════════════════
 //  REMATCH (Room Vela)
-//  firstMover vaovao = mpiresy (izay resy no atao firstMover)
+//  firstMover ampifamadihana isan'ny revanche (tahaka ny fanorona) :
+//    lalao 1 (rematchCount=0) : maintso = firstMover voalohany
+//    revanche 1 (rematchCount=1) : mena = firstMover
+//    revanche 2 (rematchCount=2) : maintso = firstMover
+//    sns...
 // ══════════════════════════════════════════════════════════════
 
 async function handleRequestRematch(body, res) {
@@ -319,36 +323,14 @@ async function handleAcceptRematch(body, res) {
   if (rematch.requestedBy === uid)
     return res.status(400).json({ error: "Cannot accept your own request." });
 
-  // firstMover vaovao = mpiresy (izay resy no manao hetsika voalohany)
-  // Mitovy amin'ny fanorona ny lojika (rematchCount ampifamadihana)
-  // NEFA: ao amin'ny vela, firstMover = loserColor (tsy turn fotsiny)
-  //
-  // Fanorona: turn = mifamadika (maintso→mena→maintso...)
-  // Vela:     turn = maintso foana, firstMover = mifamadika selon winner
-  //   - lalao 1:     firstMover = maintso (par défaut)
-  //   - revanche 1:  firstMover = loserColor (izay resy)
-  //   - revanche 2:  firstMover = loserColor (izay resy amin'ny revanche 1)
-  //
-  // game.winner soratana tsara alohan'ny accept-rematch
-  // Raha tsy misy (timer expire client-side), nampiasaina requestedBy
-  const rematchCount = (game.rematchCount || 0) + 1;
-
-  // Loser = mpiresy
-  const prevWinner = game.winner || null;
-  let newFirstMover;
-  if (prevWinner) {
-    // winner fantatra → loser = ny hafa
-    newFirstMover = prevWinner === "maintso" ? "mena" : "maintso";
-  } else if (rematch.requestedBy) {
-    // ilay nangataka = ilay resy (request avy amin'ny mpiresy)
-    newFirstMover = game.senderUid === rematch.requestedBy
-      ? (game.senderColor   || "maintso")
-      : (game.receiverColor || "mena");
-  } else {
-    // fallback: mifamadika amin'ny rematchCount
-    const prevFirst = game.firstMover || "maintso";
-    newFirstMover   = prevFirst === "maintso" ? "mena" : "maintso";
-  }
+  // firstMover ampifamadihana isan'ny revanche (tahaka ny fanorona) :
+  //   lalao 1 (rematchCount=0) : maintso no firstMover
+  //   revanche 1 (rematchCount=1) : mena no firstMover
+  //   revanche 2 (rematchCount=2) : maintso no firstMover
+  //   sns...
+  const rematchCount  = (game.rematchCount || 0) + 1;
+  // rematchCount sisa (1,3,5...) → mena firstMover ; tsy sisa (2,4,6...) → maintso firstMover
+  const newFirstMover = (rematchCount % 2 === 1) ? "mena" : "maintso";
 
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
   const initialPieces = {};
@@ -366,9 +348,10 @@ async function handleAcceptRematch(body, res) {
 
   const minutes     = game.minutes || null;
   const msPerPlayer = minutes ? minutes * 60 * 1000 : null;
+
   const resetData = {
     pieces:                    initialPieces,
-    turn:                      "maintso",
+    turn:                      newFirstMover,
     movingPiece:               "",
     visited:                   [],
     lastDir:                   "",
@@ -496,7 +479,7 @@ function ph2CheckAvailableCaptures(pieces, s, visited, lastDir, color) {
   return moves.some(t => {
     if (pieces[t] || (visited && visited.includes(t))) return false;
     const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(t[0]),c2=COLS.indexOf(t[1]);
-    const dir=`${r2-r1},${c2-c1}`;
+    const dir=`${r2-r1},${r2-r1}`;
     if (lastDir && lastDir === dir) return false;
     const caps = ph2GetCaptures(pieces, s, t, color);
     return (caps.approach.length > 0 || caps.withdrawal.length > 0);
