@@ -48,6 +48,7 @@ export default async function handler(req, res) {
       case "request-rematch":    return await handleRequestRematch(payload, res);
       case "accept-rematch":     return await handleAcceptRematch(payload, res);
       case "decline-rematch":    return await handleDeclineRematch(payload, res);
+      case "mark-rematch-done":  return await handleMarkRematchDone(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -390,7 +391,7 @@ async function handleAcceptRematch(body, res) {
     receiverColor:   newReceiverColor,
     timerRunning:    null,
     timerLastTick:   null,
-    rematch:         { status: "done", acceptedAt: Date.now() },
+    rematch:         { status: "accepted", acceptedAt: Date.now() },
   };
   if (msPerPlayer) {
     resetData.timerMaintso = msPerPlayer;
@@ -409,6 +410,18 @@ async function handleDeclineRematch(body, res) {
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
   await gameRef.child("rematch").update({ status: "declined", declinedAt: Date.now() });
+  return res.status(200).json({ success: true });
+}
+
+async function handleMarkRematchDone(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  await gameRef.child("rematch").update({ status: "done" });
   return res.status(200).json({ success: true });
 }
 
