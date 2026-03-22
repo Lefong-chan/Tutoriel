@@ -793,9 +793,8 @@ async function handleStartFanoronaGame(body, res) {
     const senderColorRaw   = invite.color || 'green';
     const senderColorGame  = senderColorRaw  === 'red' ? 'mena' : 'maintso';
     const receiverColorGame = senderColorGame === 'mena' ? 'maintso' : 'mena';
-    const minutes = (invite.minutes && [5,10,15].includes(Number(invite.minutes)))
-      ? Number(invite.minutes) : 5;
-    const msPerPlayer = minutes * 60 * 1000;
+    // invite.game = 'fanorona' | 'vela' | 'both'
+    const gameSource = invite.game || 'fanorona';
     await gameRef.set({
       pieces:            initialPieces,
       turn:              "maintso",
@@ -806,11 +805,7 @@ async function handleStartFanoronaGame(body, res) {
       receiverUsername,
       receiverColor:     receiverColorGame,
       startedAt:         Date.now(),
-      minutes,
-      timerMaintso:      msPerPlayer,
-      timerMena:         msPerPlayer,
-      timerRunning:      null,
-      timerLastTick:     null,
+      source:            gameSource,
     });
   }
 
@@ -844,6 +839,7 @@ async function handleGetFanoronaGame(body, res) {
     senderUsername:   game.senderUsername,
     receiverUsername: game.receiverUsername,
     pieces:           game.pieces,
-    turn:             game.turn
+    turn:             game.turn,
+    source:           game.source || 'fanorona',
   });
 }
