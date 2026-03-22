@@ -355,10 +355,15 @@ async function handleAcceptRematch(body, res) {
   if (rematch.requestedBy === uid)
     return res.status(400).json({ error: "Cannot accept your own request." });
 
-  // Couleurs inchangées : chaque joueur garde sa couleur
-  // (senderColor et receiverColor ne changent pas)
-  // Le board est par défaut : maintso = rows 3-5, mena = rows 1-2
-  // Maintso commence toujours (turn='maintso')
+  // Pièces inchangées : chaque joueur garde sa couleur
+  // firstTurn ampifamadihana isan'ny revanche :
+  //   lalao 1 (rematchCount=0) : maintso manomboka
+  //   revanche 1 (rematchCount=1) : mena manomboka
+  //   revanche 2 (rematchCount=2) : maintso manomboka
+  //   sns...
+  const rematchCount = (game.rematchCount || 0) + 1;
+  // rematchCount impair → mena manomboka, pair → maintso manomboka
+  const firstTurn = (rematchCount % 2 === 1) ? "mena" : "maintso";
 
   // Reset des pièces (positions par défaut)
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
@@ -380,7 +385,7 @@ async function handleAcceptRematch(body, res) {
 
   const resetData = {
     pieces:          initialPieces,
-    turn:            "maintso",
+    turn:            firstTurn,
     movingPiece:     "",
     visited:         [],
     lastDir:         "",
@@ -392,6 +397,7 @@ async function handleAcceptRematch(body, res) {
     receiverColor:   game.receiverColor,
     timerRunning:    null,
     timerLastTick:   null,
+    rematchCount:    rematchCount,
     rematch:         { status: "accepted", acceptedAt: Date.now() },
   };
   if (msPerPlayer) {
