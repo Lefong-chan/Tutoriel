@@ -327,6 +327,55 @@
       color: #ff6b6b;
       text-shadow: 0 0 10px rgba(255,100,100,0.6);
     }
+
+    /* ── Rematch request overlay (WebSocket push) ── */
+    #rematch-request-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(4px);
+      z-index: 10000;
+      justify-content: center;
+      align-items: center;
+    }
+    #rematch-request-overlay.visible { display: flex; }
+    .rematch-box {
+      background: #1a3a5c;
+      border-radius: 18px;
+      padding: 32px 36px;
+      text-align: center;
+      color: white;
+      font-family: sans-serif;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+      max-width: 320px;
+      width: 88vw;
+    }
+    .rematch-box h3 {
+      font-size: 1.2em;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .rematch-box p {
+      font-size: 0.88em;
+      opacity: 0.75;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .rematch-btns { display: flex; gap: 12px; justify-content: center; }
+    .rematch-accept {
+      flex: 1; padding: 12px;
+      background: #10b981; color: white; border: none;
+      border-radius: 10px; font-size: 1em; font-weight: 700;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    .rematch-accept:hover { opacity: 0.85; }
+    .rematch-decline {
+      width: 44px; padding: 12px;
+      background: rgba(255,255,255,0.12); color: white; border: none;
+      border-radius: 10px; font-size: 1.1em; font-weight: 700;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    .rematch-decline:hover { opacity: 0.7; }
   </style>
 </head>
 <body>
@@ -410,6 +459,18 @@
   </div>
 
   <div id="error-msg"></div>
+
+  <!-- Rematch request overlay -->
+  <div id="rematch-request-overlay">
+    <div class="rematch-box">
+      <h3>&#127942; Revanche !</h3>
+      <p id="rematch-request-msg">L'adversaire propose une revanche.</p>
+      <div class="rematch-btns">
+        <button class="rematch-accept" id="rematch-accept-btn">Accepter</button>
+        <button class="rematch-decline" id="rematch-decline-btn">&#10005;</button>
+      </div>
+    </div>
+  </div>
 </div>
 
   <script>
@@ -806,6 +867,7 @@
 
       setTimeout(function() {
         var overlay = document.createElement('div');
+        overlay.setAttribute('data-gameover-overlay','1');
         overlay.style.cssText = [
           'position:fixed','inset:0','background:rgba(0,0,0,0.7)',
           'display:flex','justify-content:center','align-items:center',
@@ -826,6 +888,9 @@
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
         title.textContent = myMsg;
 
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+
         var btn = document.createElement('button');
         btn.textContent = 'OK';
         btn.style.cssText = [
@@ -835,9 +900,38 @@
           'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
         ].join(';');
         btn.onclick = function() { window.location.href = 'dashboard.html'; };
+        btnRow.appendChild(btn);
+
+        // Revanche — uniquement Room Fanorona
+        if (gameSource === 'fanorona') {
+          var btnRevanche = document.createElement('button');
+          btnRevanche.textContent = '&#128260; Revanche';
+          btnRevanche.innerHTML = '&#128260; Revanche';
+          btnRevanche.style.cssText = [
+            'background:#f59e0b','color:white','border:none',
+            'border-radius:10px','padding:12px 24px',
+            'font-size:1.1em','font-weight:700','cursor:pointer',
+            'box-shadow:0 2px 10px rgba(245,158,11,0.4)'
+          ].join(';');
+          btnRevanche.onclick = function() {
+            btnRevanche.disabled = true;
+            btnRevanche.textContent = '...';
+            callApi(GAME_API_URL, 'request-rematch', { uid: myUid, gameId: gameId })
+              .then(function() {
+                btnRevanche.textContent = 'Demande envoyée';
+                btnRevanche.style.background = '#64748b';
+              })
+              .catch(function(e) {
+                btnRevanche.disabled = false;
+                btnRevanche.textContent = 'Revanche';
+                console.warn('request-rematch error:', e);
+              });
+          };
+          btnRow.appendChild(btnRevanche);
+        }
 
         box.appendChild(title);
-        box.appendChild(btn);
+        box.appendChild(btnRow);
         overlay.appendChild(box);
         document.body.appendChild(overlay);
       }, delay);
@@ -927,24 +1021,21 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
-        // ── Source : 'fanorona' | 'both' | 'vela' ──
-        // Priorité : data.source (depuis Firebase) > URL param > default
+        // Source : Firebase > URL param > default
         gameSource = data.source || gameSource || 'fanorona';
 
-        // Redirect si 'vela' (ne devrait pas arriver ici)
+        // Redirect si vela
         if (gameSource === 'vela') {
-          window.location.replace(
-            'game-vela.html?gameId=' + encodeURIComponent(gameId_p) +
-            '&color='   + encodeURIComponent(color_p) +
-            '&inviteId='+ encodeURIComponent(inviteId) +
-            '&source=vela'
-          );
+          window.location.replace('game-vela.html?gameId=' + encodeURIComponent(gameId_p)
+            + '&color=' + encodeURIComponent(color_p)
+            + '&inviteId=' + encodeURIComponent(inviteId)
+            + '&source=vela');
           return;
         }
 
-        // Alert de vérification (à retirer après validation)
-        var _srcLabels = { 'fanorona': 'Room Fanorona', 'vela': 'Room Vela', 'both': 'Room Fanorona & Vela' };
-        alert('[game-fanorona.html] Source : ' + (_srcLabels[gameSource] || gameSource));
+        // Alert de vérification source (à retirer après validation)
+        var _sl = { fanorona: 'Room Fanorona', vela: 'Room Vela', both: 'Room Fanorona & Vela' };
+        alert('[game-fanorona.html] Source : ' + (_sl[gameSource] || gameSource));
 
         renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
 
@@ -1076,6 +1167,11 @@
           renderPieces(localState.pieces, localState);
           if (selectedSpot) renderGuides(selectedSpot, localState);
           return;
+        }
+
+        // ── Rematch (Room Fanorona) — reçu via Firebase push ──
+        if (gameSource === 'fanorona' && game.rematch) {
+          handleRematchPush(game.rematch, game);
         }
 
         // L'adversaire vient de finir son tour → reset UI complet
@@ -1459,6 +1555,115 @@
         if(caps.approach.length>0||caps.withdrawal.length>0)return true;
       }
       return false;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  REMATCH — WebSocket driven (Room Fanorona only)
+    // ════════════════════════════════════════════════════════════
+    var rematchHandled = false;  // évite double-handling
+    var rematchOverlayEl = null;
+
+    function handleRematchPush(rematch, game) {
+      if (!rematch) return;
+
+      // ── Rematch accepté → reset du jeu ──
+      if (rematch.status === 'accepted') {
+        // Fermer l'overlay si ouvert
+        var ov = document.getElementById('rematch-request-overlay');
+        if (ov) ov.classList.remove('visible');
+        // Réinitialiser toutes les variables et l'UI
+        resetGameForRematch(game);
+        return;
+      }
+
+      // ── Demande de revanche reçue (de l'adversaire) ──
+      if (rematch.status === 'pending' && rematch.requestedBy !== myUid) {
+        if (rematchHandled) return;  // déjà affiché
+        rematchHandled = true;
+        var ov2 = document.getElementById('rematch-request-overlay');
+        if (ov2) ov2.classList.add('visible');
+
+        document.getElementById('rematch-accept-btn').onclick = function() {
+          callApi(GAME_API_URL, 'accept-rematch', { uid: myUid, gameId: gameId })
+            .catch(function(e) { console.warn('accept-rematch error:', e); });
+          if (ov2) ov2.classList.remove('visible');
+        };
+        document.getElementById('rematch-decline-btn').onclick = function() {
+          callApi(GAME_API_URL, 'decline-rematch', { uid: myUid, gameId: gameId })
+            .catch(function(e) { console.warn('decline-rematch error:', e); });
+          if (ov2) ov2.classList.remove('visible');
+          rematchHandled = false;
+        };
+        return;
+      }
+
+      // ── Demande refusée ──
+      if (rematch.status === 'declined') {
+        var ov3 = document.getElementById('rematch-request-overlay');
+        if (ov3) ov3.classList.remove('visible');
+        rematchHandled = false;
+        // Afficher un petit message dans le modal gameover si encore ouvert
+        var declinedMsg = document.getElementById('revanche-declined-msg');
+        if (!declinedMsg) {
+          var go = document.querySelector('[data-gameover-box]');
+          // Pas de box = gameover déjà fermé, on ignore
+        }
+      }
+    }
+
+    function resetGameForRematch(game) {
+      // Stopper tous les timers
+      stopAllTimers();
+      stopPlayerTimerRaf();
+
+      // ── Nouvelle couleur pour ce joueur ──
+      var newMyColor = (game.senderUid === myUid)
+        ? (game.senderColor   || 'maintso')
+        : (game.receiverColor || 'mena');
+      var newOppColor = newMyColor === 'maintso' ? 'mena' : 'maintso';
+
+      myColor    = newMyColor;
+      myOppColor = newOppColor;
+
+      // Flip du board si couleur changée
+      var board = document.getElementById('game-board');
+      if (myColor === 'mena') board.classList.add('flipped');
+      else                    board.classList.remove('flipped');
+
+      // Reset des variables d'état
+      gameOverTriggered = false;
+      rematchHandled    = false;
+      movingInProgress  = false;
+      selectedSpot      = null;
+      lastBlockedSpot   = null;
+      canChangePiece    = true;
+      pendingCaptures   = { approach: [], withdrawal: [], moveData: null };
+      piecesOnBoard     = {};
+
+      // Timer reset
+      playerTimerEnabled = false;
+      myTimerMs  = 0; oppTimerMs = 0;
+      timerRunningColor = null; timerLastTickMs = null;
+
+      // Reset DOM
+      document.getElementById('guides-group').innerHTML = '';
+      document.getElementById('stop-move-btn').classList.remove('active');
+      document.getElementById('stop-move-btn').style.pointerEvents = '';
+      document.querySelectorAll('[data-gameover-overlay]').forEach(function(el) { el.remove(); });
+      var board2 = document.getElementById('game-board');
+      if (board2) board2.classList.remove('lock-board');
+
+      // Mise à jour players bar (couleurs flippées)
+      var localUser = JSON.parse(localStorage.getItem('user') || '{}');
+      callApi(SESSION_API_URL, 'get-fanorona-game', { uid: myUid, gameId: gameId })
+        .then(function(d) {
+          renderPlayersBar(myColor, localUser.username || myUid, d.opponentUsername || '???');
+        }).catch(function() {});
+
+      // Nouvelle state
+      localState = copyState(game);
+      onPlayerTimersUpdate(game);
+      applyLocalState();
     }
 
     init();
