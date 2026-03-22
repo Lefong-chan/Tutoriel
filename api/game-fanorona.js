@@ -390,7 +390,7 @@ async function handleAcceptRematch(body, res) {
     receiverColor:   newReceiverColor,
     timerRunning:    null,
     timerLastTick:   null,
-    rematch:         { status: "accepted", acceptedAt: Date.now() },
+    rematch:         { status: "done", acceptedAt: Date.now() },
   };
   if (msPerPlayer) {
     resetData.timerMaintso = msPerPlayer;
