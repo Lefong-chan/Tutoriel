@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fanorona</title>
+  <title>Vela</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
   <!-- Firebase SDK (compat) — connexion WebSocket temps réel -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -182,7 +182,7 @@
       box-shadow: 0 1px 4px rgba(0,0,0,0.18);
     }
 
-    /* ── boutons icône spéciaux — couleur accent au hover ── */
+    /* ── boutons icône spéciaux ── */
     button.abtn:not(.abtn.col):not(#stop-move-btn):not(.dbtn) i {
       transition: color 0.18s, text-shadow 0.18s;
     }
@@ -191,7 +191,7 @@
       text-shadow: 0 0 10px rgba(165,243,255,0.6);
     }
 
-    /* ── stop-move-btn : style danger / stop ── */
+    /* ── stop-move-btn ── */
     #stop-move-btn {
       background: linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.06));
       border-color: rgba(239,68,68,0.35);
@@ -209,7 +209,7 @@
       transform: scale(1.05);
     }
 
-    /* ── abtn colonne (player-info + tdiv + tblk) ── */
+    /* ── abtn colonne ── */
     .abtn.col {
       flex-direction: column;
       height: auto;
@@ -250,7 +250,7 @@
       color: white;
     }
 
-    /* ── dbtn (DEMANDE) — accent color ── */
+    /* ── dbtn (DEMANDE) ── */
     .dbtn {
       font-family: sans-serif;
       font-size: 0.6em;
@@ -301,6 +301,22 @@
       line-height: 1;
     }
 
+    /* ── Timer countdown dans #opp-timer-ls (Phase 2 uniquement) ── */
+    #opp-timer-ls {
+      font-size: 1em;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.85);
+      transition: color 0.2s;
+    }
+    #opp-timer-ls.timer-active {
+      color: #fff;
+    }
+    #opp-timer-ls.timer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 10px rgba(255,100,100,0.6);
+    }
+
     /* ── Player timers dans les .tval ── */
     .tval.ptimer-urgent {
       color: #ff6b6b;
@@ -320,9 +336,7 @@
       color: rgba(255,255,255,0.85);
       transition: color 0.2s;
     }
-    #opp-timer-ls.timer-active {
-      color: #fff;
-    }
+    #opp-timer-ls.timer-active { color: #fff; }
     #opp-timer-ls.timer-urgent {
       color: #ff6b6b;
       text-shadow: 0 0 10px rgba(255,100,100,0.6);
@@ -427,7 +441,7 @@
       <span class="ping-ms" id="l-ping-ms">— ms</span>
     </div>
 
-    <!-- Timer 2s : visible uniquement pour le joueur local en cours de move multiple -->
+    <!-- Timer 2s : visible uniquement pour le joueur local en Phase 2, move multiple -->
     <div class="abtn" id="opp-timer-ls">--</div>
     <button class="abtn"><i class="fas fa-comment-dots"></i></button>
   </div>
@@ -499,7 +513,7 @@
 
     //  SECTION 1 — Config & helpers
     var SESSION_API_URL = '/api/session';
-    var GAME_API_URL    = '/api/game-fanorona';
+    var GAME_API_URL    = '/api/game-vela';
 
     var FIREBASE_CONFIG = {
       apiKey: "AIzaSyDMr3plGs8sF56pM_O3jYqfGdWTlJiePW0",
@@ -555,27 +569,28 @@
     measurePing();
 
     // ════════════════════════════════════════════════════════════
-    //  TIMER A — 2s "move multiple" : reset après chaque move
+    //  TIMER A — 2s "move multiple" Phase 2 : reset après chaque move
     //    Miasa rehefa canContinue (move feno natao, mbola afaka manohy)
     //    Frontend ihany — tsy misy fiatraikany amin'ny backend
     //
-    //  TIMER B — 4s "selection capture" : fidiana approach/withdrawal
-    //    Miasa ONLY raha !canChangePiece (efa nisy move teo aloha)
+    //  TIMER B — 4s "selection capture" Phase 2 : fidiana approach/withdrawal
+    //    Miasa ONLY raha !ph2_canChangePiece (efa nisy move teo aloha)
     //    Rehefa tapitra → averina eo amin'ny movingPiece (toerana teo
-    //    aloha) ilay pièce, ary stop automatic (tsy eo amin'ny ← fa
-    //    eo amin'ny toerana niandohana)
+    //    aloha) ilay pièce, ary stop automatic
     //    Frontend ihany — tsy misy fiatraikany amin'ny backend
+    //
+    //  Phase 1 : tsy misy timer (-- foana)
     // ════════════════════════════════════════════════════════════
-    var MOVE_TIMER_DURATION = 2.0;      // secondes — timer A
-    var SEL_TIMER_DURATION  = 4.0;      // secondes — timer B
+    var MOVE_TIMER_DURATION = 2.0;
+    var SEL_TIMER_DURATION  = 4.0;
 
     var moveTimerRaf    = null;
     var moveTimerEnd    = null;
     var moveTimerActive = false;
 
-    var selTimerRaf     = null;
-    var selTimerEnd     = null;
-    var selTimerActive  = false;
+    var selTimerRaf    = null;
+    var selTimerEnd    = null;
+    var selTimerActive = false;
 
     var timerEl = document.getElementById('opp-timer-ls');
 
@@ -600,7 +615,6 @@
     }
 
     function startMoveTimer() {
-      // Stopper le timer de sélection s'il tournait
       stopSelTimer(true);
       if (moveTimerRaf) cancelAnimationFrame(moveTimerRaf);
       moveTimerActive = true;
@@ -613,7 +627,7 @@
           setTimerDisplay('0.0');
           moveTimerActive = false;
           moveTimerRaf    = null;
-          handleStopBtn();
+          ph2HandleStopBtn(true);  // forceStop=true : avy amin'ny timer
           return;
         }
         setTimerDisplay(remaining.toFixed(1));
@@ -622,8 +636,7 @@
       moveTimerRaf = requestAnimationFrame(tick);
     }
 
-    // ── Timer B : sélection capture (4s) — ONLY si !canChangePiece ──
-    // silent=true → ne remet pas "--" (utilisé quand on enchaîne avec moveTimer)
+    // ── Timer B : sélection capture (4s) — ONLY si !ph2_canChangePiece ──
     function stopSelTimer(silent) {
       if (selTimerRaf) { cancelAnimationFrame(selTimerRaf); selTimerRaf = null; }
       selTimerActive = false;
@@ -632,15 +645,13 @@
     }
 
     function startSelTimer() {
-      // Ne démarrer que si on est en mode capture multiple (!canChangePiece)
-      if (canChangePiece) return;
+      if (ph2_canChangePiece) return;
       stopMoveTimer();
       if (selTimerRaf) cancelAnimationFrame(selTimerRaf);
       selTimerActive = true;
       selTimerEnd    = Date.now() + SEL_TIMER_DURATION * 1000;
 
-      // Snapshot de la position AVANT le mouvement (movingPiece = toerana teo aloha)
-      var returnSpot = localState.movingPiece;
+      var returnSpot = ph2_localState.movingPiece;
 
       function tick() {
         if (!selTimerActive) return;
@@ -649,8 +660,7 @@
           setTimerDisplay('0.0');
           selTimerActive = false;
           selTimerRaf    = null;
-          // ── Auto : annuler le pendingCaptures et REVENIR au movingPiece ──
-          autoResolvePending(returnSpot);
+          ph2AutoResolvePending(returnSpot);
           return;
         }
         setTimerDisplay(remaining.toFixed(1));
@@ -659,52 +669,45 @@
       selTimerRaf = requestAnimationFrame(tick);
     }
 
-    // Annuler le choix approach/withdrawal et revenir à la position d'avant le move
-    function autoResolvePending(returnSpot) {
-      if (!pendingCaptures.moveData) return;
-      var md = pendingCaptures.moveData;
-      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+    // Annuler choix approach/withdrawal → revenir à md.origin, stop automatic
+    function ph2AutoResolvePending(returnSpot) {
+      if (!ph2_pendingCaptures.moveData) return;
+      var md = ph2_pendingCaptures.moveData;
+      ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
 
-      // Remettre la pièce à sa position d'origine (md.origin = toerana niandohana du move)
-      // Le joueur reste en mode movingPiece sur md.origin
-      var restoredPieces = Object.assign({}, localState.pieces);
-      // Enlever la pièce à la position intermédiaire (spotID), remettre à origin
+      // Remettre la pièce à sa position d'origine
+      var restoredPieces = Object.assign({}, ph2_localState.pieces);
       delete restoredPieces[md.target];
       restoredPieces[md.origin] = myColor;
-      // Retirer aussi le visited qu'on avait ajouté
-      var restoredVisited = (localState.visited || []).filter(function(v) { return v !== md.origin; });
+      var restoredVisited = (ph2_localState.visited || []).filter(function(v) { return v !== md.origin; });
 
-      localState.pieces  = restoredPieces;
-      localState.visited = restoredVisited;
+      ph2_localState.pieces  = restoredPieces;
+      ph2_localState.visited = restoredVisited;
 
-      // Le selectedSpot revient à md.origin (la pièce qui est encore en train de jouer)
-      selectedSpot = md.origin;
-
-      // Stop automatic : fin de tour
       var piecesSnapshot = Object.assign({}, restoredPieces);
 
       stopMoveTimer();
       setTimerDisplay('--');
 
-      movingInProgress       = true;
-      localState.turn        = myOppColor;
-      localState.movingPiece = '';
-      localState.visited     = [];
-      localState.lastDir     = '';
-      selectedSpot           = null;
-      lastBlockedSpot        = null;
-      canChangePiece         = true;
+      ph2_movingInProgress       = true;
+      ph2_localState.turn        = myOppColor;
+      ph2_localState.movingPiece = '';
+      ph2_localState.visited     = [];
+      ph2_localState.lastDir     = '';
+      ph2_selectedSpot           = null;
+      ph2_lastBlockedSpot        = null;
+      ph2_canChangePiece         = true;
       document.getElementById('stop-move-btn').classList.remove('active');
       document.getElementById('guides-group').innerHTML = '';
-      updateTurnIndicator(localState.turn);
-      renderPieces(localState.pieces, localState);
+      updateTurnIndicator(ph2_localState.turn);
+      ph2RenderPieces(ph2_localState.pieces, ph2_localState);
 
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
-        .catch(function(e) { console.warn('auto-resolve stop-move error', e); });
+        .catch(function(e) { console.warn('ph2 auto-resolve stop-move error', e); });
 
-      var myPCA  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
-      var oppPCA = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      // fin de partie gérée via game.winner (Firebase WebSocket)
+      var myPCA  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+      var oppPCA = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+      // fin de partie gérée via game.winner
     }
 
     function stopAllTimers() {
@@ -713,101 +716,50 @@
     }
 
     // ════════════════════════════════════════════════════════════
-
-    // ════════════════════════════════════════════════════════════
-    //  PLAYER TIMERS — countdown per player (via Firebase WebSocket)
-    //
-    //  Architecture :
-    //  - Les temps restants (timerMaintso, timerMena) sont stockés
-    //    dans Firebase RTDB et mis à jour à chaque changement de tour
-    //    via l'action "update-timers" du backend.
-    //  - Le client LOCAL fait tourner un RAF local pour afficher le
-    //    décompte en temps réel (interpolation côté client).
-    //  - À chaque push Firebase (onValue), on reçoit les valeurs
-    //    fraîches et on relance le RAF local.
-    //  - Quand le temps tombe à 0 → showGameOverAlert immédiatement.
-    //
-    //  Affichage :
-    //  ≥ 60s  → "4:59"  (pas de secondes sauf si < 60s)
-    //  < 60s  → "59"    (secondes entières)
-    //  < 10s  → "9.9"   (dixièmes de seconde)
+    //  PLAYER TIMERS — Phase 2 uniquement, WebSocket-driven
     // ════════════════════════════════════════════════════════════
     var playerTimerEnabled = false;
-    var myTimerMs          = 0;
-    var oppTimerMs         = 0;
-    var timerRunningColor  = null;   // "maintso" ou "mena" — qui compte
-    var timerLastTickMs    = null;   // Date.now() au moment du dernier push
-    var playerTimerRaf     = null;
-
-    // Éléments DOM (OPP = colonne gauche .tval, MY = colonne droite .tval)
-    var oppTvalEl = null;
-    var myTvalEl  = null;
+    var myTimerMs = 0, oppTimerMs = 0;
+    var timerRunningColor = null, timerLastTickMs = null, playerTimerRaf = null;
+    var oppTvalEl = null, myTvalEl = null;
 
     function getTimerEls() {
       if (!oppTvalEl) oppTvalEl = document.querySelector('.left-group  .tval');
       if (!myTvalEl)  myTvalEl  = document.querySelector('.right-group .tval');
     }
-
     function formatPlayerTimer(ms) {
       if (ms <= 0) return '0';
-      var totalSec = ms / 1000;
-      if (totalSec >= 60) {
-        var m = Math.floor(totalSec / 60);
-        var s = Math.floor(totalSec % 60);
-        return m + ':' + (s < 10 ? '0' : '') + s;
-      } else if (totalSec >= 10) {
-        return Math.floor(totalSec) + 's';
-      } else {
-        return totalSec.toFixed(1) + 's';
-      }
+      var s = ms / 1000;
+      if (s >= 60) { var m=Math.floor(s/60),ss=Math.floor(s%60); return m+':'+(ss<10?'0':'')+ss; }
+      return s >= 10 ? Math.floor(s)+'s' : s.toFixed(1)+'s';
     }
-
     function applyTimerUrgency(el, ms) {
       if (!el) return;
       if (ms > 0 && ms <= 10000) el.classList.add('ptimer-urgent');
-      else                        el.classList.remove('ptimer-urgent');
+      else el.classList.remove('ptimer-urgent');
     }
-
     function renderPlayerTimers(myMs, oppMs) {
       getTimerEls();
       if (myTvalEl)  { myTvalEl.textContent  = formatPlayerTimer(myMs);  applyTimerUrgency(myTvalEl,  myMs); }
       if (oppTvalEl) { oppTvalEl.textContent = formatPlayerTimer(oppMs); applyTimerUrgency(oppTvalEl, oppMs); }
     }
-
     function stopPlayerTimerRaf() {
       if (playerTimerRaf) { cancelAnimationFrame(playerTimerRaf); playerTimerRaf = null; }
     }
-
     function startPlayerTimerRaf() {
       stopPlayerTimerRaf();
       if (!playerTimerEnabled) return;
-
       function tick() {
         if (!playerTimerEnabled) return;
-        var now     = Date.now();
+        var now = Date.now();
         var elapsed = timerLastTickMs ? Math.max(0, now - timerLastTickMs) : 0;
-
-        var curMyMs  = myTimerMs;
-        var curOppMs = oppTimerMs;
-
-        // timerRunningColor = game.turn = joueur EN COURS (qui a le droit de jouer)
-        // Donc timerRunningColor === myColor → c'est MON tour → MON chrono tourne
+        var curMyMs = myTimerMs, curOppMs = oppTimerMs;
         if (timerRunningColor) {
-          if (timerRunningColor === myColor) {
-            // C'est mon tour : mon chrono tourne
-            curMyMs  = Math.max(0, myTimerMs  - elapsed);
-          } else {
-            // C'est le tour de l'adversaire : son chrono tourne
-            curOppMs = Math.max(0, oppTimerMs - elapsed);
-          }
+          if (timerRunningColor === myColor) curMyMs  = Math.max(0, myTimerMs  - elapsed);
+          else                               curOppMs = Math.max(0, oppTimerMs - elapsed);
         }
-
         renderPlayerTimers(curMyMs, curOppMs);
-
-        // Expiration : izay lany fotoana no resy
-        // Expiration timer : mampiseho modal avy hatrany + alefa declare-winner
         if (timerRunningColor === myColor && curMyMs <= 0) {
-          // Izaho lany fotoana : izaho resy
           stopPlayerTimerRaf();
           if (!gameOverTriggered) {
             showGameOverAlert(myOppColor, 0);
@@ -817,7 +769,6 @@
           return;
         }
         if (timerRunningColor === myOppColor && curOppMs <= 0) {
-          // Adversaire lany fotoana : izaho mandresy
           stopPlayerTimerRaf();
           if (!gameOverTriggered) {
             showGameOverAlert(myColor, 0);
@@ -826,41 +777,22 @@
           }
           return;
         }
-
         playerTimerRaf = requestAnimationFrame(tick);
       }
       playerTimerRaf = requestAnimationFrame(tick);
     }
-
-    // Appelé à chaque push Firebase — met à jour les valeurs et relance le RAF
-    // ── Invariant : timerRunning = couleur du joueur EN COURS (qui a le droit de jouer)
-    //   timerRunning === myColor    → c'est MON tour    → MON chrono tourne
-    //   timerRunning === myOppColor → c'est SON tour    → SON chrono tourne
     function onPlayerTimersUpdate(game) {
-      if (!game.minutes) return; // pas de timer configuré
+      if (!game.minutes) return;
       playerTimerEnabled = true;
       getTimerEls();
-
-      // timerMaintso/timerMena = temps restant pour chaque couleur (valeur serveur)
-      var myMs  = myColor === 'maintso' ? (game.timerMaintso || 0) : (game.timerMena || 0);
-      var oppMs = myColor === 'maintso' ? (game.timerMena    || 0) : (game.timerMaintso || 0);
-
-      myTimerMs         = myMs;
-      oppTimerMs        = oppMs;
-      timerRunningColor = game.timerRunning || null;   // qui a le tour maintenant
+      var myMs  = myColor === 'maintso' ? (game.timerMaintso||0) : (game.timerMena||0);
+      var oppMs = myColor === 'maintso' ? (game.timerMena||0)    : (game.timerMaintso||0);
+      myTimerMs = myMs; oppTimerMs = oppMs;
+      timerRunningColor = game.timerRunning || null;
       timerLastTickMs   = game.timerLastTick || Date.now();
-
-      // Rendu immédiat des valeurs serveur
       renderPlayerTimers(myMs, oppMs);
-      // Lancer le RAF d'interpolation locale
       startPlayerTimerRaf();
-
-      // Vérification d'expiration immédiate (serveur déjà à 0)
-      if (!gameOverTriggered) {
-        // Expiration immédiate : game.winner sera reçu via Firebase WebSocket
-      }
     }
-
     // ════════════════════════════════════════════════════════════
 
     var gameOverTriggered = false;
@@ -923,10 +855,9 @@
         btn.onclick = function() { window.location.href = 'dashboard.html'; };
         btnRow.appendChild(btn);
 
-        // Revanche — uniquement Room Fanorona
-        if (gameSource === 'fanorona') {
+        // Revanche — Room Vela uniquement
+        if (gameSource === 'vela') {
           var btnRevanche = document.createElement('button');
-          btnRevanche.textContent = '&#128260; Revanche';
           btnRevanche.innerHTML = '&#128260; Revanche';
           btnRevanche.style.cssText = [
             'background:#f59e0b','color:white','border:none',
@@ -995,33 +926,50 @@
       'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
     };
 
-    //  SECTION 3 — État
+    //  SECTION 3 — État global
     var myColor    = null;
     var myOppColor = null;
     var gameId     = null;
     var myUid      = null;
+    var myDotEl    = null;
+    var oppDotEl   = null;
+    var firstMover = null;
 
-    var localState = null;
-
-    var selectedSpot    = null;
-    var lastBlockedSpot = null;
-    var canChangePiece  = true;
-    var pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-
+    // ── État partagé (render commun) ──
     var piecesOnBoard = {};
+    var gameSource    = 'vela';  // global — set in init(), used in listener & showGameOverAlert
 
-    var moveQueue        = [];
+    // ── Phase 1 — variables ──
+    var localState       = null;
+    var selectedSpot     = null;
+    var lastBlockedSpot  = null;
+    var canChangePiece   = true;
+    var pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
     var movingInProgress = false;
 
-    var myDotEl  = null;
-    var oppDotEl = null;
+    // ── Phase 2 — variables (préfixe ph2_) ──
+    var ph2_localState       = null;
+    var ph2_selectedSpot     = null;
+    var ph2_lastBlockedSpot  = null;
+    var ph2_canChangePiece   = true;
+    var ph2_pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
+    var ph2_movingInProgress = false;
 
-    //  SECTION 4 — Init
+    //  SECTION 4 — Params URL & Init
     var params   = new URLSearchParams(window.location.search);
     var gameId_p = params.get('gameId');
     var color_p  = params.get('color');
     var inviteId = params.get('inviteId');
-    var gameSource = params.get('source') || 'fanorona';
+
+    // ── Phase check ──
+    function isPhase2(pieces) {
+      if (!firstMover) return false;
+      var nonFMColor = firstMover === myColor ? myOppColor : myColor;
+      var count = Object.keys(pieces || {}).filter(function(s) {
+        return (pieces || {})[s] === nonFMColor;
+      }).length;
+      return count <= 5;
+    }
 
     async function init() {
       if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
@@ -1042,21 +990,23 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
-        // Source : Firebase > URL param > default
-        gameSource = data.source || gameSource || 'fanorona';
+        // ── Source : 'fanorona' | 'both' | 'vela' ──
+        gameSource = data.source || params.get('source') || 'vela';
 
-        // Redirect si vela
-        if (gameSource === 'vela') {
-          window.location.replace('game-vela.html?gameId=' + encodeURIComponent(gameId_p)
-            + '&color=' + encodeURIComponent(color_p)
-            + '&inviteId=' + encodeURIComponent(inviteId)
-            + '&source=vela');
+        // Redirect si 'fanorona' ou 'both' → game-fanorona.html
+        if (gameSource === 'fanorona' || gameSource === 'both') {
+          window.location.replace(
+            'game-fanorona.html?gameId=' + encodeURIComponent(gameId_p) +
+            '&color='   + encodeURIComponent(color_p) +
+            '&inviteId='+ encodeURIComponent(inviteId) +
+            '&source='  + encodeURIComponent(gameSource)
+          );
           return;
         }
 
-        // Alert de vérification source (à retirer après validation)
-        var _sl = { fanorona: 'Room Fanorona', vela: 'Room Vela', both: 'Room Fanorona & Vela' };
-        alert('[game-fanorona.html] Source : ' + (_sl[gameSource] || gameSource));
+        // Alert de vérification (à retirer après validation)
+        var _srcLabels = { 'fanorona': 'Room Fanorona', 'vela': 'Room Vela', 'both': 'Room Fanorona & Vela' };
+        alert('[game-vela.html] Source : ' + (_srcLabels[gameSource] || gameSource));
 
         renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
 
@@ -1064,15 +1014,21 @@
 
         drawBoardSpots();
 
-        document.getElementById('stop-move-btn').onclick = function() { handleStopBtn(); };
+        document.getElementById('stop-move-btn').onclick = function() { handleStopBtnDispatch(); };
 
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
-          localState = copyState(d.game);
+          if (d.game.firstMover) firstMover = d.game.firstMover;
           if (data.opponentUsername && data.opponentUsername !== '???') {
             document.getElementById('loading-overlay').classList.add('hidden');
           }
-          applyLocalState();
+          if (isPhase2(d.game.pieces)) {
+            ph2_localState = ph2CopyState(d.game);
+            ph2ApplyLocalState();
+          } else {
+            localState = copyStatePh1(d.game);
+            applyLocalStatePh1();
+          }
         }
 
         startRealtimeListener().catch(function(err) {
@@ -1118,7 +1074,7 @@
       }
     }
 
-    //  SECTION 6 — WebSocket temps réel (Firebase RTDB onValue)
+    //  SECTION 6 — WebSocket Firebase Realtime (commun Phase 1 & Phase 2)
     var opponentReadyChecked = false;
 
     async function startRealtimeListener() {
@@ -1149,78 +1105,93 @@
           }
         }
 
-        // ── Filtrage echo de mon propre mouvement en cours ──
-        if (movingInProgress) {
-          if (game.turn !== myColor) {
-            movingInProgress = false;
-          } else {
-            return;
-          }
-        }
+        // Mettre à jour firstMover TOUJOURS (avant isPhase2 qui en dépend)
+        if (game.firstMover) firstMover = game.firstMover;
 
-        // ── SYNC COMPLÈTE ──
-        var prevTurn = localState ? localState.turn : null;
-        localState = copyState(game);
-        updateTurnIndicator(localState.turn);
-
-        // ── Mettre à jour les timers joueur depuis Firebase ──
+        // ── Timers joueur ──
         onPlayerTimersUpdate(game);
 
-        // ── Rematch (Room Fanorona) — traité EN PREMIER ──
-        // handleRematchPush retourne true si le jeu vient d'être resetté
-        // (dans ce cas on ignore game.winner qui est l'ancien)
-        if (gameSource === 'fanorona' && game.rematch) {
+        // ── Rematch (Room Vela) — traité EN PREMIER, avant winner check ──
+        if (gameSource === 'vela' && game.rematch) {
           var rematchDidReset = handleRematchPush(game.rematch, game);
           if (rematchDidReset) return;
         }
 
-        // ── Fin de partie : source unique = game.winner ──
-        // game.winner = undefined si Firebase a supprimé le champ (null → deleted)
+        // ── Fin de partie via game.winner (source unique) ──
         if (game.winner) {
           stopAllTimers();
           stopPlayerTimerRaf();
-          renderPieces(localState.pieces, localState);
           showGameOverAlert(game.winner, 0);
           return;
         }
 
-        if (game.turn !== myColor) {
-          // ── Tour adversaire : afficher le mouvement reçu ──
-          stopAllTimers();
-          renderPieces(localState.pieces, localState);
-          return;
+        // ── Dispatch selon la phase ──
+        if (isPhase2(game.pieces)) {
+          onRealtimePh2(game);
+        } else {
+          onRealtimePh1(game);
         }
-
-        // ── Notre tour ──
-        if (prevTurn === myColor && (selectedSpot || localState.movingPiece)) {
-          renderPieces(localState.pieces, localState);
-          if (selectedSpot) renderGuides(selectedSpot, localState);
-          return;
-        }
-
-        // L'adversaire vient de finir son tour → reset UI complet
-        canChangePiece  = true;
-        selectedSpot    = null;
-        lastBlockedSpot = null;
-        pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-        document.getElementById('guides-group').innerHTML = '';
-        document.getElementById('stop-move-btn').classList.remove('active');
-        stopAllTimers();
-        applyLocalState();
       });
     }
 
-    function copyState(game) {
+    // ─────────────────────────────────────────────────────────────
+    //  PHASE 1 — Listener realtime
+    // ─────────────────────────────────────────────────────────────
+    function onRealtimePh1(game) {
+      // ── SYNC COMPLÈTE ──
+      var prevTurn = localState ? localState.turn : null;
+      localState = copyStatePh1(game);
+      updateTurnIndicator(localState.turn);
+
+      if (game.turn !== myColor) {
+        // ── Tour adversaire : toujours afficher le mouvement reçu ──
+        movingInProgress = false;
+        renderPiecesPh1(localState.pieces, localState);
+        return;
+      }
+
+      // ── Notre tour — filtrage echo ──
+      if (movingInProgress) {
+        movingInProgress = false;
+        renderPiecesPh1(localState.pieces, localState);
+        if (selectedSpot) renderGuidesPh1(selectedSpot, localState);
+        return;
+      }
+
+      if (prevTurn === myColor && (selectedSpot || localState.movingPiece)) {
+        renderPiecesPh1(localState.pieces, localState);
+        if (selectedSpot) renderGuidesPh1(selectedSpot, localState);
+        return;
+      }
+
+      // L'adversaire vient de finir → reset UI et activation
+      canChangePiece  = true;
+      selectedSpot    = null;
+      lastBlockedSpot = null;
+      pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      document.getElementById('guides-group').innerHTML = '';
+      document.getElementById('stop-move-btn').classList.remove('active');
+      applyLocalStatePh1();
+
+      // Vérifier fin de partie
+      var myPCph1  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+      var oppPCph1 = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+      // fin de partie gérée via game.winner
+    }
+
+    function copyStatePh1(game) {
       return {
-        pieces:      Object.assign({}, game.pieces),
-        turn:        game.turn,
-        movingPiece: game.movingPiece || '',
-        visited:     (game.visited || []).slice(),
-        lastDir:     game.lastDir || '',
+        pieces:                    Object.assign({}, game.pieces),
+        turn:                      game.turn,
+        movingPiece:               game.movingPiece || '',
+        visited:                   (game.visited || []).slice(),
+        lastDir:                   game.lastDir || '',
+        firstMover:                game.firstMover || null,
+        nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
       };
     }
 
-    function applyLocalState() {
+    function applyLocalStatePh1() {
       updateTurnIndicator(localState.turn);
       var stopBtn = document.getElementById('stop-move-btn');
       if (localState.turn === myColor && localState.movingPiece) {
@@ -1228,13 +1199,17 @@
       } else if (!movingInProgress) {
         stopBtn.classList.remove('active');
       }
-      renderPieces(localState.pieces, localState);
+      renderPiecesPh1(localState.pieces, localState);
       if (selectedSpot && localState.turn === myColor) {
-        renderGuides(selectedSpot, localState);
+        renderGuidesPh1(selectedSpot, localState);
       }
     }
 
-    //  SECTION 7 — Spots cliquables
+    function amIFirstMover() {
+      return firstMover === null || firstMover === myColor;
+    }
+
+    //  SECTION 7 — Spots cliquables (commun)
     function drawBoardSpots() {
       var spotsGrp = document.getElementById('spots-group');
       spotsGrp.innerHTML = '';
@@ -1246,30 +1221,50 @@
           circle.setAttribute('r', 18);
           circle.setAttribute('fill', 'transparent');
           circle.setAttribute('class', 'spot');
-          (function(spotID) { circle.onclick = function(e) { e.stopPropagation(); handleSpotClick(spotID); }; })(r + c);
+          (function(spotID) {
+            circle.onclick = function(e) {
+              e.stopPropagation();
+              var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
+              if (isPhase2(pieces)) {
+                ph2HandleSpotClick(spotID);
+              } else {
+                handleSpotClickPh1(spotID);
+              }
+            };
+          })(r + c);
           spotsGrp.appendChild(circle);
         });
       });
     }
 
-    function handleSpotClick(spotID) {
+    // ── Stop button dispatch ──
+    function handleStopBtnDispatch() {
+      var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
+      if (isPhase2(pieces)) {
+        ph2HandleStopBtn();
+      } else {
+        handleStopBtnPh1();
+      }
+    }
+
+    //  SECTION 8 — Phase 1 : interaction
+    function handleSpotClickPh1(spotID) {
       if (!localState || localState.turn !== myColor) return;
       if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
 
       var pieces = localState.pieces;
 
-      // ── Sélection d'une pièce (pas encore de déplacement réel) ──
       if (canChangePiece && pieces[spotID] === myColor) {
-        if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
+        var globalCap = amIFirstMover() ? playerHasAnyCapturePh1(pieces, myColor) : false;
+        if (canPieceMovePh1(spotID, pieces, myColor, globalCap)) {
           selectedSpot    = spotID;
           lastBlockedSpot = null;
         } else {
           selectedSpot    = null;
           lastBlockedSpot = spotID;
         }
-        // Pas de timer ici : c'est juste une sélection, pas un vrai déplacement
-        renderGuides(selectedSpot || '', localState);
-        renderPieces(pieces, localState);
+        renderGuidesPh1(selectedSpot || '', localState);
+        renderPiecesPh1(pieces, localState);
         return;
       }
 
@@ -1278,12 +1273,12 @@
       if (pieces[spotID]) return;
       if (localState.visited && localState.visited.indexOf(spotID) !== -1) return;
 
-      var caps = getCaptures(pieces, selectedSpot, spotID, myColor);
+      var caps = getCapturesPh1(pieces, selectedSpot, spotID, myColor);
       var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
-      if (playerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+      if (amIFirstMover() && playerHasAnyCapturePh1(pieces, myColor) && !isCaptureMove) return;
 
-      var r1 = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
-      var r2 = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
+      var r1  = rows.indexOf(selectedSpot[0]), c1 = cols.indexOf(selectedSpot[1]);
+      var r2  = rows.indexOf(spotID[0]),       c2 = cols.indexOf(spotID[1]);
       var dir = (r2-r1) + ',' + (c2-c1);
       if (!canChangePiece && localState.lastDir === dir) return;
 
@@ -1293,7 +1288,8 @@
       newPieces[spotID] = myColor;
       var newVisited = (localState.visited || []).concat([origin]);
 
-      if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
+      // Phase 1 : seul le firstMover peut capturer et avoir choix approach/withdrawal
+      if (amIFirstMover() && isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
         pendingCaptures = {
           approach:   caps.approach,
           withdrawal: caps.withdrawal,
@@ -1302,34 +1298,42 @@
         localState.pieces  = newPieces;
         localState.visited = newVisited;
         selectedSpot = spotID;
-        renderPieces(newPieces, localState);
+        renderPiecesPh1(newPieces, localState);
         document.getElementById('guides-group').innerHTML = '';
-        // ── Timer B : démarrer 4s UNIQUEMENT si !canChangePiece (efa nisy move teo aloha) ──
-        startSelTimer();
         return;
       }
 
-      var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
-      doMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
+      var capturedSpots = (amIFirstMover() && isCaptureMove)
+        ? caps.approach.concat(caps.withdrawal)
+        : [];
+      doMovePh1(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
     }
 
-    function confirmCapture(type) {
+    function confirmCapturePh1(type) {
       var md = pendingCaptures.moveData;
       var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
       pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      // ── Arrêter le timer de sélection (le joueur a fait son choix) ──
-      stopSelTimer(true);
       var newPieces  = Object.assign({}, localState.pieces);
       var newVisited = (localState.visited || []).slice();
-      doMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
+      doMovePh1(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
     }
 
-    function doMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
-      capturedSpots.forEach(function(s) { delete newPieces[s]; });
+    function doMovePh1(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
+      // Seul le firstMover capture (une seule pièce)
+      var effectiveCaptured = amIFirstMover() ? capturedSpots : [];
+      if (effectiveCaptured.length > 0) {
+        delete newPieces[effectiveCaptured[0]];
+      }
 
-      var canContinue = wasCapture && checkAvailableCaptures(newPieces, target, newVisited, dir, myColor);
+      // canContinue : dépend de nonFirstMoverHasContinued et de la phase
+      var advColor   = amIFirstMover() ? myOppColor : (firstMover || myOppColor);
+      var advCount   = Object.keys(newPieces).filter(function(s) { return newPieces[s] === advColor; }).length;
+      var nfmHasCont = localState.nonFirstMoverHasContinued || false;
+      var multiActive = amIFirstMover() ? nfmHasCont : (advCount <= 5);
+      var canContinue = multiActive && wasCapture
+        && checkAvailableCapturesPh1(newPieces, target, newVisited, dir, myColor);
 
-      movingInProgress = true;
+      movingInProgress  = true;
       localState.pieces = newPieces;
 
       if (canContinue) {
@@ -1339,8 +1343,9 @@
         selectedSpot   = target;
         canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
-        // ── Timer A : démarrer / relancer 2s après chaque déplacement réel ──
-        startMoveTimer();
+        if (!amIFirstMover() && !localState.nonFirstMoverHasContinued) {
+          localState.nonFirstMoverHasContinued = true;
+        }
       } else {
         localState.turn        = myOppColor;
         localState.movingPiece = '';
@@ -1350,30 +1355,30 @@
         lastBlockedSpot = null;
         canChangePiece  = true;
         document.getElementById('stop-move-btn').classList.remove('active');
-        // ── Fin de tour : stopper tous les timers ──
-        stopAllTimers();
       }
 
       if (canContinue && selectedSpot) {
-        renderGuides(selectedSpot, localState);
+        renderGuidesPh1(selectedSpot, localState);
       } else {
         document.getElementById('guides-group').innerHTML = '';
       }
 
       updateTurnIndicator(localState.turn);
-      renderPieces(localState.pieces, localState);
+      renderPiecesPh1(localState.pieces, localState);
+      sendMoveToBackendPh1(origin, target, effectiveCaptured, dir);
 
-      sendMoveToBackend(origin, target, capturedSpots, dir);
+      if (!canContinue) {
+        var myPCdm  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+        var oppPCdm = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+        // fin de partie gérée via game.winner
+      }
     }
 
-    function handleStopBtn() {
+    function handleStopBtnPh1() {
       if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
       var piecesSnapshot = Object.assign({}, localState.pieces);
 
-      // ── Stopper tous les timers immédiatement ──
-      stopAllTimers();
-
-      movingInProgress = true;
+      movingInProgress       = true;
       localState.turn        = myOppColor;
       localState.movingPiece = '';
       localState.visited     = [];
@@ -1384,29 +1389,28 @@
       document.getElementById('stop-move-btn').classList.remove('active');
       document.getElementById('guides-group').innerHTML = '';
       updateTurnIndicator(localState.turn);
-      renderPieces(localState.pieces, localState);
+      renderPiecesPh1(localState.pieces, localState);
 
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('stop-move error', e); });
 
-      // fin de partie gérée via game.winner (Firebase WebSocket)
+      var myPC2  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
+      var oppPC2 = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
+      // fin de partie gérée via game.winner
     }
 
-    function sendMoveToBackend(origin, target, capturedSpots, dir) {
+    function sendMoveToBackendPh1(origin, target, capturedSpots, dir) {
       callApi(GAME_API_URL, 'make-move', {
         uid: myUid, gameId: gameId,
         origin: origin, target: target,
         capturedSpots: capturedSpots, dir: dir
-      }).catch(function(e) {
-        console.warn('make-move backend error (non-blocking):', e);
-      });
+      }).catch(function(e) { console.warn('make-move backend error:', e); });
     }
 
-    //  SECTION 10 — renderPieces
-    function renderPieces(pieces, stateData) {
-      var grp           = document.getElementById('pieces-group');
-      var isMyTurn      = stateData.turn === myColor;
-      var globalCapture = playerHasAnyCapture(pieces, myColor);
+    //  SECTION 9 — Phase 1 : render
+    function renderPiecesPh1(pieces, stateData) {
+      var grp      = document.getElementById('pieces-group');
+      var isMyTurn = stateData.turn === myColor;
 
       var newPiecesOnBoard = {};
       var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
@@ -1419,11 +1423,7 @@
           if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
         }
         if (target) {
-          var entry = piecesOnBoard[vKey];
-          // Assurer que no-transition est retiré avant de bouger
-          // (peut rester après un reset si la pièce n'avait pas encore bougé)
-          entry.el.classList.remove('no-transition');
-          newPiecesOnBoard[target] = entry;
+          newPiecesOnBoard[target] = piecesOnBoard[vKey];
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
           piecesOnBoard[vKey].el.remove();
@@ -1432,27 +1432,13 @@
 
       appeared.forEach(function(aKey) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        // no-transition au premier render (pas de position précédente)
-        g.setAttribute('class', 'piece-group no-transition');
+        g.setAttribute('class', 'piece-group');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
         g.appendChild(c);
         grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
       });
-      // Retirer no-transition après 2 frames
-      // snapshot de appeared et newPiecesOnBoard pour éviter closure stale
-      (function(snapAppeared, snapBoard) {
-        requestAnimationFrame(function() {
-          requestAnimationFrame(function() {
-            snapAppeared.forEach(function(aKey) {
-              if (snapBoard[aKey] && snapBoard[aKey].el) {
-                snapBoard[aKey].el.classList.remove('no-transition');
-              }
-            });
-          });
-        });
-      })(appeared.slice(), newPiecesOnBoard);
 
       Object.keys(pieces).forEach(function(k) {
         if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
@@ -1468,26 +1454,27 @@
         if (!entry) return;
         var g = entry.el, circle = g.querySelector('circle');
 
-        var svgX = ci * 50;
-        var svgY = ri * 50;
-        g.setAttribute('transform', 'translate(' + svgX + ',' + svgY + ')');
+        g.setAttribute('transform', 'translate(' + (ci*50) + ',' + (ri*50) + ')');
         circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
         circle.removeAttribute('class');
         circle.style.pointerEvents = 'all';
         circle.onclick = (function(s) {
-          return function(e) { e.stopPropagation(); handleSpotClick(s); };
+          return function(e) { e.stopPropagation(); handleSpotClickPh1(s); };
         })(spot);
 
-        if (isMyTurn && pieces[spot] === myColor) {
-          if (selectedSpot === spot)
+        if (isMyTurn && pieces[spot] === myColor && !stateData.movingPiece) {
+          if (selectedSpot === spot) {
             circle.setAttribute('class', 'selected-piece');
-          else if (lastBlockedSpot === spot)
+          } else if (lastBlockedSpot === spot) {
             circle.setAttribute('class', 'blocked-piece');
-          else if (!stateData.movingPiece && canPieceMove(spot, pieces, myColor, globalCapture))
-            circle.setAttribute('class', 'movable-piece');
+          } else {
+            var globalCap = amIFirstMover() ? playerHasAnyCapturePh1(pieces, myColor) : false;
+            if (canPieceMovePh1(spot, pieces, myColor, globalCap))
+              circle.setAttribute('class', 'movable-piece');
+          }
         }
 
-        var isApp  = pendingCaptures.approach.indexOf(spot)   !== -1;
+        var isApp  = pendingCaptures.approach.indexOf(spot)  !== -1;
         var isWith = pendingCaptures.withdrawal.indexOf(spot) !== -1;
         g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
 
@@ -1496,7 +1483,7 @@
           circle.style.pointerEvents = 'all';
           var ct = isApp ? 'approach' : 'withdrawal';
           circle.onclick = (function(type) {
-            return function(e) { e.stopPropagation(); confirmCapture(type); };
+            return function(e) { e.stopPropagation(); confirmCapturePh1(type); };
           })(ct);
           g.appendChild(createCross(-5,-5,5,5));
           g.appendChild(createCross(5,-5,-5,5));
@@ -1508,16 +1495,377 @@
       else board.classList.remove('lock-board');
     }
 
-    function createCross(x1,y1,x2,y2) {
-      var l = document.createElementNS('http://www.w3.org/2000/svg','line');
-      l.setAttribute('x1',x1); l.setAttribute('y1',y1);
-      l.setAttribute('x2',x2); l.setAttribute('y2',y2);
-      l.setAttribute('class','cross-line');
-      return l;
+    function renderGuidesPh1(startSpot, stateData) {
+      var grp = document.getElementById('guides-group');
+      if (!grp) return;
+      grp.innerHTML = '';
+      if (!startSpot) return;
+
+      var pieces  = stateData.pieces;
+      var visited = stateData.visited || [];
+      var lastDir = stateData.lastDir || '';
+      var moves   = allowedMoves[startSpot] || [];
+
+      if (amIFirstMover()) {
+        var globalCapturePossible = playerHasAnyCapturePh1(pieces, myColor);
+        moves.forEach(function(target) {
+          if (pieces[target] || visited.indexOf(target) !== -1) return;
+          var caps = getCapturesPh1(pieces, startSpot, target, myColor);
+          var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+          if (globalCapturePossible && !isCaptureMove) return;
+          var r2  = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
+          var dir = (r2 - rows.indexOf(startSpot[0])) + ',' + (c2 - cols.indexOf(startSpot[1]));
+          if (!canChangePiece && lastDir === dir) return;
+          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', c2*50); dot.setAttribute('cy', r2*50);
+          dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
+          grp.appendChild(dot);
+        });
+      } else {
+        // nonFirstMover : peut se déplacer librement vers toutes les cases adjacentes vides
+        moves.forEach(function(target) {
+          if (pieces[target] || visited.indexOf(target) !== -1) return;
+          var r2  = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
+          var dir = (r2 - rows.indexOf(startSpot[0])) + ',' + (c2 - cols.indexOf(startSpot[1]));
+          if (!canChangePiece && lastDir === dir) return;
+          var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', c2*50); dot.setAttribute('cy', r2*50);
+          dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
+          grp.appendChild(dot);
+        });
+      }
     }
 
-    // ── Guides ──
-    function renderGuides(startSpot, stateData) {
+    // ─────────────────────────────────────────────────────────────
+    //  PHASE 2 — Listener realtime (identique à game-fanorona)
+    // ─────────────────────────────────────────────────────────────
+    function onRealtimePh2(game) {
+      // ── Filtrage echo AVANT tout copyState ──
+      // Si c'est encore notre tour ET qu'on est en train de jouer → ignorer le push
+      if (game.turn === myColor && ph2_movingInProgress) {
+        ph2_movingInProgress = false;
+        return;
+      }
+
+      // ── SYNC COMPLÈTE ──
+      var prevTurn = ph2_localState ? ph2_localState.turn : null;
+      ph2_localState = ph2CopyState(game);
+      updateTurnIndicator(ph2_localState.turn);
+
+      if (game.turn !== myColor) {
+        // ── Tour adversaire : toujours afficher le mouvement reçu ──
+        ph2_movingInProgress = false;
+        stopAllTimers();
+        ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+        return;
+      }
+
+      if (prevTurn === myColor && (ph2_selectedSpot || ph2_localState.movingPiece)) {
+        ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+        if (ph2_selectedSpot) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
+        return;
+      }
+
+      ph2_canChangePiece  = true;
+      ph2_selectedSpot    = null;
+      ph2_lastBlockedSpot = null;
+      ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      document.getElementById('guides-group').innerHTML = '';
+      document.getElementById('stop-move-btn').classList.remove('active');
+      // L'adversaire vient de finir → stopper tous les timers
+      stopAllTimers();
+      ph2ApplyLocalState();
+
+      var myPCph2  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+      var oppPCph2 = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+      // fin de partie gérée via game.winner
+    }
+
+    function ph2CopyState(game) {
+      return {
+        pieces:      Object.assign({}, game.pieces),
+        turn:        game.turn,
+        movingPiece: game.movingPiece || '',
+        visited:     (game.visited || []).slice(),
+        lastDir:     game.lastDir || '',
+      };
+    }
+
+    function ph2ApplyLocalState() {
+      updateTurnIndicator(ph2_localState.turn);
+      var stopBtn = document.getElementById('stop-move-btn');
+      if (ph2_localState.turn === myColor && ph2_localState.movingPiece) {
+        stopBtn.classList.add('active');
+      } else if (!ph2_movingInProgress) {
+        stopBtn.classList.remove('active');
+      }
+      ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+      if (ph2_selectedSpot && ph2_localState.turn === myColor) {
+        ph2RenderGuides(ph2_selectedSpot, ph2_localState);
+      }
+    }
+
+    //  SECTION 10 — Phase 2 : interaction (identique à game-fanorona)
+    function ph2HandleSpotClick(spotID) {
+      if (!ph2_localState || ph2_localState.turn !== myColor) return;
+      if (ph2_pendingCaptures.approach.length > 0 || ph2_pendingCaptures.withdrawal.length > 0) return;
+
+      var pieces = ph2_localState.pieces;
+
+      if (ph2_canChangePiece && pieces[spotID] === myColor) {
+        if (ph2CanPieceMove(spotID, pieces, myColor, ph2PlayerHasAnyCapture(pieces, myColor))) {
+          ph2_selectedSpot    = spotID;
+          ph2_lastBlockedSpot = null;
+        } else {
+          ph2_selectedSpot    = null;
+          ph2_lastBlockedSpot = spotID;
+        }
+        ph2RenderGuides(ph2_selectedSpot || '', ph2_localState);
+        ph2RenderPieces(pieces, ph2_localState);
+        return;
+      }
+
+      if (!ph2_selectedSpot) return;
+      if ((allowedMoves[ph2_selectedSpot] || []).indexOf(spotID) === -1) return;
+      if (pieces[spotID]) return;
+      if (ph2_localState.visited && ph2_localState.visited.indexOf(spotID) !== -1) return;
+
+      var caps = ph2GetCaptures(pieces, ph2_selectedSpot, spotID, myColor);
+      var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
+      if (ph2PlayerHasAnyCapture(pieces, myColor) && !isCaptureMove) return;
+
+      var r1  = rows.indexOf(ph2_selectedSpot[0]), c1 = cols.indexOf(ph2_selectedSpot[1]);
+      var r2  = rows.indexOf(spotID[0]),            c2 = cols.indexOf(spotID[1]);
+      var dir = (r2-r1) + ',' + (c2-c1);
+      if (!ph2_canChangePiece && ph2_localState.lastDir === dir) return;
+
+      var origin     = ph2_selectedSpot;
+      var newPieces  = Object.assign({}, pieces);
+      delete newPieces[origin];
+      newPieces[spotID] = myColor;
+      var newVisited = (ph2_localState.visited || []).concat([origin]);
+
+      if (isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
+        ph2_pendingCaptures = {
+          approach:   caps.approach,
+          withdrawal: caps.withdrawal,
+          moveData:   { origin: origin, target: spotID, dir: dir }
+        };
+        ph2_localState.pieces  = newPieces;
+        ph2_localState.visited = newVisited;
+        ph2_selectedSpot = spotID;
+        ph2RenderPieces(newPieces, ph2_localState);
+        document.getElementById('guides-group').innerHTML = '';
+        // ── Timer B : 4s UNIQUEMENT si !ph2_canChangePiece (efa nisy move teo aloha) ──
+        startSelTimer();
+        return;
+      }
+
+      var capturedSpots = isCaptureMove ? caps.approach.concat(caps.withdrawal) : [];
+      ph2DoMove(origin, spotID, capturedSpots, dir, newVisited, newPieces, isCaptureMove);
+    }
+
+    function ph2ConfirmCapture(type) {
+      var md = ph2_pendingCaptures.moveData;
+      var capturedSpots = type === 'approach' ? ph2_pendingCaptures.approach : ph2_pendingCaptures.withdrawal;
+      ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      // ── Arrêter le timer de sélection (le joueur a fait son choix) ──
+      stopSelTimer(true);
+      var newPieces  = Object.assign({}, ph2_localState.pieces);
+      var newVisited = (ph2_localState.visited || []).slice();
+      ph2DoMove(md.origin, md.target, capturedSpots, md.dir, newVisited, newPieces, true);
+    }
+
+    function ph2DoMove(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
+      capturedSpots.forEach(function(s) { delete newPieces[s]; });
+
+      var canContinue = wasCapture && ph2CheckAvailableCaptures(newPieces, target, newVisited, dir, myColor);
+
+      ph2_movingInProgress  = true;
+      ph2_localState.pieces = newPieces;
+
+      if (canContinue) {
+        ph2_localState.movingPiece = target;
+        ph2_localState.visited     = newVisited;
+        ph2_localState.lastDir     = dir;
+        ph2_selectedSpot   = target;
+        ph2_canChangePiece = false;
+        document.getElementById('stop-move-btn').classList.add('active');
+        // ── Timer A : démarrer / relancer 2s après chaque déplacement réel ──
+        startMoveTimer();
+      } else {
+        ph2_localState.turn        = myOppColor;
+        ph2_localState.movingPiece = '';
+        ph2_localState.visited     = [];
+        ph2_localState.lastDir     = '';
+        ph2_selectedSpot    = null;
+        ph2_lastBlockedSpot = null;
+        ph2_canChangePiece  = true;
+        document.getElementById('stop-move-btn').classList.remove('active');
+        // ── Fin de tour : stopper tous les timers ──
+        stopAllTimers();
+      }
+
+      if (canContinue && ph2_selectedSpot) {
+        ph2RenderGuides(ph2_selectedSpot, ph2_localState);
+      } else {
+        document.getElementById('guides-group').innerHTML = '';
+      }
+
+      updateTurnIndicator(ph2_localState.turn);
+      ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+      ph2SendMoveToBackend(origin, target, capturedSpots, dir);
+
+      if (!canContinue) {
+        var ph2OppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
+        var ph2MyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
+        // fin de partie gérée via game.winner
+      }
+    }
+
+    function ph2HandleStopBtn(forceStop) {
+      // ── Cleanup UI foana (na dia tsy maintsy mampihatra stop backend aza) ──
+      // Misakana ny situation: timer tapitra fa state efa novain'ny Firebase push
+      // → guides sy lock-board mijanona nefa tsy afaka manao hetsika
+      var canStop = ph2_localState && ph2_localState.turn === myColor && ph2_localState.movingPiece;
+
+      if (!canStop && !forceStop) return;
+
+      // Raha forceStop (avy amin'ny timer) nefa tsy misy movingPiece intsony
+      // (Firebase push efa nanadio ny state) → manadio ny UI fotsiny, tsy misy API call
+      var piecesSnapshot = (ph2_localState && ph2_localState.pieces)
+        ? Object.assign({}, ph2_localState.pieces)
+        : null;
+
+      // ── Stopper tous les timers immédiatement ──
+      stopAllTimers();
+
+      if (ph2_localState) {
+        ph2_movingInProgress       = true;
+        ph2_localState.turn        = myOppColor;
+        ph2_localState.movingPiece = '';
+        ph2_localState.visited     = [];
+        ph2_localState.lastDir     = '';
+      }
+      ph2_selectedSpot    = null;
+      ph2_lastBlockedSpot = null;
+      ph2_canChangePiece  = true;
+      ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
+      document.getElementById('stop-move-btn').classList.remove('active');
+      document.getElementById('guides-group').innerHTML = '';
+
+      if (ph2_localState) {
+        updateTurnIndicator(ph2_localState.turn);
+        ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+      } else {
+        // Fahafahana farany: unlock board mivantana
+        var board = document.getElementById('game-board');
+        if (board) board.classList.remove('lock-board');
+      }
+
+      // Mampiditra API call fotsiny raha tena nanao move (misy piecesSnapshot sy canStop)
+      if (canStop && piecesSnapshot) {
+        callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
+          .catch(function(e) { console.warn('stop-move error', e); });
+      }
+    }
+
+    function ph2SendMoveToBackend(origin, target, capturedSpots, dir) {
+      callApi(GAME_API_URL, 'make-move', {
+        uid: myUid, gameId: gameId,
+        origin: origin, target: target,
+        capturedSpots: capturedSpots, dir: dir
+      }).catch(function(e) { console.warn('ph2 make-move error:', e); });
+    }
+
+    //  SECTION 11 — Phase 2 : render (identique à game-fanorona)
+    function ph2RenderPieces(pieces, stateData) {
+      var grp           = document.getElementById('pieces-group');
+      var isMyTurn      = stateData.turn === myColor;
+      var ph2GlobalCap  = ph2PlayerHasAnyCapture(pieces, myColor);
+
+      var newPiecesOnBoard = {};
+      var vanished = Object.keys(piecesOnBoard).filter(function(k) { return !pieces[k]; });
+      var appeared = Object.keys(pieces).filter(function(k) { return !piecesOnBoard[k]; });
+
+      vanished.forEach(function(vKey) {
+        var color  = piecesOnBoard[vKey].color;
+        var target = null;
+        for (var i = 0; i < appeared.length; i++) {
+          if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
+        }
+        if (target) {
+          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          appeared = appeared.filter(function(a) { return a !== target; });
+        } else {
+          piecesOnBoard[vKey].el.remove();
+        }
+      });
+
+      appeared.forEach(function(aKey) {
+        var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'piece-group');
+        var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('r', 8);
+        g.appendChild(c);
+        grp.appendChild(g);
+        newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
+      });
+
+      Object.keys(pieces).forEach(function(k) {
+        if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
+      });
+      piecesOnBoard = newPiecesOnBoard;
+
+      var hasPending = ph2_pendingCaptures.approach.length > 0 || ph2_pendingCaptures.withdrawal.length > 0;
+
+      Object.keys(pieces).forEach(function(spot) {
+        var ri = rows.indexOf(spot[0]), ci = cols.indexOf(spot[1]);
+        if (ri < 0 || ci < 0) return;
+        var entry = piecesOnBoard[spot];
+        if (!entry) return;
+        var g = entry.el, circle = g.querySelector('circle');
+
+        g.setAttribute('transform', 'translate(' + (ci*50) + ',' + (ri*50) + ')');
+        circle.setAttribute('fill', 'url(#' + pieces[spot] + '-pat)');
+        circle.removeAttribute('class');
+        // Raha pending captures : désactiver tous les circles sauf les capture-targets
+        circle.style.pointerEvents = hasPending ? 'none' : 'all';
+        circle.onclick = (function(s) {
+          return function(e) { e.stopPropagation(); ph2HandleSpotClick(s); };
+        })(spot);
+
+        if (isMyTurn && pieces[spot] === myColor) {
+          if (ph2_selectedSpot === spot)
+            circle.setAttribute('class', 'selected-piece');
+          else if (ph2_lastBlockedSpot === spot)
+            circle.setAttribute('class', 'blocked-piece');
+          else if (!stateData.movingPiece && ph2CanPieceMove(spot, pieces, myColor, ph2GlobalCap))
+            circle.setAttribute('class', 'movable-piece');
+        }
+
+        var isApp  = ph2_pendingCaptures.approach.indexOf(spot)  !== -1;
+        var isWith = ph2_pendingCaptures.withdrawal.indexOf(spot) !== -1;
+        g.querySelectorAll('.cross-line').forEach(function(l) { l.remove(); });
+
+        if (isApp || isWith) {
+          circle.classList.add('capture-target');
+          circle.style.pointerEvents = 'all';  // re-activer amin'ny capture-targets ihany
+          var ct = isApp ? 'approach' : 'withdrawal';
+          circle.onclick = (function(type) {
+            return function(e) { e.stopPropagation(); ph2ConfirmCapture(type); };
+          })(ct);
+          g.appendChild(createCross(-5,-5,5,5));
+          g.appendChild(createCross(5,-5,-5,5));
+        }
+      });
+
+      var board = document.getElementById('game-board');
+      if (!isMyTurn || hasPending) board.classList.add('lock-board');
+      else board.classList.remove('lock-board');
+    }
+
+    function ph2RenderGuides(startSpot, stateData) {
       var grp = document.getElementById('guides-group');
       if (!grp) return;
       grp.innerHTML = '';
@@ -1526,32 +1874,28 @@
       var pieces  = stateData.pieces;
       var visited = stateData.visited  || [];
       var lastDir = stateData.lastDir  || '';
-      var globalCapturePossible = playerHasAnyCapture(pieces, myColor);
+      var globalCapturePossible = ph2PlayerHasAnyCapture(pieces, myColor);
       var moves = allowedMoves[startSpot] || [];
 
       moves.forEach(function(target) {
         if (pieces[target] || visited.indexOf(target) !== -1) return;
-        var caps = getCaptures(pieces, startSpot, target, myColor);
+        var caps = ph2GetCaptures(pieces, startSpot, target, myColor);
         var isCaptureMove = caps.approach.length > 0 || caps.withdrawal.length > 0;
         if (globalCapturePossible && !isCaptureMove) return;
 
-        var r1 = rows.indexOf(startSpot[0]), c1 = cols.indexOf(startSpot[1]);
-        var r2 = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
-        var dir = (r2-r1) + ',' + (c2-c1);
-        if (!canChangePiece && lastDir === dir) return;
-
-        var svgX = c2 * 50;
-        var svgY = r2 * 50;
+        var r2  = rows.indexOf(target[0]),    c2 = cols.indexOf(target[1]);
+        var dir = (r2 - rows.indexOf(startSpot[0])) + ',' + (c2 - cols.indexOf(startSpot[1]));
+        if (!ph2_canChangePiece && lastDir === dir) return;
 
         var dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', svgX); dot.setAttribute('cy', svgY);
+        dot.setAttribute('cx', c2*50); dot.setAttribute('cy', r2*50);
         dot.setAttribute('r', 6); dot.setAttribute('class', 'guide-dot');
         grp.appendChild(dot);
       });
     }
 
-    //  SECTION 12 — Helpers
-    function getCaptures(pieces, s, e, color) {
+    //  SECTION 12 — Helpers Phase 2 (identique à game-fanorona)
+    function ph2GetCaptures(pieces, s, e, color) {
       var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
       var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
       function scan(row,col,sr,sc) {
@@ -1562,30 +1906,30 @@
       return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
     }
 
-    function playerHasAnyCapture(pieces, color) {
+    function ph2PlayerHasAnyCapture(pieces, color) {
       var sl = Object.keys(pieces);
       for (var i=0;i<sl.length;i++) {
         var s=sl[i]; if(pieces[s]!==color)continue;
         var mv=allowedMoves[s]||[];
         for (var j=0;j<mv.length;j++) {
-          var t=mv[j]; if(!pieces[t]){var c=getCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
+          var t=mv[j]; if(!pieces[t]){var c=ph2GetCaptures(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
         }
       }
       return false;
     }
 
-    function canPieceMove(spot, pieces, color, globalCapture) {
+    function ph2CanPieceMove(spot, pieces, color, globalCapture) {
       var mv=allowedMoves[spot]||[];
       for(var i=0;i<mv.length;i++){
         var t=mv[i]; if(pieces[t])continue;
-        var caps=getCaptures(pieces,spot,t,color);
+        var caps=ph2GetCaptures(pieces,spot,t,color);
         var isCap=caps.approach.length>0||caps.withdrawal.length>0;
         if(globalCapture?isCap:true)return true;
       }
       return false;
     }
 
-    function checkAvailableCaptures(pieces, s, visited, lastDir, color) {
+    function ph2CheckAvailableCaptures(pieces, s, visited, lastDir, color) {
       var mv=allowedMoves[s]||[];
       for(var i=0;i<mv.length;i++){
         var t=mv[i];
@@ -1593,39 +1937,95 @@
         var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
         var dir=(r2-r1)+','+(c2-c1);
         if(lastDir&&lastDir===dir)continue;
-        var caps=getCaptures(pieces,s,t,color);
+        var caps=ph2GetCaptures(pieces,s,t,color);
         if(caps.approach.length>0||caps.withdrawal.length>0)return true;
       }
       return false;
     }
 
+    //  SECTION 13 — Helpers Phase 1
+    function getCapturesPh1(pieces, s, e, color) {
+      var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
+      var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
+      function scan(row,col,sr,sc) {
+        var res=[],cr=row+sr,cc=col+sc;
+        while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[rows[cr]+cols[cc]]===enemy){res.push(rows[cr]+cols[cc]);cr+=sr;cc+=sc;}
+        return res;
+      }
+      return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+    }
+
+    function playerHasAnyCapturePh1(pieces, color) {
+      var sl = Object.keys(pieces);
+      for (var i=0;i<sl.length;i++) {
+        var s=sl[i]; if(pieces[s]!==color)continue;
+        var mv=allowedMoves[s]||[];
+        for (var j=0;j<mv.length;j++) {
+          var t=mv[j]; if(!pieces[t]){var c=getCapturesPh1(pieces,s,t,color);if(c.approach.length>0||c.withdrawal.length>0)return true;}
+        }
+      }
+      return false;
+    }
+
+    function canPieceMovePh1(spot, pieces, color, globalCapture) {
+      var mv=allowedMoves[spot]||[];
+      for(var i=0;i<mv.length;i++){
+        var t=mv[i]; if(pieces[t])continue;
+        var caps=getCapturesPh1(pieces,spot,t,color);
+        var isCap=caps.approach.length>0||caps.withdrawal.length>0;
+        if(globalCapture?isCap:true)return true;
+      }
+      return false;
+    }
+
+    function checkAvailableCapturesPh1(pieces, s, visited, lastDir, color) {
+      var mv=allowedMoves[s]||[];
+      for(var i=0;i<mv.length;i++){
+        var t=mv[i];
+        if(pieces[t]||(visited&&visited.indexOf(t)!==-1))continue;
+        var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(t[0]),c2=cols.indexOf(t[1]);
+        var dir=(r2-r1)+','+(c2-c1);
+        if(lastDir&&lastDir===dir)continue;
+        var caps=getCapturesPh1(pieces,s,t,color);
+        if(caps.approach.length>0||caps.withdrawal.length>0)return true;
+      }
+      return false;
+    }
+
+    //  SECTION 14 — Helpers communs
+    function createCross(x1,y1,x2,y2) {
+      var l = document.createElementNS('http://www.w3.org/2000/svg','line');
+      l.setAttribute('x1',x1); l.setAttribute('y1',y1);
+      l.setAttribute('x2',x2); l.setAttribute('y2',y2);
+      l.setAttribute('class','cross-line');
+      return l;
+    }
+
     // ════════════════════════════════════════════════════════════
-    //  REMATCH — WebSocket driven (Room Fanorona only)
+    //  REMATCH — WebSocket driven (Room Vela only)
     // ════════════════════════════════════════════════════════════
-    var rematchHandled   = false;  // évite double affichage notif pending
-    var rematchResetDone = false;  // évite double reset sur 'accepted'
+    var rematchHandled   = false;
+    var rematchResetDone = false;
     var rematchOverlayEl = null;
 
     var rnCountdownTimer = null;
     var rnCountdownVal   = 10;
 
     function showRematchNotif(oppUsername) {
-      var notif      = document.getElementById('rematch-notif');
+      var notif       = document.getElementById('rematch-notif');
       var progressBar = document.getElementById('rnProgressBar');
       var countdownEl = document.getElementById('rn-countdown');
       var usernameEl  = document.getElementById('rn-username');
       if (!notif) return;
 
-      usernameEl.textContent = oppUsername || 'Adversaire';
+      usernameEl.textContent  = oppUsername || 'Adversaire';
       countdownEl.textContent = '10';
       rnCountdownVal = 10;
 
-      // Reset animation
       notif.classList.remove('rn-expanded', 'rn-visible');
       progressBar.style.transition = 'none';
       progressBar.style.transform  = 'scaleX(1)';
 
-      // Show
       setTimeout(function() {
         notif.classList.add('rn-visible');
         setTimeout(function() {
@@ -1636,7 +2036,6 @@
         }, 350);
       }, 10);
 
-      // Countdown
       if (rnCountdownTimer) clearInterval(rnCountdownTimer);
       rnCountdownTimer = setInterval(function() {
         rnCountdownVal--;
@@ -1644,7 +2043,6 @@
         if (rnCountdownVal <= 0) {
           clearInterval(rnCountdownTimer);
           hideRematchNotif();
-          // Auto-decline
           callApi(GAME_API_URL, 'decline-rematch', { uid: myUid, gameId: gameId })
             .catch(function(e) { console.warn('auto-decline rematch:', e); });
           rematchHandled = false;
@@ -1661,21 +2059,17 @@
     function handleRematchPush(rematch, game) {
       if (!rematch) return false;
 
-      // ── Rematch accepté ──
-      // Les deux joueurs reçoivent ce push — chacun fait son reset une seule fois
       if (rematch.status === 'accepted') {
-        if (rematchResetDone) return true; // déjà resetté pour ce rematch
+        if (rematchResetDone) return true;
         rematchResetDone = true;
-        rematchHandled   = false; // prêt pour prochain 'pending'
+        rematchHandled   = false;
         hideRematchNotif();
         resetGameForRematch(game);
-        // Marquer done dans Firebase → pushes suivants ne re-déclenchent pas
         callApi(GAME_API_URL, 'mark-rematch-done', { uid: myUid, gameId: gameId })
           .catch(function(e) { console.warn('mark-rematch-done error:', e); });
         return true;
       }
 
-      // ── Demande reçue de l'adversaire ──
       if (rematch.status === 'pending' && rematch.requestedBy !== myUid) {
         if (rematchHandled) return false;
         rematchHandled = true;
@@ -1697,12 +2091,10 @@
         return false;
       }
 
-      // ── Demande refusée ──
       if (rematch.status === 'declined') {
         hideRematchNotif();
         rematchHandled = false;
       }
-      // ── Done : reset des flags → prêt pour prochaine revanche ──
       if (rematch.status === 'done') {
         rematchHandled   = false;
         rematchResetDone = false;
@@ -1711,20 +2103,18 @@
     }
 
     function resetGameForRematch(game) {
-      // Stopper tous les timers
       stopAllTimers();
       stopPlayerTimerRaf();
 
-      // ── Couleur inchangée : chaque joueur garde sa couleur ──
-      // (backend ne flip plus les couleurs)
-      // myColor et myOppColor restent identiques
-
-      // Le board flip reste identique (myColor inchangé)
+      // myColor inchangé (chaque joueur garde sa couleur)
       var board = document.getElementById('game-board');
       if (myColor === 'mena') board.classList.add('flipped');
       else                    board.classList.remove('flipped');
 
-      // Reset des variables d'état
+      // firstMover vaovao = mpiresy (avy amin'ny backend)
+      if (game.firstMover) firstMover = game.firstMover;
+
+      // Reset variables Phase 1
       gameOverTriggered = false;
       movingInProgress  = false;
       selectedSpot      = null;
@@ -1733,17 +2123,22 @@
       pendingCaptures   = { approach: [], withdrawal: [], moveData: null };
       piecesOnBoard     = {};
 
+      // Reset variables Phase 2
+      ph2_movingInProgress = false;
+      ph2_selectedSpot     = null;
+      ph2_lastBlockedSpot  = null;
+      ph2_canChangePiece   = true;
+      ph2_pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
+      ph2_localState       = null;
+
       // Timer reset
       playerTimerEnabled = false;
       myTimerMs  = 0; oppTimerMs = 0;
       timerRunningColor = null; timerLastTickMs = null;
 
-      // ── Reset DOM complet — SVG pieces supprimées physiquement ──
-      // (piecesOnBoard = {} seul ne suffit pas : les <g> SVG restent dans le DOM
-      //  et renderPieces crée de nouveaux <g> → doubles visibles)
+      // DOM reset — SVG pieces supprimées physiquement
       var piecesGrp = document.getElementById('pieces-group');
-      if (piecesGrp) piecesGrp.innerHTML = '';  // supprime TOUS les <g> pièces
-
+      if (piecesGrp) piecesGrp.innerHTML = '';
       document.getElementById('guides-group').innerHTML = '';
       document.getElementById('stop-move-btn').classList.remove('active');
       document.getElementById('stop-move-btn').style.pointerEvents = '';
@@ -1751,20 +2146,23 @@
       var board2 = document.getElementById('game-board');
       if (board2) board2.classList.remove('lock-board');
 
-      // Recréer les spots cliquables (board spots inchangés mais on les refait pour le flip)
       drawBoardSpots();
 
-      // Mise à jour players bar (couleurs flippées)
       var localUser = JSON.parse(localStorage.getItem('user') || '{}');
       callApi(SESSION_API_URL, 'get-fanorona-game', { uid: myUid, gameId: gameId })
         .then(function(d) {
           renderPlayersBar(myColor, localUser.username || myUid, d.opponentUsername || '???');
         }).catch(function() {});
 
-      // Nouvelle state + render
-      localState = copyState(game);
+      // Nouvelle state — dispatch selon phase
+      localState = copyStatePh1(game);
       onPlayerTimersUpdate(game);
-      applyLocalState();
+      if (isPhase2(game.pieces)) {
+        ph2_localState = ph2CopyState(game);
+        ph2ApplyLocalState();
+      } else {
+        applyLocalStatePh1();
+      }
     }
 
     init();
