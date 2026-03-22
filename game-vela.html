@@ -875,25 +875,23 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
-        // ── Source du jeu (room type) ──
-        // 'vela'     = Room Vela      → game-vela.html ✓
-        // 'fanorona' = Room Fanorona  → game-fanorona.html (redirect)
-        // 'both'     = Room Fanorona & Vela → game-fanorona.html (redirect)
-        var gameSource = data.source || 'vela';
+        // ── Source : 'fanorona' | 'both' | 'vela' ──
+        var gameSource = data.source || params.get('source') || 'vela';
 
-        // Redirect si source != 'vela' (fanorona ou both → game-fanorona.html)
+        // Redirect si 'fanorona' ou 'both' → game-fanorona.html
         if (gameSource === 'fanorona' || gameSource === 'both') {
           window.location.replace(
             'game-fanorona.html?gameId=' + encodeURIComponent(gameId_p) +
             '&color='   + encodeURIComponent(color_p) +
-            '&inviteId='+ encodeURIComponent(inviteId)
+            '&inviteId='+ encodeURIComponent(inviteId) +
+            '&source='  + encodeURIComponent(gameSource)
           );
           return;
         }
 
-        var sourceLabels = { 'fanorona': 'Room Fanorona', 'vela': 'Room Vela', 'both': 'Room Fanorona & Vela' };
         // Alert de vérification (à retirer après validation)
-        alert('[game-vela.html]\nSource: ' + (sourceLabels[gameSource] || gameSource) + '\n\n✓ Vela → game-vela.html');
+        var _srcLabels = { 'fanorona': 'Room Fanorona', 'vela': 'Room Vela', 'both': 'Room Fanorona & Vela' };
+        alert('[game-vela.html] Source : ' + (_srcLabels[gameSource] || gameSource));
 
         renderPlayersBar(myColor, localUser.username || localUser.uid, data.opponentUsername || '???');
 
@@ -995,7 +993,7 @@
         // Mettre à jour firstMover TOUJOURS (avant isPhase2 qui en dépend)
         if (game.firstMover) firstMover = game.firstMover;
 
-        // ── Timers joueur ──
+        // ── Timers joueur (toutes phases, Phase 1 n'affecte rien si pas de minutes) ──
         onPlayerTimersUpdate(game);
 
         // ── Fin de partie via game.winner (source unique) ──
@@ -1006,7 +1004,7 @@
           return;
         }
 
-        // ── Dispatch selon la phase (firstMover déjà mis à jour) ──
+        // ── Dispatch selon la phase ──
         if (isPhase2(game.pieces)) {
           onRealtimePh2(game);
         } else {
@@ -1026,17 +1024,14 @@
 
       if (game.turn !== myColor) {
         // ── Tour adversaire : toujours afficher le mouvement reçu ──
-        // (pas de filtrage echo — en Phase 1 l'adversaire peut jouer
-        //  sans que movingInProgress soit reset côté client)
         movingInProgress = false;
         renderPiecesPh1(localState.pieces, localState);
         return;
       }
 
-      // ── Notre tour ──
-      // Filtrage echo : si mon move est en cours (capture multiple), ignorer
+      // ── Notre tour — filtrage echo ──
       if (movingInProgress) {
-        movingInProgress = false; // reset pour le prochain push
+        movingInProgress = false;
         renderPiecesPh1(localState.pieces, localState);
         if (selectedSpot) renderGuidesPh1(selectedSpot, localState);
         return;
@@ -1437,8 +1432,7 @@
         return;
       }
 
-      // ── Notre tour ──
-      // Filtrage echo : si mon move est en cours, ignorer
+      // ── Notre tour — filtrage echo ──
       if (ph2_movingInProgress) {
         ph2_movingInProgress = false;
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
