@@ -818,10 +818,10 @@ async function handleStartFanoronaGame(body, res) {
 
   await inviteRef.update({ status: "started", gameId: inviteId });
 
-  const finalGame   = await rtdbGet(gameRef);
-  const finalSource = (finalGame && finalGame.source) || invite.game || 'fanorona';
-  const gamePage    = finalSource === 'vela' ? 'game-vela.html' : 'game-fanorona.html';
-  return res.status(200).json({ success: true, gameId: inviteId, gamePage, gameType: finalSource });
+  const _finalGame   = await rtdbGet(gameRef);
+  const _finalSource = (_finalGame && _finalGame.source) || invite.game || 'fanorona';
+  const gamePage     = _finalSource === 'vela' ? 'game-vela.html' : 'game-fanorona.html';
+  return res.status(200).json({ success: true, gameId: inviteId, gamePage, gameType: _finalSource });
 }
 
 async function handleGetFanoronaGame(body, res) {
