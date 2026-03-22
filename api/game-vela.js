@@ -42,6 +42,7 @@ export default async function handler(req, res) {
       case "make-move":          return await handleMakeMove(payload, res);
       case "stop-move":          return await handleStopMove(payload, res);
       case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
+      case "update-timers":      return await handleUpdateTimers(payload, res);
       case "declare-winner":     return await handleDeclareWinner(payload, res);
       case "request-rematch":    return await handleRequestRematch(payload, res);
       case "accept-rematch":     return await handleAcceptRematch(payload, res);
@@ -285,6 +286,30 @@ async function handleStopMove(body, res) {
   return res.status(200).json({ success: true, winner: stopWinner||null });
 }
 
+// ── Update timers (kept in sync with game-fanorona) ──
+async function handleUpdateTimers(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  if (!game.timerRunning || !game.timerLastTick)
+    return res.status(200).json({ success: true });
+
+  const nowMs   = Date.now();
+  const elapsed = Math.max(0, nowMs - game.timerLastTick);
+  const upd     = { timerLastTick: nowMs };
+  if (game.timerRunning === "maintso") {
+    upd.timerMaintso = Math.max(0, (game.timerMaintso || 0) - elapsed);
+  } else {
+    upd.timerMena = Math.max(0, (game.timerMena || 0) - elapsed);
+  }
+  await gameRef.update(upd);
+  return res.status(200).json({ success: true });
+}
+
 // ══════════════════════════════════════════════════════════════
 //  REMATCH (Room Vela)
 //  Izay resy no manao hetsika voalohany amin'ny revanche :
@@ -481,7 +506,7 @@ function ph2CheckAvailableCaptures(pieces, s, visited, lastDir, color) {
   return moves.some(t => {
     if (pieces[t] || (visited && visited.includes(t))) return false;
     const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(t[0]),c2=COLS.indexOf(t[1]);
-    const dir=`${r2-r1},${r2-r1}`;
+    const dir=`${r2-r1},${c2-c1}`;   // ← NANAVAO: c2-c1 (tsy r2-r1 in'droa)
     if (lastDir && lastDir === dir) return false;
     const caps = ph2GetCaptures(pieces, s, t, color);
     return (caps.approach.length > 0 || caps.withdrawal.length > 0);
