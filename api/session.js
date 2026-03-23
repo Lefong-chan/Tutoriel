@@ -1,8 +1,12 @@
 // session.js
 import admin from "firebase-admin";
+import jwt   from "jsonwebtoken";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
+if (!process.env.JWT_SECRET)   throw new Error("JWT_SECRET not set");
+
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
+const jwtSecret     = process.env.JWT_SECRET;
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -10,31 +14,48 @@ if (!admin.apps.length) {
     serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
   }
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential:  admin.credential.cert(serviceAccount),
     databaseURL: process.env.FIREBASE_DATABASE_URL
   });
 }
 
-const db = admin.firestore();
+const db              = admin.firestore();
 const usersCollection = db.collection("users");
 
 // ── RTDB refs ──────────────────────────────────────────────────────────────
-const rtdb = admin.database();
+const rtdb           = admin.database();
 const gameInvitesRef = rtdb.ref("gameInvites");
 const presenceRef    = rtdb.ref("presence");
 
-const FRIEND_LIMIT      = 100;
-const ONLINE_THRESHOLD  = 12 * 1000;
-const GAME_INVITE_TTL   = 12 * 1000;
+const FRIEND_LIMIT     = 100;
+const ONLINE_THRESHOLD = 12 * 1000;
+const GAME_INVITE_TTL  = 12 * 1000;
 
+// ── JWT guard ──────────────────────────────────────────────────────────────
+function verifyToken(req) {
+  const header = req.headers["authorization"] || "";
+  if (!header.startsWith("Bearer ")) return null;
+  try {
+    return jwt.verify(header.slice(7), jwtSecret);
+  } catch {
+    return null;
+  }
+}
+
+// ── Handler ────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
   res.setHeader("Access-Control-Allow-Origin", allowedOrigin || "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed." });
-  if (allowedOrigin && req.headers.origin !== allowedOrigin) return res.status(403).json({ error: "Forbidden." });
+  if (req.method !== "POST")    return res.status(405).json({ error: "Method not allowed." });
+  if (allowedOrigin && req.headers.origin !== allowedOrigin)
+    return res.status(403).json({ error: "Forbidden." });
+
+  // ── JWT guard ─────────────────────────────────────────────────────────
+  const decoded = verifyToken(req);
+  if (!decoded) return res.status(401).json({ error: "Unauthorized Access" });
 
   const { action, ...payload } = req.body;
   if (!action) return res.status(400).json({ error: "Action required." });
@@ -116,7 +137,6 @@ async function handleGetSession(body, res) {
 async function handlePing(body, res) {
   const { uid } = body;
   if (!uid) return res.status(400).json({ error: "UID is required." });
-
   await presenceRef.child(uid).update({ lastSeen: Date.now() });
   return res.status(200).json({ success: true });
 }
@@ -132,7 +152,7 @@ async function handleSetUsername(body, res) {
   if (!existing.empty && existing.docs[0].id !== uid)
     return res.status(400).json({ error: "This username is already taken." });
   await usersCollection.doc(uid).update({ username, usernameLower: username.toLowerCase(), updatedAt: Date.now() });
-  const updated = await usersCollection.doc(uid).get();
+  const updated  = await usersCollection.doc(uid).get();
   const userData = updated.data();
   return res.status(200).json({
     success: true,
@@ -157,11 +177,11 @@ async function handleSearchUsers(body, res) {
   const qLower = q.toLowerCase();
   const currentDoc = await usersCollection.doc(uid).get();
   if (!currentDoc.exists) return res.status(404).json({ error: "User not found." });
-  const currentData    = currentDoc.data();
-  const friends        = currentData.friends || [];
-  const sentRequests   = currentData.sentRequests || [];
+  const currentData      = currentDoc.data();
+  const friends          = currentData.friends        || [];
+  const sentRequests     = currentData.sentRequests   || [];
   const receivedRequests = currentData.friendRequests || [];
-  const currentTotal   = friends.length + sentRequests.length;
+  const currentTotal     = friends.length + sentRequests.length;
   const seenIds = new Set();
   const users   = [];
 
@@ -173,9 +193,9 @@ async function handleSearchUsers(body, res) {
     if (!data.username) return;
     seenIds.add(doc.id);
     let relation = "none";
-    if (friends.includes(doc.id))          relation = "friend";
-    else if (sentRequests.includes(doc.id)) relation = "pending_sent";
-    else if (receivedRequests.includes(doc.id)) relation = "pending_received";
+    if (friends.includes(doc.id))               relation = "friend";
+    else if (sentRequests.includes(doc.id))      relation = "pending_sent";
+    else if (receivedRequests.includes(doc.id))  relation = "pending_received";
     const targetFriends = data.friends || [];
     const targetTotal   = targetFriends.length + (data.friendRequests || []).length;
     const targetFull    = targetTotal >= FRIEND_LIMIT;
@@ -200,7 +220,7 @@ async function handleSearchUsers(body, res) {
 async function handleSendFriendRequest(body, res) {
   const { uid, toUid } = body;
   if (!uid || !toUid) return res.status(400).json({ error: "Both UIDs are required." });
-  if (uid === toUid) return res.status(400).json({ error: "You cannot send a friend request to yourself." });
+  if (uid === toUid)  return res.status(400).json({ error: "You cannot send a friend request to yourself." });
   const [senderDoc, receiverDoc] = await Promise.all([
     usersCollection.doc(uid).get(),
     usersCollection.doc(toUid).get()
@@ -209,12 +229,12 @@ async function handleSendFriendRequest(body, res) {
   if (!receiverDoc.exists) return res.status(404).json({ error: "User not found." });
   const senderData   = senderDoc.data();
   const receiverData = receiverDoc.data();
-  const senderFriends  = senderData.friends || [];
+  const senderFriends  = senderData.friends     || [];
   const senderSent     = senderData.sentRequests || [];
   if (senderFriends.length + senderSent.length >= FRIEND_LIMIT)
     return res.status(400).json({ error: `You have reached the maximum of ${FRIEND_LIMIT} friends and pending requests.` });
-  const receiverFriends   = receiverData.friends || [];
-  const receiverReceived  = receiverData.friendRequests || [];
+  const receiverFriends  = receiverData.friends        || [];
+  const receiverReceived = receiverData.friendRequests || [];
   if (receiverFriends.length + receiverReceived.length >= FRIEND_LIMIT)
     return res.status(400).json({ error: "This player's friend list is full." });
   if (senderFriends.includes(toUid))
@@ -224,7 +244,7 @@ async function handleSendFriendRequest(body, res) {
   if ((senderData.friendRequests || []).includes(toUid))
     return res.status(400).json({ error: "This user has already sent you a friend request. Accept it instead." });
   const batch = db.batch();
-  batch.update(senderDoc.ref, { sentRequests: admin.firestore.FieldValue.arrayUnion(toUid) });
+  batch.update(senderDoc.ref,   { sentRequests: admin.firestore.FieldValue.arrayUnion(toUid) });
   batch.update(receiverDoc.ref, {
     friendRequests: admin.firestore.FieldValue.arrayUnion(uid),
     [`friendRequestTimes.${uid}`]: Date.now()
@@ -253,12 +273,12 @@ async function handleAcceptFriendRequest(body, res) {
     return res.status(400).json({ error: "No pending friend request from this user." });
   const batch = db.batch();
   batch.update(accepterDoc.ref, {
-    friends: admin.firestore.FieldValue.arrayUnion(fromUid),
+    friends:        admin.firestore.FieldValue.arrayUnion(fromUid),
     friendRequests: admin.firestore.FieldValue.arrayRemove(fromUid),
     [`friendRequestTimes.${fromUid}`]: admin.firestore.FieldValue.delete()
   });
   batch.update(senderDoc.ref, {
-    friends: admin.firestore.FieldValue.arrayUnion(uid),
+    friends:      admin.firestore.FieldValue.arrayUnion(uid),
     sentRequests: admin.firestore.FieldValue.arrayRemove(uid)
   });
   await batch.commit();
@@ -372,7 +392,7 @@ async function handleGetFriends(body, res) {
     });
 
   friends.sort((a, b) => {
-    if (a.online && !b.online) return -1;
+    if (a.online && !b.online)  return -1;
     if (!a.online && b.online)  return  1;
     return (b.lastSeen || 0) - (a.lastSeen || 0);
   });
@@ -391,8 +411,8 @@ async function handleGetFriendRequests(body, res) {
   if (!uid) return res.status(400).json({ error: "UID is required." });
   const userDoc = await usersCollection.doc(uid).get();
   if (!userDoc.exists) return res.status(404).json({ error: "User not found." });
-  const userData    = userDoc.data();
-  const requestUids = userData.friendRequests || [];
+  const userData     = userDoc.data();
+  const requestUids  = userData.friendRequests    || [];
   const requestTimes = userData.friendRequestTimes || {};
   if (requestUids.length === 0) return res.status(200).json({ success: true, requests: [] });
   const chunks = [];
@@ -475,17 +495,17 @@ async function handleSendGameInvite(body, res) {
 
   await newInviteRef.set({
     inviteId,
-    fromUid:          uid,
-    fromUsername:     senderUsername,
+    fromUid:       uid,
+    fromUsername:  senderUsername,
     toUid,
-    toUsername:       receiverUsername,
+    toUsername:    receiverUsername,
     game,
-    color:            color   || "green",
-    minutes:          minutes || 5,
-    status:           "pending",
-    receiverReady:    false,
-    createdAt:        now,
-    expiresAt:        now + GAME_INVITE_TTL
+    color:         color   || "green",
+    minutes:       minutes || 5,
+    status:        "pending",
+    receiverReady: false,
+    createdAt:     now,
+    expiresAt:     now + GAME_INVITE_TTL
   });
 
   return res.status(200).json({ success: true, inviteId });
@@ -539,8 +559,8 @@ async function handleAcceptGameInvite(body, res) {
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
 
-  if (!invite) return res.status(404).json({ error: "Invitation not found." });
-  if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
+  if (!invite)                    return res.status(404).json({ error: "Invitation not found." });
+  if (invite.toUid !== uid)       return res.status(403).json({ error: "Not authorized." });
   if (invite.status !== "pending") return res.status(400).json({ error: "Invitation is no longer valid." });
   if (invite.expiresAt < Date.now()) {
     await inviteRef.update({ status: "expired" });
@@ -572,7 +592,7 @@ async function handleDeclineGameInvite(body, res) {
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
 
-  if (!invite) return res.status(404).json({ error: "Invitation not found." });
+  if (!invite)              return res.status(404).json({ error: "Invitation not found." });
   if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
 
   await inviteRef.update({ status: "declined", declinedAt: Date.now() });
@@ -586,8 +606,8 @@ async function handleCancelGameInvite(body, res) {
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
 
-  if (!invite) return res.status(200).json({ success: true });
-  if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
+  if (!invite)                 return res.status(200).json({ success: true });
+  if (invite.fromUid !== uid)  return res.status(403).json({ error: "Not authorized." });
 
   await inviteRef.update({ status: "cancelled" });
   return res.status(200).json({ success: true });
@@ -640,8 +660,8 @@ async function handleUpdateRoomReady(body, res) {
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
 
-  if (!invite) return res.status(404).json({ error: "Invitation not found." });
-  if (invite.toUid !== uid) return res.status(403).json({ error: "Not authorized." });
+  if (!invite)                     return res.status(404).json({ error: "Invitation not found." });
+  if (invite.toUid !== uid)        return res.status(403).json({ error: "Not authorized." });
   if (invite.status !== "accepted") return res.status(400).json({ error: "Invitation is not active." });
 
   await inviteRef.update({ receiverReady: ready === true || ready === "true" });
@@ -655,8 +675,8 @@ async function handleUpdateRoomSettings(body, res) {
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
 
-  if (!invite) return res.status(404).json({ error: "Invitation not found." });
-  if (invite.fromUid !== uid) return res.status(403).json({ error: "Not authorized." });
+  if (!invite)                     return res.status(404).json({ error: "Invitation not found." });
+  if (invite.fromUid !== uid)      return res.status(403).json({ error: "Not authorized." });
   if (invite.status !== "accepted") return res.status(400).json({ error: "Invitation is not active." });
 
   const update = {};
@@ -669,8 +689,8 @@ async function handleUpdateRoomSettings(body, res) {
 
 // ── Room Chat handlers (RTDB) ──────────────────────────────────────────────
 
-const CHAT_MAX_CHARS   = 30;
-const CHAT_MAX_MSGS    = 20;
+const CHAT_MAX_CHARS = 30;
+const CHAT_MAX_MSGS  = 20;
 
 async function handleSendChatMessage(body, res) {
   const { uid, inviteId, text } = body;
@@ -685,13 +705,13 @@ async function handleSendChatMessage(body, res) {
   if (invite.status !== "accepted")
     return res.status(400).json({ error: "Room is not active." });
 
-  const chars = Array.from(text.trim());
-  const safeText = chars.slice(0, CHAT_MAX_CHARS).join('');
+  const chars    = Array.from(text.trim());
+  const safeText = chars.slice(0, CHAT_MAX_CHARS).join("");
 
-  const userDoc = await usersCollection.doc(uid).get();
+  const userDoc  = await usersCollection.doc(uid).get();
   const username = userDoc.exists ? (userDoc.data().username || uid) : uid;
 
-  const msgsRef = rtdb.ref(`roomChats/${inviteId}/messages`);
+  const msgsRef   = rtdb.ref(`roomChats/${inviteId}/messages`);
   const newMsgRef = msgsRef.push();
   await newMsgRef.set({
     senderUid:      uid,
@@ -708,7 +728,7 @@ async function handleSendChatMessage(body, res) {
     });
     if (allMsgs.length > CHAT_MAX_MSGS) {
       allMsgs.sort((a, b) => a.ts - b.ts);
-      const toDelete = allMsgs.slice(0, allMsgs.length - CHAT_MAX_MSGS);
+      const toDelete   = allMsgs.slice(0, allMsgs.length - CHAT_MAX_MSGS);
       const delUpdates = {};
       toDelete.forEach(m => { delUpdates[m.key] = null; });
       await msgsRef.update(delUpdates);
@@ -751,11 +771,10 @@ async function handleGetChatMessages(body, res) {
   return res.status(200).json({ success: true, messages: last });
 }
 
-
 // ── Fanorona Game handlers ─────────────────────────────────────────────────
 
-const ROWS = ['A','B','C','D','E'];
-const COLS = ['1','2','3','4','5','6','7','8','9'];
+const ROWS = ["A","B","C","D","E"];
+const COLS = ["1","2","3","4","5","6","7","8","9"];
 
 async function handleStartFanoronaGame(body, res) {
   const { uid, inviteId } = body;
@@ -764,20 +783,20 @@ async function handleStartFanoronaGame(body, res) {
   const inviteRef = gameInvitesRef.child(inviteId);
   const invite    = await rtdbGet(inviteRef);
 
-  if (!invite) return res.status(404).json({ error: "Room not found." });
-  if (invite.fromUid !== uid) return res.status(403).json({ error: "Only the room host can start the game." });
+  if (!invite)                     return res.status(404).json({ error: "Room not found." });
+  if (invite.fromUid !== uid)      return res.status(403).json({ error: "Only the room host can start the game." });
   if (invite.status !== "accepted") return res.status(400).json({ error: "Room is not active." });
 
-  const gameRef   = rtdb.ref(`games/${inviteId}`);
-  const existing  = await rtdbGet(gameRef);
+  const gameRef  = rtdb.ref(`games/${inviteId}`);
+  const existing = await rtdbGet(gameRef);
 
   if (!existing) {
     const initialPieces = {};
     ROWS.forEach((r, ri) => {
       COLS.forEach((c, ci) => {
         const key = r + c;
-        if (ri < 2)       initialPieces[key] = "mena";
-        else if (ri > 2)  initialPieces[key] = "maintso";
+        if (ri < 2)      initialPieces[key] = "mena";
+        else if (ri > 2) initialPieces[key] = "maintso";
         else {
           if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
           else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
@@ -790,36 +809,35 @@ async function handleStartFanoronaGame(body, res) {
     const senderUsername   = senderDoc.exists   ? (senderDoc.data().username   || invite.fromUid) : invite.fromUid;
     const receiverUsername = receiverDoc.exists ? (receiverDoc.data().username || invite.toUid)   : invite.toUid;
 
-    const senderColorRaw   = invite.color || 'green';
-    const senderColorGame  = senderColorRaw  === 'red' ? 'mena' : 'maintso';
-    const receiverColorGame = senderColorGame === 'mena' ? 'maintso' : 'mena';
-    const minutes = (invite.minutes && [5,10,15].includes(Number(invite.minutes)))
+    const senderColorRaw  = invite.color || "green";
+    const senderColorGame = senderColorRaw === "red" ? "mena" : "maintso";
+    const receiverColorGame = senderColorGame === "mena" ? "maintso" : "mena";
+    const minutes     = (invite.minutes && [5,10,15].includes(Number(invite.minutes)))
       ? Number(invite.minutes) : 5;
     const msPerPlayer = minutes * 60 * 1000;
-    const gameSource = invite.game || 'fanorona';
-    // Pour Vela : firstMover = maintso par défaut (lalao voalohany)
-    // Rehefa revanche : firstMover = loserColor (backend handleAcceptRematch)
+    const gameSource  = invite.game || "fanorona";
+
     const gameData = {
-      pieces:            initialPieces,
-      turn:              "maintso",
-      senderUid:         invite.fromUid,
+      pieces:        initialPieces,
+      turn:          "maintso",
+      senderUid:     invite.fromUid,
       senderUsername,
-      senderColor:       senderColorGame,
-      receiverUid:       invite.toUid,
+      senderColor:   senderColorGame,
+      receiverUid:   invite.toUid,
       receiverUsername,
-      receiverColor:     receiverColorGame,
-      startedAt:         Date.now(),
-      source:            gameSource,
-      rematchCount:      0,
+      receiverColor: receiverColorGame,
+      startedAt:     Date.now(),
+      source:        gameSource,
+      rematchCount:  0,
       minutes,
-      timerMaintso:      msPerPlayer,
-      timerMena:         msPerPlayer,
-      timerRunning:      null,
-      timerLastTick:     null,
+      timerMaintso:  msPerPlayer,
+      timerMena:     msPerPlayer,
+      timerRunning:  null,
+      timerLastTick: null
     };
-    // Vela : firstMover voatahiry avy hatrany (tsy miandry move voalohany)
-    if (gameSource === 'vela') {
-      gameData.firstMover                = 'maintso';
+
+    if (gameSource === "vela") {
+      gameData.firstMover                = "maintso";
       gameData.nonFirstMoverHasContinued = false;
     }
     await gameRef.set(gameData);
@@ -828,8 +846,8 @@ async function handleStartFanoronaGame(body, res) {
   await inviteRef.update({ status: "started", gameId: inviteId });
 
   const _finalGame   = await rtdbGet(gameRef);
-  const _finalSource = (_finalGame && _finalGame.source) || invite.game || 'fanorona';
-  const gamePage     = _finalSource === 'vela' ? 'game-vela.html' : 'game-fanorona.html';
+  const _finalSource = (_finalGame && _finalGame.source) || invite.game || "fanorona";
+  const gamePage     = _finalSource === "vela" ? "game-vela.html" : "game-fanorona.html";
   return res.status(200).json({ success: true, gameId: inviteId, gamePage, gameType: _finalSource });
 }
 
@@ -844,9 +862,7 @@ async function handleGetFanoronaGame(body, res) {
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
 
-  const myColor = game.senderUid === uid
-    ? (game.senderColor   || "maintso")
-    : (game.receiverColor || "mena");
+  const myColor       = game.senderUid === uid ? (game.senderColor   || "maintso") : (game.receiverColor || "mena");
   const opponentColor = myColor === "maintso" ? "mena" : "maintso";
   const opponentUsername = game.senderUid === uid ? game.receiverUsername : game.senderUsername;
 
@@ -859,6 +875,6 @@ async function handleGetFanoronaGame(body, res) {
     receiverUsername: game.receiverUsername,
     pieces:           game.pieces,
     turn:             game.turn,
-    source:           game.source || 'fanorona',
+    source:           game.source || "fanorona"
   });
 }
