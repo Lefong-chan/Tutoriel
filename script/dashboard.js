@@ -1,6 +1,3 @@
-// =============================================================
-// dashboard.js
-// =============================================================
 (function () {
   var SESSION_API_URL = '/api/session';
   var AUTH_API_URL = '/api/auth';
@@ -56,14 +53,24 @@
     if (el) el.textContent = (currentUser && currentUser.username) ? currentUser.username : '____';
   }
 
+  function redirectToLogin() {
+    localStorage.removeItem('user');
+    localStorage.removeItem('jwtToken');
+    window.location.href = 'login&register.html';
+  }
+
   async function callSessionApi(action, payload) {
-    var r = await fetch(SESSION_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, payload)) });
+    var token = localStorage.getItem('jwtToken') || '';
+    var r = await fetch(SESSION_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(Object.assign({ action }, payload)) });
+    if (r.status === 401) { redirectToLogin(); return; }
     var d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Session error.');
     return d;
   }
   async function callAuthApi(action, payload) {
-    var r = await fetch(AUTH_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ action }, payload)) });
+    var token = localStorage.getItem('jwtToken') || '';
+    var r = await fetch(AUTH_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(Object.assign({ action }, payload)) });
+    if (r.status === 401) { redirectToLogin(); return; }
     var d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Auth error.');
     return d;
@@ -77,7 +84,7 @@
       var local = JSON.parse(stored);
       if (!local || !local.uid) throw new Error('Invalid session.');
       var data = await callSessionApi('get-session', { uid: local.uid });
-      if (data.success && data.user) {
+      if (data && data.success && data.user) {
         currentUser = data.user;
         localStorage.setItem('user', JSON.stringify(currentUser));
         updateUsernameDisplay();
@@ -94,7 +101,7 @@
         }, 30000);
         startGameInvitePolling();
       } else throw new Error('Session failed.');
-    } catch (err) { localStorage.removeItem('user'); window.location.href = 'login&register.html'; }
+    } catch (err) { redirectToLogin(); }
     finally { setPageLoading(false); }
   }
 
@@ -105,7 +112,6 @@
   }
   function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  // ── Username setup ──────────────────────────────────────────
   var setUsernameModal = document.getElementById('setUsernameModal');
   var setUsernameInput = document.getElementById('setUsernameInput');
   var confirmSetUsernameBtn = document.getElementById('confirmSetUsernameBtn');
@@ -121,7 +127,7 @@
     if (v.valid) {
       clearTimeout(window._uCheck);
       window._uCheck = setTimeout(async function () {
-        try { var d = await callSessionApi('check-username', { username: val }); if (!d.available) { setUsernameError.textContent = 'This username is already taken.'; setUsernameError.style.display = 'block'; confirmSetUsernameBtn.disabled = true; } } catch (e) {}
+        try { var d = await callSessionApi('check-username', { username: val }); if (d && !d.available) { setUsernameError.textContent = 'This username is already taken.'; setUsernameError.style.display = 'block'; confirmSetUsernameBtn.disabled = true; } } catch (e) {}
       }, 500);
     }
   });
@@ -131,9 +137,9 @@
     setUsernameLoadingSpinner.style.display = 'block'; confirmSetUsernameBtn.disabled = true;
     try {
       var check = await callSessionApi('check-username', { username: u });
-      if (!check.available) { setUsernameError.textContent = 'This username is already taken.'; setUsernameError.style.display = 'block'; return; }
+      if (!check || !check.available) { setUsernameError.textContent = 'This username is already taken.'; setUsernameError.style.display = 'block'; return; }
       var data = await callSessionApi('set-username', { uid: currentUser.uid, username: u });
-      if (data.success && data.user) { currentUser = data.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); closeModal(setUsernameModal); showToast('Username set successfully!', 'success'); }
+      if (data && data.success && data.user) { currentUser = data.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); closeModal(setUsernameModal); showToast('Username set successfully!', 'success'); }
     } catch (err) { if (!err.message.includes('taken')) { setUsernameError.textContent = err.message; setUsernameError.style.display = 'block'; } }
     finally { setUsernameLoadingSpinner.style.display = 'none'; confirmSetUsernameBtn.disabled = false; }
   });
@@ -284,7 +290,6 @@
     catch (err) { showToast(err.message, 'error'); } finally { btn.disabled = false; }
   });
 
-  // ── Rename ──────────────────────────────────────────────────
   var renameBtn = document.getElementById('renameBtn');
   var renameModal = document.getElementById('renameModal');
   var newNameInput = document.getElementById('newNameInput');
@@ -304,19 +309,18 @@
     renameLoadingSpinner.style.display = 'block'; confirmRenameBtn.disabled = true; usernameError.style.display = 'none'; passwordErrorMessage.style.display = 'none';
     try {
       var v = await callAuthApi('verify-password', { uid: currentUser.uid, password: pw });
-      if (!v.valid) { passwordErrorMessage.textContent = 'Incorrect password.'; passwordErrorMessage.style.display = 'block'; return; }
-      var c = await callSessionApi('check-username', { username: nu }); if (!c.available) { usernameError.style.display = 'block'; return; }
+      if (!v || !v.valid) { passwordErrorMessage.textContent = 'Incorrect password.'; passwordErrorMessage.style.display = 'block'; return; }
+      var c = await callSessionApi('check-username', { username: nu }); if (!c || !c.available) { usernameError.style.display = 'block'; return; }
       var d = await callSessionApi('set-username', { uid: currentUser.uid, username: nu });
-      if (d.success) { currentUser = d.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); renameSuccessMessage.style.display = 'block'; setTimeout(function () { closeModal(renameModal); }, 1500); }
+      if (d && d.success) { currentUser = d.user; localStorage.setItem('user', JSON.stringify(currentUser)); updateUsernameDisplay(); renameSuccessMessage.style.display = 'block'; setTimeout(function () { closeModal(renameModal); }, 1500); }
     } catch (err) { if (err.message.toLowerCase().includes('taken')) usernameError.style.display = 'block'; else { passwordErrorMessage.textContent = err.message; passwordErrorMessage.style.display = 'block'; } }
     finally { renameLoadingSpinner.style.display = 'none'; confirmRenameBtn.disabled = false; }
   });
 
   document.getElementById('signOutBtn').addEventListener('click', function () { openModal(document.getElementById('logoutConfirmModal')); });
-  document.getElementById('confirmLogoutBtn').addEventListener('click', function () { localStorage.removeItem('user'); window.location.href = 'login&register.html'; });
+  document.getElementById('confirmLogoutBtn').addEventListener('click', function () { localStorage.removeItem('user'); localStorage.removeItem('jwtToken'); window.location.href = 'login&register.html'; });
   document.getElementById('cancelLogoutBtn').addEventListener('click', function () { closeModal(document.getElementById('logoutConfirmModal')); });
 
-  // ── Players Modal ─────────────────────────────────────────
   var playersModal = document.getElementById('playersModal');
   document.getElementById('amisBtn').addEventListener('click', function () {
     _friendsFirstLoad = true;
@@ -415,6 +419,7 @@
       if (!ctxInviteId) return;
       try {
         var sRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: ctxInviteId });
+        if (!sRes) return;
         if (sRes.status === 'accepted') {
           clearInterval(ctxInviteTimer); ctxInviteTimer = null;
           clearInterval(ctxInviteStatusTimer); ctxInviteStatusTimer = null;
@@ -460,6 +465,7 @@
     }
     try {
       var data = await callSessionApi('get-friends', { uid: currentUser.uid });
+      if (!data) return;
       var cb = document.getElementById('friendsCountBadge'); var fc = data.friendCount || 0;
       cb.textContent = fc + '/100'; cb.style.display = fc > 0 ? 'inline-block' : 'none';
       if (!data.friends || data.friends.length === 0) {
@@ -490,7 +496,6 @@
           if (existing) {
             var sd = existing.querySelector('[data-sd]');
             if (sd) { sd.className = 'status-dot ' + (fr.online ? 'online' : 'offline'); sd.setAttribute('data-sd',''); }
-
             var ctxB = existing.querySelector('.friend-ctx-btn');
             if (ctxB) ctxB.dataset.online = fr.online ? '1' : '0';
             var ls = existing.querySelector('[data-ls]');
@@ -511,17 +516,17 @@
   }
 
   async function loadRequestsBadge() {
-    try { var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid }); var count = (data.requests || []).length; var badge = document.getElementById('requestsBadge'); badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; updateFooterRequestsBadge(count); } catch (e) {}
+    try { var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid }); if (!data) return; var count = (data.requests || []).length; var badge = document.getElementById('requestsBadge'); badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; updateFooterRequestsBadge(count); } catch (e) {}
   }
   function updateFooterRequestsBadge(count) { var fb = document.getElementById('footerRequestsBadge'); if (!fb) return; if (count > 0) { fb.textContent = count > 9 ? '9+' : count; fb.style.display = 'flex'; } else { fb.style.display = 'none'; } }
   async function loadSentBadge() {
-    try { var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid }); var badge = document.getElementById('sentCountBadge'); var count = data.sentCount || (data.sent || []).length; badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; } catch (e) {}
+    try { var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid }); if (!data) return; var badge = document.getElementById('sentCountBadge'); var count = data.sentCount || (data.sent || []).length; badge.textContent = count; badge.style.display = count > 0 ? 'inline-block' : 'none'; } catch (e) {}
   }
 
   async function loadRequestsPanel() {
     var container = document.getElementById('requestsListContainer'); container.innerHTML = '<div class="spinner-inline"></div>';
     try {
-      var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid }); container.innerHTML = '';
+      var data = await callSessionApi('get-friend-requests', { uid: currentUser.uid }); if (!data) return; container.innerHTML = '';
       var badge = document.getElementById('requestsBadge');
       if (!data.requests || data.requests.length === 0) { badge.style.display = 'none'; renderEmptyState(container, 'handshake', 'No pending friend requests.'); return; }
       badge.textContent = data.requests.length; badge.style.display = 'inline-block';
@@ -539,7 +544,7 @@
   async function loadSentPanel() {
     var container = document.getElementById('sentListContainer'); container.innerHTML = '<div class="spinner-inline"></div>';
     try {
-      var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid }); container.innerHTML = '';
+      var data = await callSessionApi('get-sent-requests', { uid: currentUser.uid }); if (!data) return; container.innerHTML = '';
       var badge = document.getElementById('sentCountBadge'); var sc = data.sentCount || (data.sent || []).length;
       badge.textContent = sc; badge.style.display = sc > 0 ? 'inline-block' : 'none';
       if (!data.sent || data.sent.length === 0) { renderEmptyState(container, 'paper-plane', 'You have not sent any friend requests yet.'); return; }
@@ -563,6 +568,7 @@
     searchLoadingSpinner.style.display = 'block'; searchResultsContainer.innerHTML = '';
     try {
       var data = await callSessionApi('search-users', { uid: currentUser.uid, query });
+      if (!data) return;
       searchLoadingSpinner.style.display = 'none';
       if (!data.users || data.users.length === 0) { searchResultsContainer.innerHTML = '<p style="color:#64748b;font-size:0.88em;padding:4px 0;">No players found for "' + escapeHtml(query) + '".</p>'; return; }
       data.users.forEach(function (user) {
@@ -630,7 +636,7 @@
   var selectedMinutes = 5;
   var gameOrigin = 'create';
   var gsDropdownOpen = false;
-  var matchupData = null; 
+  var matchupData = null;
 
   var gameImages = { both: 'img/fanorona&vela.png', fanorona: 'img/fanorona.png', vela: 'img/vela.png' };
   var gameLabels = { both: 'Fanorona & Vela', fanorona: 'Fanorona', vela: 'Vela' };
@@ -829,6 +835,7 @@
     list.innerHTML = '<div class="gs-room-empty">Loading…</div>';
     try {
       var data = await callSessionApi('get-friends', { uid: currentUser.uid });
+      if (!data) return;
       var online = (data.friends || []).filter(function(f) { return f.online; });
       list.innerHTML = '';
       if (!data.friends || data.friends.length === 0) {
@@ -868,6 +875,7 @@
         uid: currentUser.uid, toUid: friend.uid,
         game: selectedGame, color: selectedColor, minutes: selectedMinutes
       });
+      if (!res) return;
       inviteId = res.inviteId;
       roomFriendInviteIds[friend.uid] = inviteId;
     } catch(err) {
@@ -891,10 +899,10 @@
       }
     }, 1000);
     roomFriendInviteTimers[friend.uid] = btnIvl;
-    // Polling accepté
     var statusIvl = setInterval(async function() {
       try {
         var sRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
+        if (!sRes) return;
         if (sRes.status === 'accepted') {
           clearInterval(statusIvl); delete roomFriendStatusTimers[inviteId];
           clearInterval(btnIvl); delete roomFriendInviteTimers[friend.uid];
@@ -927,6 +935,7 @@
       }
       try {
         var res = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
+        if (!res) return;
         if (res.status === 'accepted') {
           if (isSender) {
             var rReady = (res.receiverReady !== false);
@@ -972,10 +981,8 @@
             }
           }
         } else if (res.status === 'started') {
-
           clearInterval(roomSyncTimer); roomSyncTimer = null;
           if (window._stopRoomChat) window._stopRoomChat();
-          // 'both' → game-fanorona.html, 'fanorona' → game-fanorona.html, 'vela' → game-vela.html
           var destPage2 = (selectedGame === 'vela') ? 'game-vela.html' : 'game-fanorona.html';
           var senderCol2 = (res.color === 'red') ? 'mena' : 'maintso';
           var receiverCol2 = (res.color === 'red') ? 'maintso' : 'mena';
@@ -1128,10 +1135,10 @@
         uid:      currentUser.uid,
         inviteId: matchupData.inviteId
       }).then(function(res) {
+        if (!res) return;
         if (res.success) {
           if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
           if (window._stopRoomChat) window._stopRoomChat();
-          // 'both' → game-fanorona.html, 'fanorona' → game-fanorona.html, 'vela' → game-vela.html
           var destPage = (selectedGame === 'vela') ? 'game-vela.html' : 'game-fanorona.html';
           var senderColor = (selectedColor === 'red') ? 'mena' : 'maintso';
           var url = destPage
@@ -1151,7 +1158,6 @@
     }
   });
 
-  // INVITE FRIENDS MODAL
   var inviteTimers = {};
   var inviteStatusTimers = {};
   var activeInviteIds = {};
@@ -1164,7 +1170,6 @@
     headerImg.appendChild(img);
     document.getElementById('inviteHeaderTitle').textContent = 'Invite Friends';
     document.getElementById('inviteHeaderSub').textContent = label + ' · ' + selectedMinutes + ' min';
-    // Reset timers
     Object.keys(inviteTimers).forEach(function(uid) { clearInterval(inviteTimers[uid]); });
     Object.keys(inviteStatusTimers).forEach(function(id) { clearInterval(inviteStatusTimers[id]); });
     inviteTimers = {}; inviteStatusTimers = {}; activeInviteIds = {};
@@ -1178,6 +1183,7 @@
     container.innerHTML = '<div class="invite-spinner"></div>';
     try {
       var data = await callSessionApi('get-friends', { uid: currentUser.uid });
+      if (!data) return;
       container.innerHTML = '';
       var onlineFriends = (data.friends || []).filter(function(f) { return f.online; });
       if (onlineFriends.length === 0) {
@@ -1211,6 +1217,7 @@
         uid: currentUser.uid, toUid: friend.uid,
         game: selectedGame, color: selectedColor, minutes: selectedMinutes
       });
+      if (!res) return;
       inviteId = res.inviteId;
       activeInviteIds[friend.uid] = inviteId;
     } catch(err) {
@@ -1239,6 +1246,7 @@
     var statusIvl = setInterval(async function() {
       try {
         var statusRes = await callSessionApi('check-game-invite-status', { uid: currentUser.uid, inviteId: inviteId });
+        if (!statusRes) return;
         if (statusRes.status === 'accepted') {
           clearInterval(statusIvl); delete inviteStatusTimers[inviteId];
           clearInterval(btnIvl); delete inviteTimers[friend.uid];
@@ -1294,6 +1302,7 @@
       if (!currentUser) return;
       try {
         var res = await callSessionApi('check-game-invite', { uid: currentUser.uid });
+        if (!res) return;
         if (res.invite) {
           var iid = res.invite.inviteId;
           if (iid !== currentGinInviteId && !acceptedInviteIds.has(iid)) {
@@ -1362,7 +1371,7 @@
     }
     try {
       var res = await callSessionApi('accept-game-invite', { uid: currentUser.uid, inviteId: inviteId });
-      if (res.success) {
+      if (res && res.success) {
         selectedGame = res.game;
         selectedMinutes = res.minutes;
         selectedColor = res.color;
@@ -1416,8 +1425,8 @@
   var gsChatSendBtn  = document.getElementById('gsChatSendBtn');
   var gsChatMessages = document.getElementById('gsChatMessages');
 
-  var _chatRoomId      = null;
-  var _chatPollTimer   = null;
+  var _chatRoomId       = null;
+  var _chatPollTimer    = null;
   var _chatLastMsgCount = -1;
 
   function chatCharCount(val) { return Array.from(val).length; }
@@ -1444,7 +1453,7 @@
       }
       try {
         var res = await callSessionApi('get-chat-messages', { uid: currentUser.uid, inviteId: inviteId });
-        if (!res.success) return;
+        if (!res || !res.success) return;
         var msgs = res.messages || [];
         if (msgs.length !== _chatLastMsgCount) {
           _chatLastMsgCount = msgs.length;
@@ -1497,7 +1506,7 @@
         text:     text
       });
       var res = await callSessionApi('get-chat-messages', { uid: currentUser.uid, inviteId: _chatRoomId });
-      if (res.success) {
+      if (res && res.success) {
         _chatLastMsgCount = (res.messages || []).length;
         renderChatMessages(res.messages || []);
       }
