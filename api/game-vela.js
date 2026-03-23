@@ -44,6 +44,7 @@ export default async function handler(req, res) {
       case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
       case "update-timers":      return await handleUpdateTimers(payload, res);
       case "declare-winner":     return await handleDeclareWinner(payload, res);
+      case "auto-reset-ph1":    return await handleAutoResetPh1(payload, res);
       case "request-rematch":    return await handleRequestRematch(payload, res);
       case "accept-rematch":     return await handleAcceptRematch(payload, res);
       case "decline-rematch":    return await handleDeclineRematch(payload, res);
@@ -234,7 +235,9 @@ async function handleMakeMove(body, res) {
       // ── Phase 1 : si le firstMover n'a aucune capture disponible à son tour → il gagne ──
       if (!winner1 && nextColor === firstMover && isStillPhase1(pieces, firstMover)) {
         if (!ph1PlayerHasAnyCapture(pieces, firstMover)) {
-          winner1 = firstMover;
+          const nonFMColorPh1 = firstMover === "maintso" ? "mena" : "maintso";
+          winner1   = nonFMColorPh1;   // le walker (nonFM) gagne
+          payload1.ph1End = true;      // flag auto-reset côté client
         }
       }
       const payload1 = {
@@ -283,7 +286,9 @@ async function handleStopMove(body, res) {
   const stopFM = game.firstMover || null;
   if (!stopWinner && stopFM && nextColor === stopFM && isStillPhase1(pieces, stopFM)) {
     if (!ph1PlayerHasAnyCapture(pieces, stopFM)) {
-      stopWinner = stopFM;
+      const nonFMColorStop = stopFM === "maintso" ? "mena" : "maintso";
+      stopWinner            = nonFMColorStop;   // walker gagne
+      stopPayload.ph1End    = true;
     }
   }
   const stopPayload = {
@@ -437,6 +442,69 @@ async function handleMarkRematchDone(body, res) {
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
   await gameRef.child("rematch").update({ status: "done" });
+  return res.status(200).json({ success: true });
+}
+
+// ── Auto-reset après fin de Phase 1 (no-capture → countdown 3s côté client) ──
+async function handleAutoResetPh1(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  // Idempotent : si déjà réinitialisé (ph1End effacé), retour silencieux
+  if (!game.ph1End) return res.status(200).json({ success: true, alreadyReset: true });
+
+  // Nouveau firstMover = nonFMColor (winner = walker), loser (oldFM) devient walker
+  const oldFirstMover = game.firstMover || "maintso";
+  const newFirstMover = oldFirstMover === "maintso" ? "mena" : "maintso"; // winner devient capture player
+
+  const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
+  const initialPieces = {};
+  R.forEach((r, ri) => {
+    C.forEach((c, ci) => {
+      const key = r + c;
+      if (ri < 2)      initialPieces[key] = "mena";
+      else if (ri > 2) initialPieces[key] = "maintso";
+      else {
+        if ([1,3,6,8].includes(ci))      initialPieces[key] = "mena";
+        else if ([0,2,5,7].includes(ci)) initialPieces[key] = "maintso";
+      }
+    });
+  });
+
+  const minutes     = game.minutes || null;
+  const msPerPlayer = minutes ? minutes * 60 * 1000 : null;
+  const rematchCount = (game.rematchCount || 0) + 1;
+
+  const resetData = {
+    pieces:                    initialPieces,
+    turn:                      newFirstMover,
+    movingPiece:               "",
+    visited:                   [],
+    lastDir:                   "",
+    moveHistory:               [],
+    lastTurnHistory:           [],
+    lastTurnColor:             "",
+    winner:                    null,
+    firstMover:                newFirstMover,
+    nonFirstMoverHasContinued: false,
+    ph1End:                    null,
+    senderColor:               game.senderColor,
+    receiverColor:             game.receiverColor,
+    timerRunning:              null,
+    timerLastTick:             null,
+    rematchCount,
+    rematch:                   { status: "accepted", acceptedAt: Date.now() },
+  };
+  if (msPerPlayer) {
+    resetData.timerMaintso = msPerPlayer;
+    resetData.timerMena    = msPerPlayer;
+  }
+  await gameRef.update(resetData);
   return res.status(200).json({ success: true });
 }
 
