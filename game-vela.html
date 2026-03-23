@@ -482,7 +482,7 @@
     </div>
 
     <button id="stop-move-btn" class="abtn"><i class="fas fa-times"></i></button>
-    <button class="abtn dbtn">DEMANDE</button>
+    <button class="abtn dbtn">REQUEST</button>
     <button class="abtn"><i class="fas fa-sliders-h"></i></button>
   </div>
 
@@ -495,13 +495,13 @@
       <div class="rn-row-top">
         <div class="rn-icon"><i class="fas fa-redo-alt"></i></div>
         <div class="rn-text-wrap">
-          <div class="rn-label">Revanche</div>
-          <div class="rn-msg"><span class="rn-username" id="rn-username">Adversaire</span> propose une revanche&nbsp;!</div>
+          <div class="rn-label">Rematch</div>
+          <div class="rn-msg"><span class="rn-username" id="rn-username">Opponent</span> is proposing a rematch!</div>
         </div>
         <div class="rn-countdown" id="rn-countdown">10</div>
       </div>
       <div class="rn-actions">
-        <button class="rn-btn-accept" id="rematch-accept-btn"><i class="fas fa-check"></i> Accepter</button>
+        <button class="rn-btn-accept" id="rematch-accept-btn"><i class="fas fa-check"></i> Accept</button>
         <button class="rn-btn-decline" id="rematch-decline-btn"><i class="fas fa-times"></i></button>
       </div>
     </div>
@@ -845,25 +845,40 @@
         var iWon       = (winnerColor === myColor);
         var loserColor = iWon ? myOppColor : myColor;
 
-        // Case 1 : ilay panala capture (firstMover) tao amin'ny phase 1 no resy amin'ny phase 2
-        // winnerColor !== firstMover → firstMover no resy
-        var isCase1 = !!(firstMover && loserColor === firstMover);
+        // ── Determine case ──────────────────────────────────────────
+        // Case A : firstMover resy (any color)
+        //   → "Tsy afaka" / "Nampiraikitra" + countdown 3s + auto-restart
+        //   → newFirstMover = same loser (firstMover keeps leading)
+        //
+        // Case B : Green (maintso) firstMover nandresy
+        //   → "Mamaly ady" (loser) / "Afaka" (winner) + countdown 3s + auto-restart
+        //   → newFirstMover = loser (Red leads next)
+        //
+        // Case C : Red (mena) firstMover nandresy
+        //   → "Afaka" (both) + buttons Quit / Restart + invitation needed
+        // ────────────────────────────────────────────────────────────
+        var isCaseA = !!(firstMover && loserColor === firstMover);
+        var isCaseB = !!(firstMover && firstMover === 'maintso' && winnerColor === 'maintso' && !isCaseA);
+        var isCaseC = !!(firstMover && firstMover === 'mena'    && winnerColor === 'mena'    && !isCaseA);
+
+        // Title text
+        var titleText;
+        if (isCaseA) {
+          titleText = iWon ? 'Nampiraikitra' : 'Tsy afaka';
+        } else if (isCaseB) {
+          titleText = iWon ? 'Afaka' : 'Mamaly ady';
+        } else {
+          // Case C
+          titleText = 'Afaka';
+        }
 
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
-
-        if (isCase1) {
-          // Texte spécifique Case 1
-          title.textContent = iWon ? 'Nampiraikitra' : 'Tsy afaka';
-        } else {
-          // Case 2 : textes normaux
-          title.innerHTML = iWon ? '&#127942; You win!' : '&#128532; You lose!';
-        }
-
+        title.textContent = titleText;
         box.appendChild(title);
 
-        if (isCase1) {
-          // ── Case 1 : pas de boutons — countdown 3s puis auto-restart ──
+        // ── Case A & B : no buttons, countdown 3s then auto-restart ──
+        if (isCaseA || isCaseB) {
           var cdWrap = document.createElement('div');
           cdWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
@@ -879,7 +894,7 @@
 
           var subEl = document.createElement('div');
           subEl.style.cssText = 'font-size:0.82em;opacity:0.60;letter-spacing:0.03em;';
-          subEl.textContent = 'Miverina ny lalao...';
+          subEl.textContent = 'Game restarting...';
 
           cdWrap.appendChild(countEl);
           cdWrap.appendChild(subEl);
@@ -887,16 +902,14 @@
           overlay.appendChild(box);
           document.body.appendChild(overlay);
 
-          // Countdown 3 → 2 → 1 → 0 → auto-restart
           var countdown = 3;
           var countTimer = setInterval(function() {
             countdown--;
-            // Si overlay efa nesorina (resetGameForRematch), mijanona
             if (!document.body.contains(overlay)) { clearInterval(countTimer); return; }
             countEl.textContent = countdown > 0 ? countdown : '0';
             if (countdown <= 0) {
               clearInterval(countTimer);
-              // Ny mpilalao resy (firstMover) no miantso ny API auto-restart
+              // The loser triggers auto-restart
               if (loserColor === myColor) {
                 callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
                   .catch(function(e) { console.warn('auto-restart error:', e); });
@@ -905,12 +918,12 @@
           }, 1000);
 
         } else {
-          // ── Case 2 : boutons OK + Revanche ──
+          // ── Case C : buttons Quit + Restart (invitation needed) ──
           var btnRow = document.createElement('div');
           btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
 
           var btn = document.createElement('button');
-          btn.textContent = 'OK';
+          btn.textContent = 'Quit';
           btn.style.cssText = [
             'background:#0092FF','color:white','border:none',
             'border-radius:10px','padding:12px 48px',
@@ -920,31 +933,30 @@
           btn.onclick = function() { window.location.href = 'dashboard.html'; };
           btnRow.appendChild(btn);
 
-          // Revanche — Room Vela uniquement
           if (gameSource === 'vela') {
-            var btnRevanche = document.createElement('button');
-            btnRevanche.innerHTML = '&#128260; Revanche';
-            btnRevanche.style.cssText = [
+            var btnRestart = document.createElement('button');
+            btnRestart.innerHTML = '&#128260; Restart';
+            btnRestart.style.cssText = [
               'background:#f59e0b','color:white','border:none',
               'border-radius:10px','padding:12px 24px',
               'font-size:1.1em','font-weight:700','cursor:pointer',
               'box-shadow:0 2px 10px rgba(245,158,11,0.4)'
             ].join(';');
-            btnRevanche.onclick = function() {
-              btnRevanche.disabled = true;
-              btnRevanche.textContent = '...';
+            btnRestart.onclick = function() {
+              btnRestart.disabled = true;
+              btnRestart.textContent = '...';
               callApi(GAME_API_URL, 'request-rematch', { uid: myUid, gameId: gameId })
                 .then(function() {
-                  btnRevanche.textContent = 'Demande envoyée';
-                  btnRevanche.style.background = '#64748b';
+                  btnRestart.textContent = 'Request sent';
+                  btnRestart.style.background = '#64748b';
                 })
                 .catch(function(e) {
-                  btnRevanche.disabled = false;
-                  btnRevanche.textContent = 'Revanche';
+                  btnRestart.disabled = false;
+                  btnRestart.innerHTML = '&#128260; Restart';
                   console.warn('request-rematch error:', e);
                 });
             };
-            btnRow.appendChild(btnRevanche);
+            btnRow.appendChild(btnRestart);
           }
 
           box.appendChild(btnRow);
@@ -964,7 +976,7 @@
       return d;
     }
 
-    //  SECTION 2 — Constantes du jeu
+    //  SECTION 2 — Game constants
     var rows = ['A','B','C','D','E'];
     var cols = ['1','2','3','4','5','6','7','8','9'];
 
@@ -991,7 +1003,7 @@
       'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
     };
 
-    //  SECTION 3 — État global
+    //  SECTION 3 — Global state
     var myColor    = null;
     var myOppColor = null;
     var gameId     = null;
@@ -1037,8 +1049,8 @@
     }
 
     async function init() {
-      if (!gameId_p || !color_p || !inviteId) { showError('Diso ny fampidirana.'); return; }
-      if (color_p !== 'maintso' && color_p !== 'mena') { showError('Diso ny color.'); return; }
+      if (!gameId_p || !color_p || !inviteId) { showError('Invalid parameters.'); return; }
+      if (color_p !== 'maintso' && color_p !== 'mena') { showError('Invalid color.'); return; }
 
       var stored = localStorage.getItem('user');
       if (!stored) { window.location.href = 'login&register.html'; return; }
@@ -1048,7 +1060,7 @@
 
       try {
         var data = await callApi(SESSION_API_URL, 'get-fanorona-game', { uid: localUser.uid, gameId: gameId_p });
-        if (!data.success) { showError('Tsy hita ny lalao.'); return; }
+        if (!data.success) { showError('Game not found.'); return; }
 
         myUid      = localUser.uid;
         gameId     = gameId_p;
@@ -1098,14 +1110,13 @@
 
         startRealtimeListener().catch(function(err) {
           console.error('Realtime listener error:', err);
-          showError('Connexion temps réel échouée: ' + err.message);
+          showError('Real-time connection failed: ' + err.message);
         });
 
-      } catch(err) { showError('Nisy olana: ' + err.message); }
+      } catch(err) { showError('An error occurred: ' + err.message); }
     }
 
-    //  SECTION 5 — Players bar
-    function renderPlayersBar(myCol, myUsername, oppUsername) {
+    //  SECTION 5 — Players bar    function renderPlayersBar(myCol, myUsername, oppUsername) {
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
 
@@ -1200,7 +1211,7 @@
     }
 
     // ─────────────────────────────────────────────────────────────
-    //  PHASE 1 — Listener realtime
+    //  PHASE 1 — Realtime listener
     // ─────────────────────────────────────────────────────────────
     function onRealtimePh1(game) {
       // ── SYNC COMPLÈTE ──
@@ -1298,7 +1309,7 @@
       return firstMover === null || firstMover === myColor;
     }
 
-    //  SECTION 7 — Spots cliquables (commun)
+    //  SECTION 7 — Clickable spots (common)
     function drawBoardSpots() {
       var spotsGrp = document.getElementById('spots-group');
       spotsGrp.innerHTML = '';
@@ -1326,8 +1337,7 @@
       });
     }
 
-    // ── Stop button dispatch ──
-    function handleStopBtnDispatch() {
+    // ── Stop button dispatch ──    function handleStopBtnDispatch() {
       var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
       if (isPhase2(pieces)) {
         ph2HandleStopBtn();
@@ -1336,8 +1346,7 @@
       }
     }
 
-    //  SECTION 8 — Phase 1 : interaction
-    function handleSpotClickPh1(spotID) {
+    //  SECTION 8 — Phase 1 : interaction    function handleSpotClickPh1(spotID) {
       if (!localState || localState.turn !== myColor) return;
       if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
 
@@ -1499,8 +1508,7 @@
       }).catch(function(e) { console.warn('make-move backend error:', e); });
     }
 
-    //  SECTION 9 — Phase 1 : render
-    function renderPiecesPh1(pieces, stateData) {
+    //  SECTION 9 — Phase 1 : render    function renderPiecesPh1(pieces, stateData) {
       var grp      = document.getElementById('pieces-group');
       var isMyTurn = stateData.turn === myColor;
 
@@ -1629,7 +1637,7 @@
     }
 
     // ─────────────────────────────────────────────────────────────
-    //  PHASE 2 — Listener realtime (identique à game-fanorona)
+    //  PHASE 2 — Realtime listener
     // ─────────────────────────────────────────────────────────────
     function onRealtimePh2(game) {
       // ── Filtrage echo AVANT tout copyState ──
@@ -1696,7 +1704,7 @@
       }
     }
 
-    //  SECTION 10 — Phase 2 : interaction (identique à game-fanorona)
+    //  SECTION 10 — Phase 2 : interaction
     function ph2HandleSpotClick(spotID) {
       if (!ph2_localState || ph2_localState.turn !== myColor) return;
       if (ph2_pendingCaptures.approach.length > 0 || ph2_pendingCaptures.withdrawal.length > 0) return;
@@ -2100,7 +2108,7 @@
       var usernameEl  = document.getElementById('rn-username');
       if (!notif) return;
 
-      usernameEl.textContent  = oppUsername || 'Adversaire';
+      usernameEl.textContent  = oppUsername || 'Opponent';
       countdownEl.textContent = '10';
       rnCountdownVal = 10;
 
@@ -2169,8 +2177,8 @@
         if (rematchHandled) return false;
         rematchHandled = true;
         var oppName = myColor === 'maintso'
-          ? (game.receiverUsername || 'Adversaire')
-          : (game.senderUsername   || 'Adversaire');
+          ? (game.receiverUsername || 'Opponent')
+          : (game.senderUsername   || 'Opponent');
         showRematchNotif(oppName);
         document.getElementById('rematch-accept-btn').onclick = function() {
           hideRematchNotif();
