@@ -113,9 +113,9 @@ async function handleMakeMove(body, res) {
     return res.status(403).json({ error: "Not authorized." });
 
   const myColor = getMyColor(game, uid);
-  if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
+  if (game.turn !== myColor) return res.status(400).json({ error: "Not your turn." });
   if (game.movingPiece && game.movingPiece !== origin)
-    return res.status(400).json({ error: "Pio hafa tsy azo hetsehina izao." });
+    return res.status(400).json({ error: "Another piece is already in motion." });
 
   const pieces     = { ...(game.pieces || {}) };
   const visited    = [...(game.visited || [])];
@@ -262,8 +262,8 @@ async function handleStopMove(body, res) {
   if (!game) return res.status(404).json({ error: "Game not found." });
 
   const myColor = getMyColor(game, uid);
-  if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
-  if (!game.movingPiece)     return res.status(400).json({ error: "Tsy misy movingPiece." });
+  if (game.turn !== myColor) return res.status(400).json({ error: "Not your turn." });
+  if (!game.movingPiece)     return res.status(400).json({ error: "No moving piece." });
 
   const nextColor   = myColor === "maintso" ? "mena" : "maintso";
   const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
@@ -442,9 +442,10 @@ async function handleMarkRematchDone(body, res) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  AUTO-RESTART (Case 1 : firstMover tao amin'ny phase 1 no resy amin'ny phase 2)
-//  Tsy mila invitation — reset avy hatrany rehefa tapitra ny countdown 3s
-//  Ny resy (= firstMover) no manao hetsika voalohany amin'ny game vaovao
+//  AUTO-RESTART — all countdown cases:
+//    Case A : firstMover (any color) loses  → countdown "Tsy afaka"
+//    Case B : maintso firstMover wins       → countdown "Afaka"/"Mamaly ady"
+//  Loser always leads the next game (izay resy no mitarika)
 // ══════════════════════════════════════════════════════════════
 async function handleAutoRestart(body, res) {
   const { uid, gameId } = body;
@@ -458,16 +459,21 @@ async function handleAutoRestart(body, res) {
   if (!game.winner)
     return res.status(400).json({ error: "No winner yet." });
 
-  // Idempotency : raha efa nisy auto-restart na accepted, avereno fotsiny
+  // Idempotency: if already restarted or accepted, return success
   if (game.rematch && (game.rematch.status === "auto-restarted" || game.rematch.status === "accepted"))
     return res.status(200).json({ success: true });
 
-  // Verification Case 1 : firstMover (phase 1) no resy (winner !== firstMover)
-  if (!game.firstMover || game.winner === game.firstMover)
-    return res.status(400).json({ error: "Auto-restart only applies when the phase-1 firstMover lost." });
+  // Case B: maintso is firstMover AND maintso wins → allowed
+  const isCaseB = game.firstMover === "maintso" && game.winner === "maintso";
+  // Cases A/D: firstMover loses (winner !== firstMover) → allowed
+  const firstMoverLoses = game.firstMover && game.winner !== game.firstMover;
+  // Case C: mena is firstMover AND mena wins → NOT allowed (buttons used instead)
+  if (!isCaseB && !firstMoverLoses) {
+    return res.status(400).json({ error: "Auto-restart not applicable for this game outcome." });
+  }
 
-  // Izay resy no mitarika ny lalao vaovao :
-  // loser = game.firstMover = opposite of game.winner
+  // Loser always leads the next game
+  // winner = "maintso" → mena(loser) leads; winner = "mena" → maintso(loser) leads
   const newFirstMover = game.winner === "maintso" ? "mena" : "maintso";
   const rematchCount  = (game.rematchCount || 0) + 1;
 
