@@ -44,11 +44,11 @@ export default async function handler(req, res) {
       case "get-firebase-token": return await handleGetFirebaseToken(payload, res);
       case "update-timers":      return await handleUpdateTimers(payload, res);
       case "declare-winner":     return await handleDeclareWinner(payload, res);
-      case "auto-reset-ph1":    return await handleAutoResetPh1(payload, res);
       case "request-rematch":    return await handleRequestRematch(payload, res);
       case "accept-rematch":     return await handleAcceptRematch(payload, res);
       case "decline-rematch":    return await handleDeclineRematch(payload, res);
       case "mark-rematch-done":  return await handleMarkRematchDone(payload, res);
+      case "auto-restart":       return await handleAutoRestart(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -235,9 +235,7 @@ async function handleMakeMove(body, res) {
       // ── Phase 1 : si le firstMover n'a aucune capture disponible à son tour → il gagne ──
       if (!winner1 && nextColor === firstMover && isStillPhase1(pieces, firstMover)) {
         if (!ph1PlayerHasAnyCapture(pieces, firstMover)) {
-          const nonFMColorPh1 = firstMover === "maintso" ? "mena" : "maintso";
-          winner1   = nonFMColorPh1;   // le walker (nonFM) gagne
-          payload1.ph1End = true;      // flag auto-reset côté client
+          winner1 = firstMover;
         }
       }
       const payload1 = {
@@ -286,9 +284,7 @@ async function handleStopMove(body, res) {
   const stopFM = game.firstMover || null;
   if (!stopWinner && stopFM && nextColor === stopFM && isStillPhase1(pieces, stopFM)) {
     if (!ph1PlayerHasAnyCapture(pieces, stopFM)) {
-      const nonFMColorStop = stopFM === "maintso" ? "mena" : "maintso";
-      stopWinner            = nonFMColorStop;   // walker gagne
-      stopPayload.ph1End    = true;
+      stopWinner = stopFM;
     }
   }
   const stopPayload = {
@@ -445,23 +441,37 @@ async function handleMarkRematchDone(body, res) {
   return res.status(200).json({ success: true });
 }
 
-// ── Auto-reset après fin de Phase 1 (no-capture → countdown 3s côté client) ──
-async function handleAutoResetPh1(body, res) {
+// ══════════════════════════════════════════════════════════════
+//  AUTO-RESTART (Case 1 : firstMover tao amin'ny phase 1 no resy amin'ny phase 2)
+//  Tsy mila invitation — reset avy hatrany rehefa tapitra ny countdown 3s
+//  Ny resy (= firstMover) no manao hetsika voalohany amin'ny game vaovao
+// ══════════════════════════════════════════════════════════════
+async function handleAutoRestart(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+
   const gameRef = gamesRef.child(gameId);
   const game    = await rtdbGet(gameRef);
   if (!game) return res.status(404).json({ error: "Game not found." });
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
+  if (!game.winner)
+    return res.status(400).json({ error: "No winner yet." });
 
-  // Idempotent : si déjà réinitialisé (ph1End effacé), retour silencieux
-  if (!game.ph1End) return res.status(200).json({ success: true, alreadyReset: true });
+  // Idempotency : raha efa nisy auto-restart na accepted, avereno fotsiny
+  if (game.rematch && (game.rematch.status === "auto-restarted" || game.rematch.status === "accepted"))
+    return res.status(200).json({ success: true });
 
-  // Nouveau firstMover = nonFMColor (winner = walker), loser (oldFM) devient walker
-  const oldFirstMover = game.firstMover || "maintso";
-  const newFirstMover = oldFirstMover === "maintso" ? "mena" : "maintso"; // winner devient capture player
+  // Verification Case 1 : firstMover (phase 1) no resy (winner !== firstMover)
+  if (!game.firstMover || game.winner === game.firstMover)
+    return res.status(400).json({ error: "Auto-restart only applies when the phase-1 firstMover lost." });
 
+  // Izay resy no mitarika ny lalao vaovao :
+  // loser = game.firstMover = opposite of game.winner
+  const newFirstMover = game.winner === "maintso" ? "mena" : "maintso";
+  const rematchCount  = (game.rematchCount || 0) + 1;
+
+  // Board de départ standard
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
   const initialPieces = {};
   R.forEach((r, ri) => {
@@ -478,7 +488,6 @@ async function handleAutoResetPh1(body, res) {
 
   const minutes     = game.minutes || null;
   const msPerPlayer = minutes ? minutes * 60 * 1000 : null;
-  const rematchCount = (game.rematchCount || 0) + 1;
 
   const resetData = {
     pieces:                    initialPieces,
@@ -492,18 +501,18 @@ async function handleAutoResetPh1(body, res) {
     winner:                    null,
     firstMover:                newFirstMover,
     nonFirstMoverHasContinued: false,
-    ph1End:                    null,
     senderColor:               game.senderColor,
     receiverColor:             game.receiverColor,
     timerRunning:              null,
     timerLastTick:             null,
     rematchCount,
-    rematch:                   { status: "accepted", acceptedAt: Date.now() },
+    rematch:                   { status: "auto-restarted", restartedAt: Date.now() },
   };
   if (msPerPlayer) {
     resetData.timerMaintso = msPerPlayer;
     resetData.timerMena    = msPerPlayer;
   }
+
   await gameRef.update(resetData);
   return res.status(200).json({ success: true });
 }
