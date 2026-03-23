@@ -1151,6 +1151,18 @@
       localState = copyStatePh1(game);
       updateTurnIndicator(localState.turn);
 
+      // ── Phase 1 : si le firstMover n'a aucune capture → il gagne immédiatement ──
+      var fmColor = localState.firstMover || firstMover;
+      if (fmColor && localState.turn === fmColor && !localState.movingPiece && !gameOverTriggered) {
+        if (!playerHasAnyCapturePh1(localState.pieces, fmColor)) {
+          // Le serveur aura déjà mis game.winner — on affiche juste le modal côté local
+          stopAllTimers();
+          stopPlayerTimerRaf();
+          showGameOverAlert(fmColor, 0);
+          return;
+        }
+      }
+
       if (game.turn !== myColor) {
         // ── Tour adversaire : toujours afficher le mouvement reçu ──
         movingInProgress = false;
@@ -1201,6 +1213,18 @@
 
     function applyLocalStatePh1() {
       updateTurnIndicator(localState.turn);
+
+      // ── Phase 1 : contrôle no-capture pour le firstMover ──
+      var fmApply = localState.firstMover || firstMover;
+      if (fmApply && localState.turn === fmApply && !localState.movingPiece && !gameOverTriggered) {
+        if (!playerHasAnyCapturePh1(localState.pieces, fmApply)) {
+          stopAllTimers();
+          stopPlayerTimerRaf();
+          showGameOverAlert(fmApply, 0);
+          return;
+        }
+      }
+
       var stopBtn = document.getElementById('stop-move-btn');
       if (localState.turn === myColor && localState.movingPiece) {
         stopBtn.classList.add('active');
@@ -1261,6 +1285,9 @@
       if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
 
       var pieces = localState.pieces;
+
+      // ── Phase 1 : si le firstMover n'a aucune capture, il ne peut pas jouer (il a déjà gagné) ──
+      if (amIFirstMover() && !playerHasAnyCapturePh1(pieces, myColor)) return;
 
       if (canChangePiece && pieces[spotID] === myColor) {
         var globalCap = amIFirstMover() ? playerHasAnyCapturePh1(pieces, myColor) : false;
