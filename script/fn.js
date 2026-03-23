@@ -1,6 +1,5 @@
   (function () {
 
-    //  SECTION 1 — Config & helpers
     var SESSION_API_URL = '/api/session';
     var GAME_API_URL    = '/api/game-fanorona';
 
@@ -31,7 +30,6 @@
       spanEl.style.fontSize = size;
     }
 
-    // ── Ping bars ──
     function updatePing(ms) {
       var barsEl = document.getElementById('l-ping-bars');
       var msEl   = document.getElementById('l-ping-ms');
@@ -57,8 +55,8 @@
     setInterval(measurePing, 4000);
     measurePing();
 
-    var MOVE_TIMER_DURATION = 2.0;      // secondes — timer A
-    var SEL_TIMER_DURATION  = 4.0;      // secondes — timer B
+    var MOVE_TIMER_DURATION = 2.0;
+    var SEL_TIMER_DURATION  = 4.0;
 
     var moveTimerRaf    = null;
     var moveTimerEnd    = null;
@@ -82,7 +80,6 @@
       }
     }
 
-    // ── Timer A : move multiple (2s) ──
     function stopMoveTimer() {
       if (moveTimerRaf) { cancelAnimationFrame(moveTimerRaf); moveTimerRaf = null; }
       moveTimerActive = false;
@@ -112,8 +109,6 @@
       moveTimerRaf = requestAnimationFrame(tick);
     }
 
-    // ── Timer B : sélection capture (4s) — ONLY si !canChangePiece ──
-    // silent=true → ne remet pas "--" (utilisé quand on enchaîne avec moveTimer)
     function stopSelTimer(silent) {
       if (selTimerRaf) { cancelAnimationFrame(selTimerRaf); selTimerRaf = null; }
       selTimerActive = false;
@@ -122,14 +117,13 @@
     }
 
     function startSelTimer() {
-      // Ne démarrer que si on est en mode capture multiple (!canChangePiece)
+
       if (canChangePiece) return;
       stopMoveTimer();
       if (selTimerRaf) cancelAnimationFrame(selTimerRaf);
       selTimerActive = true;
       selTimerEnd    = Date.now() + SEL_TIMER_DURATION * 1000;
 
-      // Snapshot de la position AVANT le mouvement (movingPiece = toerana teo aloha)
       var returnSpot = localState.movingPiece;
 
       function tick() {
@@ -139,7 +133,7 @@
           setTimerDisplay('0.0');
           selTimerActive = false;
           selTimerRaf    = null;
-          // ── Auto : annuler le pendingCaptures et REVENIR au movingPiece ──
+
           autoResolvePending(returnSpot);
           return;
         }
@@ -149,28 +143,23 @@
       selTimerRaf = requestAnimationFrame(tick);
     }
 
-    // Annuler le choix approach/withdrawal et revenir à la position d'avant le move
     function autoResolvePending(returnSpot) {
       if (!pendingCaptures.moveData) return;
       var md = pendingCaptures.moveData;
       pendingCaptures = { approach: [], withdrawal: [], moveData: null };
 
-      // Remettre la pièce à sa position d'origine (md.origin = toerana niandohana du move)
-      // Le joueur reste en mode movingPiece sur md.origin
       var restoredPieces = Object.assign({}, localState.pieces);
-      // Enlever la pièce à la position intermédiaire (spotID), remettre à origin
+
       delete restoredPieces[md.target];
       restoredPieces[md.origin] = myColor;
-      // Retirer aussi le visited qu'on avait ajouté
+
       var restoredVisited = (localState.visited || []).filter(function(v) { return v !== md.origin; });
 
       localState.pieces  = restoredPieces;
       localState.visited = restoredVisited;
 
-      // Le selectedSpot revient à md.origin (la pièce qui est encore en train de jouer)
       selectedSpot = md.origin;
 
-      // Stop automatic : fin de tour
       var piecesSnapshot = Object.assign({}, restoredPieces);
 
       stopMoveTimer();
@@ -194,7 +183,7 @@
 
       var myPCA  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPCA = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      // fin de partie gérée via game.winner (Firebase WebSocket)
+
     }
 
     function stopAllTimers() {
@@ -202,34 +191,13 @@
       stopMoveTimer();
     }
 
-    // ════════════════════════════════════════════════════════════
-
-    // ════════════════════════════════════════════════════════════
-    //  PLAYER TIMERS — countdown per player (via Firebase WebSocket)
-    //
-    //  Architecture :
-    //  - Les temps restants (timerMaintso, timerMena) sont stockés
-    //    dans Firebase RTDB et mis à jour à chaque changement de tour
-    //    via l'action "update-timers" du backend.
-    //  - Le client LOCAL fait tourner un RAF local pour afficher le
-    //    décompte en temps réel (interpolation côté client).
-    //  - À chaque push Firebase (onValue), on reçoit les valeurs
-    //    fraîches et on relance le RAF local.
-    //  - Quand le temps tombe à 0 → showGameOverAlert immédiatement.
-    //
-    //  Affichage :
-    //  ≥ 60s  → "4:59"  (pas de secondes sauf si < 60s)
-    //  < 60s  → "59"    (secondes entières)
-    //  < 10s  → "9.9"   (dixièmes de seconde)
-    // ════════════════════════════════════════════════════════════
     var playerTimerEnabled = false;
     var myTimerMs          = 0;
     var oppTimerMs         = 0;
-    var timerRunningColor  = null;   // "maintso" ou "mena" — qui compte
-    var timerLastTickMs    = null;   // Date.now() au moment du dernier push
+    var timerRunningColor  = null;
+    var timerLastTickMs    = null;
     var playerTimerRaf     = null;
 
-    // Éléments DOM (OPP = colonne gauche .tval, MY = colonne droite .tval)
     var oppTvalEl = null;
     var myTvalEl  = null;
 
@@ -280,24 +248,20 @@
         var curMyMs  = myTimerMs;
         var curOppMs = oppTimerMs;
 
-        // timerRunningColor = game.turn = joueur EN COURS (qui a le droit de jouer)
-        // Donc timerRunningColor === myColor → c'est MON tour → MON chrono tourne
         if (timerRunningColor) {
           if (timerRunningColor === myColor) {
-            // C'est mon tour : mon chrono tourne
+
             curMyMs  = Math.max(0, myTimerMs  - elapsed);
           } else {
-            // C'est le tour de l'adversaire : son chrono tourne
+
             curOppMs = Math.max(0, oppTimerMs - elapsed);
           }
         }
 
         renderPlayerTimers(curMyMs, curOppMs);
 
-        // Expiration : izay lany fotoana no resy
-        // Expiration timer : mampiseho modal avy hatrany + alefa declare-winner
         if (timerRunningColor === myColor && curMyMs <= 0) {
-          // Izaho lany fotoana : izaho resy
+
           stopPlayerTimerRaf();
           if (!gameOverTriggered) {
             showGameOverAlert(myOppColor, 0);
@@ -307,7 +271,7 @@
           return;
         }
         if (timerRunningColor === myOppColor && curOppMs <= 0) {
-          // Adversaire lany fotoana : izaho mandresy
+
           stopPlayerTimerRaf();
           if (!gameOverTriggered) {
             showGameOverAlert(myColor, 0);
@@ -322,36 +286,27 @@
       playerTimerRaf = requestAnimationFrame(tick);
     }
 
-    // Appelé à chaque push Firebase — met à jour les valeurs et relance le RAF
-    // ── Invariant : timerRunning = couleur du joueur EN COURS (qui a le droit de jouer)
-    //   timerRunning === myColor    → c'est MON tour    → MON chrono tourne
-    //   timerRunning === myOppColor → c'est SON tour    → SON chrono tourne
     function onPlayerTimersUpdate(game) {
-      if (!game.minutes) return; // pas de timer configuré
+      if (!game.minutes) return;
       playerTimerEnabled = true;
       getTimerEls();
 
-      // timerMaintso/timerMena = temps restant pour chaque couleur (valeur serveur)
       var myMs  = myColor === 'maintso' ? (game.timerMaintso || 0) : (game.timerMena || 0);
       var oppMs = myColor === 'maintso' ? (game.timerMena    || 0) : (game.timerMaintso || 0);
 
       myTimerMs         = myMs;
       oppTimerMs        = oppMs;
-      timerRunningColor = game.timerRunning || null;   // qui a le tour maintenant
+      timerRunningColor = game.timerRunning || null;
       timerLastTickMs   = game.timerLastTick || Date.now();
 
-      // Rendu immédiat des valeurs serveur
       renderPlayerTimers(myMs, oppMs);
-      // Lancer le RAF d'interpolation locale
+
       startPlayerTimerRaf();
 
-      // Vérification d'expiration immédiate (serveur déjà à 0)
       if (!gameOverTriggered) {
-        // Expiration immédiate : game.winner sera reçu via Firebase WebSocket
+
       }
     }
-
-    // ════════════════════════════════════════════════════════════
 
     var gameOverTriggered = false;
     function disableBoardCompletely() {
@@ -413,7 +368,6 @@
         btn.onclick = function() { window.location.href = 'dashboard.html'; };
         btnRow.appendChild(btn);
 
-        // Revanche — uniquement Room Fanorona
         if (gameSource === 'fanorona') {
           var btnRevanche = document.createElement('button');
           btnRevanche.textContent = '&#128260; Revanche';
@@ -449,16 +403,17 @@
     }
 
     async function callApi(url, action, payload) {
+      var token = localStorage.getItem('jwtToken') || '';
       var r = await fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify(Object.assign({ action: action }, payload))
       });
+      if (r.status === 401) { localStorage.removeItem('user'); localStorage.removeItem('jwtToken'); window.location.href = 'login&register.html'; throw new Error('Unauthorized'); }
       var d = await r.json();
       if (!r.ok) throw new Error(d.error || 'API error');
       return d;
     }
 
-    //  SECTION 2 — Constantes du jeu
     var rows = ['A','B','C','D','E'];
     var cols = ['1','2','3','4','5','6','7','8','9'];
 
@@ -485,7 +440,6 @@
       'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
     };
 
-    //  SECTION 3 — État
     var myColor    = null;
     var myOppColor = null;
     var gameId     = null;
@@ -506,7 +460,6 @@
     var myDotEl  = null;
     var oppDotEl = null;
 
-    //  SECTION 4 — Init
     var params   = new URLSearchParams(window.location.search);
     var gameId_p = params.get('gameId');
     var color_p  = params.get('color');
@@ -532,10 +485,8 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
-        // Source : Firebase > URL param > default
         gameSource = data.source || gameSource || 'fanorona';
 
-        // Redirect si vela
         if (gameSource === 'vela') {
           window.location.replace('game-vela.html?gameId=' + encodeURIComponent(gameId_p)
             + '&color=' + encodeURIComponent(color_p)
@@ -544,7 +495,6 @@
           return;
         }
 
-        // Alert de vérification source (à retirer après validation)
         var _sl = { fanorona: 'Room Fanorona', vela: 'Room Vela', both: 'Room Fanorona & Vela' };
         alert('[game-fanorona.html] Source : ' + (_sl[gameSource] || gameSource));
 
@@ -573,7 +523,6 @@
       } catch(err) { showError('Nisy olana: ' + err.message); }
     }
 
-    //  SECTION 5 — Players bar
     function renderPlayersBar(myCol, myUsername, oppUsername) {
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
@@ -608,7 +557,6 @@
       }
     }
 
-    //  SECTION 6 — WebSocket temps réel (Firebase RTDB onValue)
     var opponentReadyChecked = false;
 
     async function startRealtimeListener() {
@@ -619,7 +567,6 @@
         var game = snapshot.val();
         if (!game) return;
 
-        // ── Vérifier si l'adversaire vient de rejoindre (loading overlay) ──
         if (!opponentReadyChecked &&
             !document.getElementById('loading-overlay').classList.contains('hidden')) {
           var oppUid = (myUid === game.senderUid) ? game.receiverUid : game.senderUid;
@@ -639,7 +586,6 @@
           }
         }
 
-        // ── Filtrage echo de mon propre mouvement en cours ──
         if (movingInProgress) {
           if (game.turn !== myColor) {
             movingInProgress = false;
@@ -648,24 +594,17 @@
           }
         }
 
-        // ── SYNC COMPLÈTE ──
         var prevTurn = localState ? localState.turn : null;
         localState = copyState(game);
         updateTurnIndicator(localState.turn);
 
-        // ── Mettre à jour les timers joueur depuis Firebase ──
         onPlayerTimersUpdate(game);
 
-        // ── Rematch (Room Fanorona) — traité EN PREMIER ──
-        // handleRematchPush retourne true si le jeu vient d'être resetté
-        // (dans ce cas on ignore game.winner qui est l'ancien)
         if (gameSource === 'fanorona' && game.rematch) {
           var rematchDidReset = handleRematchPush(game.rematch, game);
           if (rematchDidReset) return;
         }
 
-        // ── Fin de partie : source unique = game.winner ──
-        // game.winner = undefined si Firebase a supprimé le champ (null → deleted)
         if (game.winner) {
           stopAllTimers();
           stopPlayerTimerRaf();
@@ -675,20 +614,18 @@
         }
 
         if (game.turn !== myColor) {
-          // ── Tour adversaire : afficher le mouvement reçu ──
+
           stopAllTimers();
           renderPieces(localState.pieces, localState);
           return;
         }
 
-        // ── Notre tour ──
         if (prevTurn === myColor && (selectedSpot || localState.movingPiece)) {
           renderPieces(localState.pieces, localState);
           if (selectedSpot) renderGuides(selectedSpot, localState);
           return;
         }
 
-        // L'adversaire vient de finir son tour → reset UI complet
         canChangePiece  = true;
         selectedSpot    = null;
         lastBlockedSpot = null;
@@ -724,7 +661,6 @@
       }
     }
 
-    //  SECTION 7 — Spots cliquables
     function drawBoardSpots() {
       var spotsGrp = document.getElementById('spots-group');
       spotsGrp.innerHTML = '';
@@ -748,7 +684,6 @@
 
       var pieces = localState.pieces;
 
-      // ── Sélection d'une pièce (pas encore de déplacement réel) ──
       if (canChangePiece && pieces[spotID] === myColor) {
         if (canPieceMove(spotID, pieces, myColor, playerHasAnyCapture(pieces, myColor))) {
           selectedSpot    = spotID;
@@ -757,7 +692,7 @@
           selectedSpot    = null;
           lastBlockedSpot = spotID;
         }
-        // Pas de timer ici : c'est juste une sélection, pas un vrai déplacement
+
         renderGuides(selectedSpot || '', localState);
         renderPieces(pieces, localState);
         return;
@@ -794,7 +729,7 @@
         selectedSpot = spotID;
         renderPieces(newPieces, localState);
         document.getElementById('guides-group').innerHTML = '';
-        // ── Timer B : démarrer 4s UNIQUEMENT si !canChangePiece (efa nisy move teo aloha) ──
+
         startSelTimer();
         return;
       }
@@ -807,7 +742,7 @@
       var md = pendingCaptures.moveData;
       var capturedSpots = type === 'approach' ? pendingCaptures.approach : pendingCaptures.withdrawal;
       pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      // ── Arrêter le timer de sélection (le joueur a fait son choix) ──
+
       stopSelTimer(true);
       var newPieces  = Object.assign({}, localState.pieces);
       var newVisited = (localState.visited || []).slice();
@@ -829,7 +764,7 @@
         selectedSpot   = target;
         canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
-        // ── Timer A : démarrer / relancer 2s après chaque déplacement réel ──
+
         startMoveTimer();
       } else {
         localState.turn        = myOppColor;
@@ -840,7 +775,7 @@
         lastBlockedSpot = null;
         canChangePiece  = true;
         document.getElementById('stop-move-btn').classList.remove('active');
-        // ── Fin de tour : stopper tous les timers ──
+
         stopAllTimers();
       }
 
@@ -860,7 +795,6 @@
       if (!localState || localState.turn !== myColor || !localState.movingPiece) return;
       var piecesSnapshot = Object.assign({}, localState.pieces);
 
-      // ── Stopper tous les timers immédiatement ──
       stopAllTimers();
 
       movingInProgress = true;
@@ -879,7 +813,6 @@
       callApi(GAME_API_URL, 'stop-move', { uid: myUid, gameId: gameId, pieces: piecesSnapshot })
         .catch(function(e) { console.warn('stop-move error', e); });
 
-      // fin de partie gérée via game.winner (Firebase WebSocket)
     }
 
     function sendMoveToBackend(origin, target, capturedSpots, dir) {
@@ -892,7 +825,6 @@
       });
     }
 
-    //  SECTION 10 — renderPieces
     function renderPieces(pieces, stateData) {
       var grp           = document.getElementById('pieces-group');
       var isMyTurn      = stateData.turn === myColor;
@@ -910,8 +842,7 @@
         }
         if (target) {
           var entry = piecesOnBoard[vKey];
-          // Assurer que no-transition est retiré avant de bouger
-          // (peut rester après un reset si la pièce n'avait pas encore bougé)
+
           entry.el.classList.remove('no-transition');
           newPiecesOnBoard[target] = entry;
           appeared = appeared.filter(function(a) { return a !== target; });
@@ -922,7 +853,7 @@
 
       appeared.forEach(function(aKey) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        // no-transition au premier render (pas de position précédente)
+
         g.setAttribute('class', 'piece-group no-transition');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
@@ -930,8 +861,7 @@
         grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
       });
-      // Retirer no-transition après 2 frames
-      // snapshot de appeared et newPiecesOnBoard pour éviter closure stale
+
       (function(snapAppeared, snapBoard) {
         requestAnimationFrame(function() {
           requestAnimationFrame(function() {
@@ -1006,7 +936,6 @@
       return l;
     }
 
-    // ── Guides ──
     function renderGuides(startSpot, stateData) {
       var grp = document.getElementById('guides-group');
       if (!grp) return;
@@ -1040,7 +969,6 @@
       });
     }
 
-    //  SECTION 12 — Helpers
     function getCaptures(pieces, s, e, color) {
       var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
       var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
@@ -1089,11 +1017,8 @@
       return false;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  REMATCH — WebSocket driven (Room Fanorona only)
-    // ════════════════════════════════════════════════════════════
-    var rematchHandled   = false;  // évite double affichage notif pending
-    var rematchResetDone = false;  // évite double reset sur 'accepted'
+    var rematchHandled   = false;
+    var rematchResetDone = false;
     var rematchOverlayEl = null;
 
     var rnCountdownTimer = null;
@@ -1110,12 +1035,10 @@
       countdownEl.textContent = '10';
       rnCountdownVal = 10;
 
-      // Reset animation
       notif.classList.remove('rn-expanded', 'rn-visible');
       progressBar.style.transition = 'none';
       progressBar.style.transform  = 'scaleX(1)';
 
-      // Show
       setTimeout(function() {
         notif.classList.add('rn-visible');
         setTimeout(function() {
@@ -1126,7 +1049,6 @@
         }, 350);
       }, 10);
 
-      // Countdown
       if (rnCountdownTimer) clearInterval(rnCountdownTimer);
       rnCountdownTimer = setInterval(function() {
         rnCountdownVal--;
@@ -1134,7 +1056,7 @@
         if (rnCountdownVal <= 0) {
           clearInterval(rnCountdownTimer);
           hideRematchNotif();
-          // Auto-decline
+
           callApi(GAME_API_URL, 'decline-rematch', { uid: myUid, gameId: gameId })
             .catch(function(e) { console.warn('auto-decline rematch:', e); });
           rematchHandled = false;
@@ -1203,7 +1125,6 @@
       if (myColor === 'mena') board.classList.add('flipped');
       else                    board.classList.remove('flipped');
 
-      // Reset des variables d'état
       gameOverTriggered = false;
       movingInProgress  = false;
       selectedSpot      = null;
@@ -1212,7 +1133,6 @@
       pendingCaptures   = { approach: [], withdrawal: [], moveData: null };
       piecesOnBoard     = {};
 
-      // Timer reset
       playerTimerEnabled = false;
       myTimerMs  = 0; oppTimerMs = 0;
       timerRunningColor = null; timerLastTickMs = null;
