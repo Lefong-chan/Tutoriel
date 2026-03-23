@@ -1,6 +1,5 @@
   (function () {
 
-    //  SECTION 1 — Config & helpers
     var SESSION_API_URL = '/api/session';
     var GAME_API_URL    = '/api/game-vela';
 
@@ -31,7 +30,6 @@
       spanEl.style.fontSize = size;
     }
 
-    // ── Ping bars ──
     function updatePing(ms) {
       var barsEl = document.getElementById('l-ping-bars');
       var msEl   = document.getElementById('l-ping-ms');
@@ -57,19 +55,6 @@
     setInterval(measurePing, 4000);
     measurePing();
 
-    // ════════════════════════════════════════════════════════════
-    //  TIMER A — 2s "move multiple" Phase 2 : reset après chaque move
-    //    Miasa rehefa canContinue (move feno natao, mbola afaka manohy)
-    //    Frontend ihany — tsy misy fiatraikany amin'ny backend
-    //
-    //  TIMER B — 4s "selection capture" Phase 2 : fidiana approach/withdrawal
-    //    Miasa ONLY raha !ph2_canChangePiece (efa nisy move teo aloha)
-    //    Rehefa tapitra → averina eo amin'ny movingPiece (toerana teo
-    //    aloha) ilay pièce, ary stop automatic
-    //    Frontend ihany — tsy misy fiatraikany amin'ny backend
-    //
-    //  Phase 1 : tsy misy timer (-- foana)
-    // ════════════════════════════════════════════════════════════
     var MOVE_TIMER_DURATION = 2.0;
     var SEL_TIMER_DURATION  = 4.0;
 
@@ -97,7 +82,6 @@
       }
     }
 
-    // ── Timer A : move multiple (2s) ──
     function stopMoveTimer() {
       moveTimerGen++;
       if (moveTimerRaf) { cancelAnimationFrame(moveTimerRaf); moveTimerRaf = null; }
@@ -130,7 +114,6 @@
       moveTimerRaf = requestAnimationFrame(tick);
     }
 
-    // ── Timer B : sélection capture (4s) — ONLY si !ph2_canChangePiece ──
     function stopSelTimer(silent) {
       selTimerGen++;
       if (selTimerRaf) { cancelAnimationFrame(selTimerRaf); selTimerRaf = null; }
@@ -166,13 +149,11 @@
       selTimerRaf = requestAnimationFrame(tick);
     }
 
-    // Annuler choix approach/withdrawal → revenir à md.origin, stop automatic
     function ph2AutoResolvePending(returnSpot) {
       if (!ph2_pendingCaptures.moveData) return;
       var md = ph2_pendingCaptures.moveData;
       ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
 
-      // Remettre la pièce à sa position d'origine
       var restoredPieces = Object.assign({}, ph2_localState.pieces);
       delete restoredPieces[md.target];
       restoredPieces[md.origin] = myColor;
@@ -204,7 +185,7 @@
 
       var myPCA  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
       var oppPCA = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
-      // fin de partie gérée via game.winner
+
     }
 
     function stopAllTimers() {
@@ -212,9 +193,6 @@
       stopMoveTimer();
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  PLAYER TIMERS — Phase 2 uniquement, WebSocket-driven
-    // ════════════════════════════════════════════════════════════
     var playerTimerEnabled = false;
     var myTimerMs = 0, oppTimerMs = 0;
     var timerRunningColor = null, timerLastTickMs = null, playerTimerRaf = null;
@@ -290,7 +268,6 @@
       renderPlayerTimers(myMs, oppMs);
       startPlayerTimerRaf();
     }
-    // ════════════════════════════════════════════════════════════
 
     var gameOverTriggered = false;
     function disableBoardCompletely() {
@@ -334,25 +311,23 @@
         var iWon       = (winnerColor === myColor);
         var loserColor = iWon ? myOppColor : myColor;
 
-        // Case 1 : ilay panala capture (firstMover) tao amin'ny phase 1 no resy amin'ny phase 2
-        // winnerColor !== firstMover → firstMover no resy
         var isCase1 = !!(firstMover && loserColor === firstMover);
 
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
 
         if (isCase1) {
-          // Texte spécifique Case 1
+
           title.textContent = iWon ? 'Nampiraikitra' : 'Tsy afaka';
         } else {
-          // Case 2 : textes normaux
+
           title.innerHTML = iWon ? '&#127942; You win!' : '&#128532; You lose!';
         }
 
         box.appendChild(title);
 
         if (isCase1) {
-          // ── Case 1 : pas de boutons — countdown 3s puis auto-restart ──
+
           var cdWrap = document.createElement('div');
           cdWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
@@ -376,16 +351,15 @@
           overlay.appendChild(box);
           document.body.appendChild(overlay);
 
-          // Countdown 3 → 2 → 1 → 0 → auto-restart
           var countdown = 3;
           var countTimer = setInterval(function() {
             countdown--;
-            // Si overlay efa nesorina (resetGameForRematch), mijanona
+
             if (!document.body.contains(overlay)) { clearInterval(countTimer); return; }
             countEl.textContent = countdown > 0 ? countdown : '0';
             if (countdown <= 0) {
               clearInterval(countTimer);
-              // Ny mpilalao resy (firstMover) no miantso ny API auto-restart
+
               if (loserColor === myColor) {
                 callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
                   .catch(function(e) { console.warn('auto-restart error:', e); });
@@ -394,7 +368,7 @@
           }, 1000);
 
         } else {
-          // ── Case 2 : boutons OK + Revanche ──
+
           var btnRow = document.createElement('div');
           btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
 
@@ -409,7 +383,6 @@
           btn.onclick = function() { window.location.href = 'dashboard.html'; };
           btnRow.appendChild(btn);
 
-          // Revanche — Room Vela uniquement
           if (gameSource === 'vela') {
             var btnRevanche = document.createElement('button');
             btnRevanche.innerHTML = '&#128260; Revanche';
@@ -444,16 +417,17 @@
     }
 
     async function callApi(url, action, payload) {
+      var token = localStorage.getItem('jwtToken') || '';
       var r = await fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify(Object.assign({ action: action }, payload))
       });
+      if (r.status === 401) { localStorage.removeItem('user'); localStorage.removeItem('jwtToken'); window.location.href = 'login&register.html'; throw new Error('Unauthorized'); }
       var d = await r.json();
       if (!r.ok) throw new Error(d.error || 'API error');
       return d;
     }
 
-    //  SECTION 2 — Constantes du jeu
     var rows = ['A','B','C','D','E'];
     var cols = ['1','2','3','4','5','6','7','8','9'];
 
@@ -480,7 +454,6 @@
       'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
     };
 
-    //  SECTION 3 — État global
     var myColor    = null;
     var myOppColor = null;
     var gameId     = null;
@@ -489,11 +462,9 @@
     var oppDotEl   = null;
     var firstMover = null;
 
-    // ── État partagé (render commun) ──
     var piecesOnBoard = {};
-    var gameSource    = 'vela';  // global — set in init(), used in listener & showGameOverAlert
+    var gameSource    = 'vela';
 
-    // ── Phase 1 — variables ──
     var localState       = null;
     var selectedSpot     = null;
     var lastBlockedSpot  = null;
@@ -501,7 +472,6 @@
     var pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
     var movingInProgress = false;
 
-    // ── Phase 2 — variables (préfixe ph2_) ──
     var ph2_localState       = null;
     var ph2_selectedSpot     = null;
     var ph2_lastBlockedSpot  = null;
@@ -509,13 +479,11 @@
     var ph2_pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
     var ph2_movingInProgress = false;
 
-    //  SECTION 4 — Params URL & Init
     var params   = new URLSearchParams(window.location.search);
     var gameId_p = params.get('gameId');
     var color_p  = params.get('color');
     var inviteId = params.get('inviteId');
 
-    // ── Phase check ──
     function isPhase2(pieces) {
       if (!firstMover) return false;
       var nonFMColor = firstMover === myColor ? myOppColor : myColor;
@@ -544,10 +512,8 @@
         myColor    = color_p;
         myOppColor = color_p === 'maintso' ? 'mena' : 'maintso';
 
-        // ── Source : 'fanorona' | 'both' | 'vela' ──
         gameSource = data.source || params.get('source') || 'vela';
 
-        // Redirect si 'fanorona' ou 'both' → game-fanorona.html
         if (gameSource === 'fanorona' || gameSource === 'both') {
           window.location.replace(
             'game-fanorona.html?gameId=' + encodeURIComponent(gameId_p) +
@@ -558,7 +524,6 @@
           return;
         }
 
-        // Alert de vérification (à retirer après validation)
         var _srcLabels = { 'fanorona': 'Room Fanorona', 'vela': 'Room Vela', 'both': 'Room Fanorona & Vela' };
         alert('[game-vela.html] Source : ' + (_srcLabels[gameSource] || gameSource));
 
@@ -593,7 +558,6 @@
       } catch(err) { showError('Nisy olana: ' + err.message); }
     }
 
-    //  SECTION 5 — Players bar
     function renderPlayersBar(myCol, myUsername, oppUsername) {
       var myDotClass  = myCol === 'maintso' ? 'dot-maintso' : 'dot-mena';
       var oppDotClass = myCol === 'maintso' ? 'dot-mena'    : 'dot-maintso';
@@ -628,7 +592,6 @@
       }
     }
 
-    //  SECTION 6 — WebSocket Firebase Realtime (commun Phase 1 & Phase 2)
     var opponentReadyChecked = false;
 
     async function startRealtimeListener() {
@@ -639,7 +602,6 @@
         var game = snapshot.val();
         if (!game) return;
 
-        // ── Vérifier si l'adversaire vient de rejoindre (loading overlay) ──
         if (!opponentReadyChecked &&
             !document.getElementById('loading-overlay').classList.contains('hidden')) {
           var oppUid = (myUid === game.senderUid) ? game.receiverUid : game.senderUid;
@@ -659,19 +621,15 @@
           }
         }
 
-        // Mettre à jour firstMover TOUJOURS (avant isPhase2 qui en dépend)
         if (game.firstMover) firstMover = game.firstMover;
 
-        // ── Timers joueur ──
         onPlayerTimersUpdate(game);
 
-        // ── Rematch (Room Vela) — traité EN PREMIER, avant winner check ──
         if (gameSource === 'vela' && game.rematch) {
           var rematchDidReset = handleRematchPush(game.rematch, game);
           if (rematchDidReset) return;
         }
 
-        // ── Fin de partie via game.winner (source unique) ──
         if (game.winner) {
           stopAllTimers();
           stopPlayerTimerRaf();
@@ -679,7 +637,6 @@
           return;
         }
 
-        // ── Dispatch selon la phase ──
         if (isPhase2(game.pieces)) {
           onRealtimePh2(game);
         } else {
@@ -688,20 +645,16 @@
       });
     }
 
-    // ─────────────────────────────────────────────────────────────
-    //  PHASE 1 — Listener realtime
-    // ─────────────────────────────────────────────────────────────
     function onRealtimePh1(game) {
-      // ── SYNC COMPLÈTE ──
+
       var prevTurn = localState ? localState.turn : null;
       localState = copyStatePh1(game);
       updateTurnIndicator(localState.turn);
 
-      // ── Phase 1 : si le firstMover n'a aucune capture → il gagne immédiatement ──
       var fmColor = localState.firstMover || firstMover;
       if (fmColor && localState.turn === fmColor && !localState.movingPiece && !gameOverTriggered) {
         if (!playerHasAnyCapturePh1(localState.pieces, fmColor)) {
-          // Le serveur aura déjà mis game.winner — on affiche juste le modal côté local
+
           stopAllTimers();
           stopPlayerTimerRaf();
           showGameOverAlert(fmColor, 0);
@@ -710,13 +663,12 @@
       }
 
       if (game.turn !== myColor) {
-        // ── Tour adversaire : toujours afficher le mouvement reçu ──
+
         movingInProgress = false;
         renderPiecesPh1(localState.pieces, localState);
         return;
       }
 
-      // ── Notre tour — filtrage echo ──
       if (movingInProgress) {
         movingInProgress = false;
         renderPiecesPh1(localState.pieces, localState);
@@ -730,7 +682,6 @@
         return;
       }
 
-      // L'adversaire vient de finir → reset UI et activation
       canChangePiece  = true;
       selectedSpot    = null;
       lastBlockedSpot = null;
@@ -739,10 +690,9 @@
       document.getElementById('stop-move-btn').classList.remove('active');
       applyLocalStatePh1();
 
-      // Vérifier fin de partie
       var myPCph1  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPCph1 = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      // fin de partie gérée via game.winner
+
     }
 
     function copyStatePh1(game) {
@@ -760,7 +710,6 @@
     function applyLocalStatePh1() {
       updateTurnIndicator(localState.turn);
 
-      // ── Phase 1 : contrôle no-capture pour le firstMover ──
       var fmApply = localState.firstMover || firstMover;
       if (fmApply && localState.turn === fmApply && !localState.movingPiece && !gameOverTriggered) {
         if (!playerHasAnyCapturePh1(localState.pieces, fmApply)) {
@@ -787,7 +736,6 @@
       return firstMover === null || firstMover === myColor;
     }
 
-    //  SECTION 7 — Spots cliquables (commun)
     function drawBoardSpots() {
       var spotsGrp = document.getElementById('spots-group');
       spotsGrp.innerHTML = '';
@@ -815,7 +763,6 @@
       });
     }
 
-    // ── Stop button dispatch ──
     function handleStopBtnDispatch() {
       var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
       if (isPhase2(pieces)) {
@@ -825,14 +772,12 @@
       }
     }
 
-    //  SECTION 8 — Phase 1 : interaction
     function handleSpotClickPh1(spotID) {
       if (!localState || localState.turn !== myColor) return;
       if (pendingCaptures.approach.length > 0 || pendingCaptures.withdrawal.length > 0) return;
 
       var pieces = localState.pieces;
 
-      // ── Phase 1 : si le firstMover n'a aucune capture, il ne peut pas jouer (il a déjà gagné) ──
       if (amIFirstMover() && !playerHasAnyCapturePh1(pieces, myColor)) return;
 
       if (canChangePiece && pieces[spotID] === myColor) {
@@ -869,7 +814,6 @@
       newPieces[spotID] = myColor;
       var newVisited = (localState.visited || []).concat([origin]);
 
-      // Phase 1 : seul le firstMover peut capturer et avoir choix approach/withdrawal
       if (amIFirstMover() && isCaptureMove && caps.approach.length > 0 && caps.withdrawal.length > 0) {
         pendingCaptures = {
           approach:   caps.approach,
@@ -900,13 +844,12 @@
     }
 
     function doMovePh1(origin, target, capturedSpots, dir, newVisited, newPieces, wasCapture) {
-      // Seul le firstMover capture (une seule pièce)
+
       var effectiveCaptured = amIFirstMover() ? capturedSpots : [];
       if (effectiveCaptured.length > 0) {
         delete newPieces[effectiveCaptured[0]];
       }
 
-      // canContinue : dépend de nonFirstMoverHasContinued et de la phase
       var advColor   = amIFirstMover() ? myOppColor : (firstMover || myOppColor);
       var advCount   = Object.keys(newPieces).filter(function(s) { return newPieces[s] === advColor; }).length;
       var nfmHasCont = localState.nonFirstMoverHasContinued || false;
@@ -951,7 +894,7 @@
       if (!canContinue) {
         var myPCdm  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
         var oppPCdm = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-        // fin de partie gérée via game.winner
+
       }
     }
 
@@ -977,7 +920,7 @@
 
       var myPC2  = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myColor; }).length;
       var oppPC2 = Object.keys(localState.pieces).filter(function(s){ return localState.pieces[s]===myOppColor; }).length;
-      // fin de partie gérée via game.winner
+
     }
 
     function sendMoveToBackendPh1(origin, target, capturedSpots, dir) {
@@ -988,7 +931,6 @@
       }).catch(function(e) { console.warn('make-move backend error:', e); });
     }
 
-    //  SECTION 9 — Phase 1 : render
     function renderPiecesPh1(pieces, stateData) {
       var grp      = document.getElementById('pieces-group');
       var isMyTurn = stateData.turn === myColor;
@@ -1103,7 +1045,7 @@
           grp.appendChild(dot);
         });
       } else {
-        // nonFirstMover : peut se déplacer librement vers toutes les cases adjacentes vides
+
         moves.forEach(function(target) {
           if (pieces[target] || visited.indexOf(target) !== -1) return;
           var r2  = rows.indexOf(target[0]), c2 = cols.indexOf(target[1]);
@@ -1117,18 +1059,13 @@
       }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    //  PHASE 2 — Listener realtime (identique à game-fanorona)
-    // ─────────────────────────────────────────────────────────────
     function onRealtimePh2(game) {
-      // ── Filtrage echo AVANT tout copyState ──
-      // Raha mbola ny anjara-nao (canContinue) → tsy overwrite ny local state
+
       if (game.turn === myColor && ph2_movingInProgress) {
         ph2_movingInProgress = false;
         return;
       }
 
-      // ── Tour adversaire : sync complète ──
       if (game.turn !== myColor) {
         ph2_movingInProgress = false;
         ph2_localState = ph2CopyState(game);
@@ -1138,8 +1075,6 @@
         return;
       }
 
-      // ── Notre tour, ph2_movingInProgress=false ──
-      // (anjaran'ny adversaire vita, lasa anjara-nao)
       var prevTurn = ph2_localState ? ph2_localState.turn : null;
       ph2_localState = ph2CopyState(game);
       updateTurnIndicator(ph2_localState.turn);
@@ -1150,7 +1085,6 @@
         return;
       }
 
-      // Adversaire vient de finir → reset UI, activation tour local
       ph2_canChangePiece  = true;
       ph2_selectedSpot    = null;
       ph2_lastBlockedSpot = null;
@@ -1185,7 +1119,6 @@
       }
     }
 
-    //  SECTION 10 — Phase 2 : interaction (identique à game-fanorona)
     function ph2HandleSpotClick(spotID) {
       if (!ph2_localState || ph2_localState.turn !== myColor) return;
       if (ph2_pendingCaptures.approach.length > 0 || ph2_pendingCaptures.withdrawal.length > 0) return;
@@ -1236,7 +1169,7 @@
         ph2_selectedSpot = spotID;
         ph2RenderPieces(newPieces, ph2_localState);
         document.getElementById('guides-group').innerHTML = '';
-        // ── Timer B : 4s UNIQUEMENT si !ph2_canChangePiece (efa nisy move teo aloha) ──
+
         startSelTimer();
         return;
       }
@@ -1249,7 +1182,7 @@
       var md = ph2_pendingCaptures.moveData;
       var capturedSpots = type === 'approach' ? ph2_pendingCaptures.approach : ph2_pendingCaptures.withdrawal;
       ph2_pendingCaptures = { approach: [], withdrawal: [], moveData: null };
-      // ── Arrêter le timer de sélection (le joueur a fait son choix) ──
+
       stopSelTimer(true);
       var newPieces  = Object.assign({}, ph2_localState.pieces);
       var newVisited = (ph2_localState.visited || []).slice();
@@ -1271,7 +1204,7 @@
         ph2_selectedSpot   = target;
         ph2_canChangePiece = false;
         document.getElementById('stop-move-btn').classList.add('active');
-        // ── Timer A : démarrer / relancer 2s après chaque déplacement réel ──
+
         startMoveTimer();
       } else {
         ph2_localState.turn        = myOppColor;
@@ -1282,7 +1215,7 @@
         ph2_lastBlockedSpot = null;
         ph2_canChangePiece  = true;
         document.getElementById('stop-move-btn').classList.remove('active');
-        // ── Fin de tour : stopper tous les timers ──
+
         stopAllTimers();
       }
 
@@ -1299,7 +1232,7 @@
       if (!canContinue) {
         var ph2OppCount = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myOppColor; }).length;
         var ph2MyCount  = Object.keys(ph2_localState.pieces).filter(function(s){ return ph2_localState.pieces[s]===myColor; }).length;
-        // fin de partie gérée via game.winner
+
       }
     }
 
@@ -1350,7 +1283,6 @@
       }).catch(function(e) { console.warn('ph2 make-move error:', e); });
     }
 
-    //  SECTION 11 — Phase 2 : render (identique à game-fanorona)
     function ph2RenderPieces(pieces, stateData) {
       var grp           = document.getElementById('pieces-group');
       var isMyTurn      = stateData.turn === myColor;
@@ -1465,7 +1397,6 @@
       });
     }
 
-    //  SECTION 12 — Helpers Phase 2 (identique à game-fanorona)
     function ph2GetCaptures(pieces, s, e, color) {
       var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
       var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
@@ -1514,7 +1445,6 @@
       return false;
     }
 
-    //  SECTION 13 — Helpers Phase 1
     function getCapturesPh1(pieces, s, e, color) {
       var r1=rows.indexOf(s[0]),c1=cols.indexOf(s[1]),r2=rows.indexOf(e[0]),c2=cols.indexOf(e[1]);
       var enemy=color==='maintso'?'mena':'maintso', dr=r2-r1, dc=c2-c1;
@@ -1563,7 +1493,6 @@
       return false;
     }
 
-    //  SECTION 14 — Helpers communs
     function createCross(x1,y1,x2,y2) {
       var l = document.createElementNS('http://www.w3.org/2000/svg','line');
       l.setAttribute('x1',x1); l.setAttribute('y1',y1);
@@ -1572,9 +1501,6 @@
       return l;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  REMATCH — WebSocket driven (Room Vela only)
-    // ════════════════════════════════════════════════════════════
     var rematchHandled   = false;
     var rematchResetDone = false;
     var rematchOverlayEl = null;
@@ -1630,8 +1556,6 @@
     function handleRematchPush(rematch, game) {
       if (!rematch) return false;
 
-      // ── Auto-restart (Case 1 : firstMover resy tao amin'ny phase 2) ──
-      // Treated the same as 'accepted' — direct reset, no invitation needed
       if (rematch.status === 'auto-restarted') {
         if (rematchResetDone) return true;
         rematchResetDone = true;
@@ -1690,15 +1614,12 @@
       stopAllTimers();
       stopPlayerTimerRaf();
 
-      // myColor inchangé (chaque joueur garde sa couleur)
       var board = document.getElementById('game-board');
       if (myColor === 'mena') board.classList.add('flipped');
       else                    board.classList.remove('flipped');
 
-      // firstMover vaovao = mpiresy (avy amin'ny backend)
       if (game.firstMover) firstMover = game.firstMover;
 
-      // Reset variables Phase 1
       gameOverTriggered = false;
       movingInProgress  = false;
       selectedSpot      = null;
@@ -1707,7 +1628,6 @@
       pendingCaptures   = { approach: [], withdrawal: [], moveData: null };
       piecesOnBoard     = {};
 
-      // Reset variables Phase 2
       ph2_movingInProgress = false;
       ph2_selectedSpot     = null;
       ph2_lastBlockedSpot  = null;
@@ -1715,12 +1635,10 @@
       ph2_pendingCaptures  = { approach: [], withdrawal: [], moveData: null };
       ph2_localState       = null;
 
-      // Timer reset
       playerTimerEnabled = false;
       myTimerMs  = 0; oppTimerMs = 0;
       timerRunningColor = null; timerLastTickMs = null;
 
-      // DOM reset — SVG pieces supprimées physiquement
       var piecesGrp = document.getElementById('pieces-group');
       if (piecesGrp) piecesGrp.innerHTML = '';
       document.getElementById('guides-group').innerHTML = '';
@@ -1738,7 +1656,6 @@
           renderPlayersBar(myColor, localUser.username || myUid, d.opponentUsername || '???');
         }).catch(function() {});
 
-      // Nouvelle state — dispatch selon phase
       localState = copyStatePh1(game);
       onPlayerTimersUpdate(game);
       if (isPhase2(game.pieces)) {
