@@ -1,15 +1,124 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title></title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+    }
+
+    .splash {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      opacity: 0;
+      animation: fadeIn 0.5s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+
+    .spinner-ring {
+      position: relative;
+      width: 72px;
+      height: 72px;
+    }
+
+    .spinner-ring::before,
+    .spinner-ring::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+    }
+
+    .spinner-ring::before {
+      inset: 0;
+      border: 6px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .spinner-ring::after {
+      inset: 0;
+      border: 6px solid transparent;
+      border-top-color: white;
+      border-right-color: rgba(255, 255, 255, 0.5);
+      animation: spin 0.9s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .spinner-dot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 12px;
+      height: 12px;
+      background: white;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      opacity: 0.9;
+      box-shadow: 0 0 12px rgba(255,255,255,0.7);
+    }
+  </style>
 </head>
-
 <body>
-  
-  <a href="login&register.html" style="margin: 30px;">Register & login</a>
-</body>
+  <div class="splash">
+    <div class="spinner-ring">
+      <div class="spinner-dot"></div>
+    </div>
+  </div>
 
+  <script>
+    (function () {
+      var SESSION_API_URL = '/api/session';
+
+      async function checkSession() {
+        try {
+          var stored = localStorage.getItem('user');
+          if (!stored) { window.location.replace('login&register.html'); return; }
+          var local = JSON.parse(stored);
+          if (!local || !local.uid) { window.location.replace('login&register.html'); return; }
+          var token = localStorage.getItem('jwtToken') || '';
+          var r = await fetch(SESSION_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ action: 'get-session', uid: local.uid })
+          });
+          if (r.status === 401 || r.status === 403) {
+            localStorage.removeItem('user');
+            localStorage.removeItem('jwtToken');
+            window.location.replace('login&register.html');
+            return;
+          }
+          var d = await r.json();
+          if (d && d.success && d.user) {
+            localStorage.setItem('user', JSON.stringify(d.user));
+            window.location.replace('dashboard.html');
+          } else {
+            localStorage.removeItem('user');
+            localStorage.removeItem('jwtToken');
+            window.location.replace('login&register.html');
+          }
+        } catch (err) {
+          localStorage.removeItem('user');
+          localStorage.removeItem('jwtToken');
+          window.location.replace('login&register.html');
+        }
+      }
+
+      checkSession();
+    })();
+  </script>
+</body>
 </html>
