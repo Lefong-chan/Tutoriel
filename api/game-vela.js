@@ -1,8 +1,12 @@
 // api/game-vela.js
 import admin from "firebase-admin";
+import jwt   from "jsonwebtoken";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
+if (!process.env.JWT_SECRET)   throw new Error("JWT_SECRET not set");
+
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
+const jwtSecret     = process.env.JWT_SECRET;
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -10,13 +14,24 @@ if (!admin.apps.length) {
     serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
   }
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential:  admin.credential.cert(serviceAccount),
     databaseURL: process.env.FIREBASE_DATABASE_URL
   });
 }
 
 const rtdb     = admin.database();
 const gamesRef = rtdb.ref("games");
+
+// ── JWT guard ──────────────────────────────────────────────────────────────
+function verifyToken(req) {
+  const header = req.headers["authorization"] || "";
+  if (!header.startsWith("Bearer ")) return null;
+  try {
+    return jwt.verify(header.slice(7), jwtSecret);
+  } catch {
+    return null;
+  }
+}
 
 async function rtdbGet(ref) {
   const snap = await ref.once("value");
@@ -29,9 +44,13 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed." });
+  if (req.method !== "POST")    return res.status(405).json({ error: "Method not allowed." });
   if (allowedOrigin && req.headers.origin !== allowedOrigin)
     return res.status(403).json({ error: "Forbidden." });
+
+  // ── JWT guard ─────────────────────────────────────────────────────────
+  const decoded = verifyToken(req);
+  if (!decoded) return res.status(401).json({ error: "Unauthorized Access" });
 
   const { action, ...payload } = req.body;
   if (!action) return res.status(400).json({ error: "Action required." });
@@ -58,14 +77,11 @@ export default async function handler(req, res) {
 }
 
 function getMyColor(game, uid) {
-  if (game.senderUid === uid) {
-    return game.senderColor   || "maintso";
-  } else {
-    return game.receiverColor || "mena";
-  }
+  return game.senderUid === uid
+    ? (game.senderColor   || "maintso")
+    : (game.receiverColor || "mena");
 }
 
-// ── Génère un custom token Firebase pour le client (WebSocket auth) ──
 async function handleGetFirebaseToken(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId)
@@ -91,13 +107,12 @@ async function handleGetState(body, res) {
   return res.status(200).json({ success: true, game });
 }
 
-// ── Détermine si on est en Phase 2 ──
 function isPhase2(game) {
   const firstMover = game.firstMover;
   if (!firstMover) return false;
   const nonFMColor = firstMover === "maintso" ? "mena" : "maintso";
-  const pieces = game.pieces || {};
-  const count = Object.values(pieces).filter(v => v === nonFMColor).length;
+  const pieces     = game.pieces || {};
+  const count      = Object.values(pieces).filter(v => v === nonFMColor).length;
   return count <= 5;
 }
 
@@ -112,7 +127,7 @@ async function handleMakeMove(body, res) {
   if (game.senderUid !== uid && game.receiverUid !== uid)
     return res.status(403).json({ error: "Not authorized." });
 
-  const myColor = getMyColor(game, uid);
+  const myColor    = getMyColor(game, uid);
   if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (game.movingPiece && game.movingPiece !== origin)
     return res.status(400).json({ error: "Pio hafa tsy azo hetsehina izao." });
@@ -127,10 +142,6 @@ async function handleMakeMove(body, res) {
   const phase2 = isPhase2(game);
 
   if (phase2) {
-    // ────────────────────────────────────────────────
-    //  PHASE 2 : règles Fanorona standard
-    //  (les deux joueurs capturent, capture multiple possible)
-    // ────────────────────────────────────────────────
     if (Array.isArray(capturedSpots)) {
       capturedSpots.forEach(s => delete pieces[s]);
     }
@@ -142,12 +153,8 @@ async function handleMakeMove(body, res) {
 
     if (canContinue) {
       await gameRef.update({
-        pieces,
-        movingPiece: target,
-        visited:     newVisited,
-        lastDir:     dir || "",
-        moveHistory: [...prevHistory, histEntry],
-        firstMover,
+        pieces, movingPiece: target, visited: newVisited,
+        lastDir: dir || "", moveHistory: [...prevHistory, histEntry], firstMover
       });
       return res.status(200).json({ success: true, continuing: true });
     } else {
@@ -168,7 +175,7 @@ async function handleMakeMove(body, res) {
       const payload2 = {
         pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
         moveHistory: [], lastTurnHistory: [...prevHistory, histEntry],
-        lastTurnColor: myColor, firstMover, ...timerUpd2,
+        lastTurnColor: myColor, firstMover, ...timerUpd2
       };
       if (winner2) payload2.winner = winner2;
       await gameRef.update(payload2);
@@ -176,25 +183,18 @@ async function handleMakeMove(body, res) {
     }
 
   } else {
-    // ────────────────────────────────────────────────
-    //  PHASE 1 : règles Fanorona-Vela
-    //  - firstMover : capture (une pièce), capture multiple si nonFirstMover a déjà continué
-    //  - nonFirstMover : déplacement libre, pas de capture
-    // ────────────────────────────────────────────────
-    const amIFirstMov      = firstMover === myColor;
-    const canCapture       = amIFirstMov;
+    const amIFirstMov       = firstMover === myColor;
+    const canCapture        = amIFirstMov;
     const effectiveCaptured = canCapture && Array.isArray(capturedSpots) ? capturedSpots : [];
 
     if (effectiveCaptured.length > 0) {
-      // Phase 1 : firstMover ne capture qu'une seule pièce par coup
       delete pieces[effectiveCaptured[0]];
     }
 
-    const newVisited  = [...visited, origin];
-    const wasCapture  = effectiveCaptured.length > 0;
-    const nfmHasCont  = game.nonFirstMoverHasContinued || false;
+    const newVisited = [...visited, origin];
+    const wasCapture = effectiveCaptured.length > 0;
+    const nfmHasCont = game.nonFirstMoverHasContinued || false;
 
-    // canContinue : dépend de si nonFirstMover a déjà continué (activé la capture multiple)
     const nonFMColor  = firstMover === "maintso" ? "mena" : "maintso";
     const advColor    = amIFirstMov ? nonFMColor : firstMover;
     const advCount    = Object.values(pieces).filter(v => v === advColor).length;
@@ -208,13 +208,9 @@ async function handleMakeMove(body, res) {
     if (canContinue) {
       const newNFM = nfmHasCont || (!amIFirstMov);
       await gameRef.update({
-        pieces,
-        movingPiece:               target,
-        visited:                   newVisited,
-        lastDir:                   dir || "",
-        moveHistory:               [...prevHistory, histEntry],
-        firstMover,
-        nonFirstMoverHasContinued: newNFM,
+        pieces, movingPiece: target, visited: newVisited,
+        lastDir: dir || "", moveHistory: [...prevHistory, histEntry],
+        firstMover, nonFirstMoverHasContinued: newNFM
       });
       return res.status(200).json({ success: true, continuing: true });
     } else {
@@ -232,18 +228,14 @@ async function handleMakeMove(body, res) {
         timerUpd1.timerMena    !== undefined ? timerUpd1.timerMena    : (game.timerMena||0),
         game.minutes
       );
-      // ── Phase 1 : si le firstMover n'a aucune capture disponible à son tour → il gagne ──
       if (!winner1 && nextColor === firstMover && isStillPhase1(pieces, firstMover)) {
-        if (!ph1PlayerHasAnyCapture(pieces, firstMover)) {
-          winner1 = firstMover;
-        }
+        if (!ph1PlayerHasAnyCapture(pieces, firstMover)) winner1 = firstMover;
       }
       const payload1 = {
         pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
         moveHistory: [], lastTurnHistory: [...prevHistory, histEntry],
         lastTurnColor: myColor, firstMover,
-        nonFirstMoverHasContinued: nfmHasCont,
-        ...timerUpd1,
+        nonFirstMoverHasContinued: nfmHasCont, ...timerUpd1
       };
       if (winner1) payload1.winner = winner1;
       await gameRef.update(payload1);
@@ -265,9 +257,9 @@ async function handleStopMove(body, res) {
   if (game.turn !== myColor) return res.status(400).json({ error: "Tsy anjaranao." });
   if (!game.movingPiece)     return res.status(400).json({ error: "Tsy misy movingPiece." });
 
-  const nextColor   = myColor === "maintso" ? "mena" : "maintso";
-  const stopHistory = Array.isArray(game.moveHistory) ? game.moveHistory : [];
-  const stopNow     = Date.now();
+  const nextColor    = myColor === "maintso" ? "mena" : "maintso";
+  const stopHistory  = Array.isArray(game.moveHistory) ? game.moveHistory : [];
+  const stopNow      = Date.now();
   const stopTimerUpd = { timerRunning: nextColor, timerLastTick: stopNow };
   if (game.timerRunning && game.timerLastTick) {
     const elapsed = Math.max(0, stopNow - game.timerLastTick);
@@ -280,27 +272,22 @@ async function handleStopMove(body, res) {
     stopTimerUpd.timerMena    !== undefined ? stopTimerUpd.timerMena    : (game.timerMena||0),
     game.minutes
   );
-  // ── Phase 1 : si le firstMover n'a aucune capture disponible à son tour → il gagne ──
   const stopFM = game.firstMover || null;
   if (!stopWinner && stopFM && nextColor === stopFM && isStillPhase1(pieces, stopFM)) {
-    if (!ph1PlayerHasAnyCapture(pieces, stopFM)) {
-      stopWinner = stopFM;
-    }
+    if (!ph1PlayerHasAnyCapture(pieces, stopFM)) stopWinner = stopFM;
   }
   const stopPayload = {
     pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
-    moveHistory: [], lastTurnHistory: stopHistory,
-    lastTurnColor: myColor,
+    moveHistory: [], lastTurnHistory: stopHistory, lastTurnColor: myColor,
     firstMover: game.firstMover || null,
     nonFirstMoverHasContinued: game.nonFirstMoverHasContinued || false,
-    ...stopTimerUpd,
+    ...stopTimerUpd
   };
   if (stopWinner) stopPayload.winner = stopWinner;
   await gameRef.update(stopPayload);
   return res.status(200).json({ success: true, winner: stopWinner||null });
 }
 
-// ── Update timers (kept in sync with game-fanorona) ──
 async function handleUpdateTimers(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
@@ -324,12 +311,7 @@ async function handleUpdateTimers(body, res) {
   return res.status(200).json({ success: true });
 }
 
-// ══════════════════════════════════════════════════════════════
-//  REMATCH (Room Vela)
-//  Izay resy no manao hetsika voalohany amin'ny revanche :
-//    green (maintso) menany → mena (resy) no manao hetsika voalohany
-//    red   (mena)    menany → maintso (resy) no manao hetsika voalohany
-// ══════════════════════════════════════════════════════════════
+// ── Rematch ────────────────────────────────────────────────────────────────
 
 async function handleRequestRematch(body, res) {
   const { uid, gameId } = body;
@@ -359,19 +341,11 @@ async function handleAcceptRematch(body, res) {
   if (rematch.requestedBy === uid)
     return res.status(400).json({ error: "Cannot accept your own request." });
 
-  // Izay resy no manao hetsika voalohany amin'ny revanche :
-  //   game.winner = "maintso" → maintso menany, koa mena (resy) no manao voalohany
-  //   game.winner = "mena"    → mena menany,    koa maintso (resy) no manao voalohany
-  //   Raha tsy misy winner mahalala → maintso no default
   const rematchCount = (game.rematchCount || 0) + 1;
   let newFirstMover;
-  if (game.winner === "maintso") {
-    newFirstMover = "mena";      // maintso menany → mena resy → mena no manao voalohany
-  } else if (game.winner === "mena") {
-    newFirstMover = "maintso";   // mena menany → maintso resy → maintso no manao voalohany
-  } else {
-    newFirstMover = "maintso";   // default raha tsy misy winner mazava
-  }
+  if (game.winner === "maintso")       newFirstMover = "mena";
+  else if (game.winner === "mena")     newFirstMover = "maintso";
+  else                                 newFirstMover = "maintso";
 
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
   const initialPieces = {};
@@ -407,7 +381,7 @@ async function handleAcceptRematch(body, res) {
     timerRunning:              null,
     timerLastTick:             null,
     rematchCount,
-    rematch:                   { status: "accepted", acceptedAt: Date.now() },
+    rematch: { status: "accepted", acceptedAt: Date.now() }
   };
   if (msPerPlayer) {
     resetData.timerMaintso = msPerPlayer;
@@ -441,11 +415,6 @@ async function handleMarkRematchDone(body, res) {
   return res.status(200).json({ success: true });
 }
 
-// ══════════════════════════════════════════════════════════════
-//  AUTO-RESTART (Case 1 : firstMover tao amin'ny phase 1 no resy amin'ny phase 2)
-//  Tsy mila invitation — reset avy hatrany rehefa tapitra ny countdown 3s
-//  Ny resy (= firstMover) no manao hetsika voalohany amin'ny game vaovao
-// ══════════════════════════════════════════════════════════════
 async function handleAutoRestart(body, res) {
   const { uid, gameId } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
@@ -458,20 +427,15 @@ async function handleAutoRestart(body, res) {
   if (!game.winner)
     return res.status(400).json({ error: "No winner yet." });
 
-  // Idempotency : raha efa nisy auto-restart na accepted, avereno fotsiny
   if (game.rematch && (game.rematch.status === "auto-restarted" || game.rematch.status === "accepted"))
     return res.status(200).json({ success: true });
 
-  // Verification Case 1 : firstMover (phase 1) no resy (winner !== firstMover)
   if (!game.firstMover || game.winner === game.firstMover)
     return res.status(400).json({ error: "Auto-restart only applies when the phase-1 firstMover lost." });
 
-  // Izay resy no mitarika ny lalao vaovao :
-  // loser = game.firstMover = opposite of game.winner
   const newFirstMover = game.winner === "maintso" ? "mena" : "maintso";
   const rematchCount  = (game.rematchCount || 0) + 1;
 
-  // Board de départ standard
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
   const initialPieces = {};
   R.forEach((r, ri) => {
@@ -506,7 +470,7 @@ async function handleAutoRestart(body, res) {
     timerRunning:              null,
     timerLastTick:             null,
     rematchCount,
-    rematch:                   { status: "auto-restarted", restartedAt: Date.now() },
+    rematch: { status: "auto-restarted", restartedAt: Date.now() }
   };
   if (msPerPlayer) {
     resetData.timerMaintso = msPerPlayer;
@@ -517,19 +481,7 @@ async function handleAutoRestart(body, res) {
   return res.status(200).json({ success: true });
 }
 
-function checkGameOver(pieces, timerMaintso, timerMena, minutes) {
-  const maintsoCount = Object.values(pieces).filter(v => v === "maintso").length;
-  const menaCount    = Object.values(pieces).filter(v => v === "mena").length;
-  if (maintsoCount === 0) return "mena";
-  if (menaCount    === 0) return "maintso";
-  if (minutes) {
-    if ((timerMaintso || 0) <= 0) return "mena";
-    if ((timerMena    || 0) <= 0) return "maintso";
-  }
-  return null;
-}
-
-// ── Declare winner (timer expiry from client) ──
+// ── Declare winner ─────────────────────────────────────────────────────────
 async function handleDeclareWinner(body, res) {
   const { uid, gameId, winner } = body;
   if (!uid || !gameId || !winner) return res.status(400).json({ error: "uid, gameId, winner required." });
@@ -552,40 +504,39 @@ async function handleDeclareWinner(body, res) {
   return res.status(200).json({ success: true, winner });
 }
 
-// ── Helpers board (communs aux deux phases) ──
+// ── Board helpers ──────────────────────────────────────────────────────────
 
-const ROWS = ['A','B','C','D','E'];
-const COLS = ['1','2','3','4','5','6','7','8','9'];
+const ROWS = ["A","B","C","D","E"];
+const COLS = ["1","2","3","4","5","6","7","8","9"];
 
 const ALLOWED_MOVES = {
-  'A1':['A2','B1','B2'],'A2':['A1','A3','B2'],'A3':['A2','A4','B2','B3','B4'],
-  'A4':['A3','A5','B4'],'A5':['A4','A6','B4','B5','B6'],'A6':['A5','A7','B6'],
-  'A7':['A6','A8','B6','B7','B8'],'A8':['A7','A9','B8'],'A9':['A8','B8','B9'],
-  'B1':['A1','B2','C1'],'B2':['A1','A2','A3','B1','B3','C1','C2','C3'],'B3':['A3','B2','B4','C3'],
-  'B4':['A3','A4','A5','B3','B5','C3','C4','C5'],'B5':['A5','B4','B6','C5'],
-  'B6':['A5','A6','A7','B5','B7','C5','C6','C7'],
-  'B7':['A7','B6','B8','C7'],'B8':['A7','A8','A9','B7','B9','C7','C8','C9'],'B9':['A9','B8','C9'],
-  'C1':['B1','B2','C2','D1','D2'],'C2':['B2','C1','C3','D2'],
-  'C3':['B2','B3','B4','C2','C4','D2','D3','D4'],
-  'C4':['B4','C3','C5','D4'],'C5':['B4','B5','B6','C4','C6','D4','D5','D6'],
-  'C6':['B6','C5','C7','D6'],
-  'C7':['B6','B7','B8','C6','C8','D6','D7','D8'],'C8':['B8','C7','C9','D8'],
-  'C9':['B8','B9','C8','D8','D9'],
-  'D1':['C1','D2','E1'],'D2':['C1','C2','C3','D1','D3','E1','E2','E3'],'D3':['C3','D2','D4','E3'],
-  'D4':['C3','C4','C5','D3','D5','E3','E4','E5'],'D5':['C5','D4','D6','E5'],
-  'D6':['C5','C6','C7','D5','D7','E5','E6','E7'],
-  'D7':['C7','D6','D8','E7'],'D8':['C7','C8','C9','D7','D9','E7','E8','E9'],'D9':['C9','D8','E9'],
-  'E1':['D1','D2','E2'],'E2':['D2','E1','E3'],'E3':['D2','D3','D4','E2','E4'],
-  'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
-  'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
+  "A1":["A2","B1","B2"],"A2":["A1","A3","B2"],"A3":["A2","A4","B2","B3","B4"],
+  "A4":["A3","A5","B4"],"A5":["A4","A6","B4","B5","B6"],"A6":["A5","A7","B6"],
+  "A7":["A6","A8","B6","B7","B8"],"A8":["A7","A9","B8"],"A9":["A8","B8","B9"],
+  "B1":["A1","B2","C1"],"B2":["A1","A2","A3","B1","B3","C1","C2","C3"],"B3":["A3","B2","B4","C3"],
+  "B4":["A3","A4","A5","B3","B5","C3","C4","C5"],"B5":["A5","B4","B6","C5"],
+  "B6":["A5","A6","A7","B5","B7","C5","C6","C7"],
+  "B7":["A7","B6","B8","C7"],"B8":["A7","A8","A9","B7","B9","C7","C8","C9"],"B9":["A9","B8","C9"],
+  "C1":["B1","B2","C2","D1","D2"],"C2":["B2","C1","C3","D2"],
+  "C3":["B2","B3","B4","C2","C4","D2","D3","D4"],
+  "C4":["B4","C3","C5","D4"],"C5":["B4","B5","B6","C4","C6","D4","D5","D6"],
+  "C6":["B6","C5","C7","D6"],
+  "C7":["B6","B7","B8","C6","C8","D6","D7","D8"],"C8":["B8","C7","C9","D8"],
+  "C9":["B8","B9","C8","D8","D9"],
+  "D1":["C1","D2","E1"],"D2":["C1","C2","C3","D1","D3","E1","E2","E3"],"D3":["C3","D2","D4","E3"],
+  "D4":["C3","C4","C5","D3","D5","E3","E4","E5"],"D5":["C5","D4","D6","E5"],
+  "D6":["C5","C6","C7","D5","D7","E5","E6","E7"],
+  "D7":["C7","D6","D8","E7"],"D8":["C7","C8","C9","D7","D9","E7","E8","E9"],"D9":["C9","D8","E9"],
+  "E1":["D1","D2","E2"],"E2":["D2","E1","E3"],"E3":["D2","D3","D4","E2","E4"],
+  "E4":["D4","E3","E5"],"E5":["D4","D5","D6","E4","E6"],"E6":["D6","E5","E7"],
+  "E7":["D6","D7","D8","E6","E8"],"E8":["D8","E7","E9"],"E9":["D8","D9","E8"]
 };
 
-// ── Phase 1 helpers — check si le firstMover a des captures disponibles ──
 function ph1GetCaptures(pieces, s, e, color) {
   const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(e[0]),c2=COLS.indexOf(e[1]);
-  const enemy = color==="maintso"?"mena":"maintso", dr=r2-r1, dc=c2-c1;
+  const enemy=color==="maintso"?"mena":"maintso", dr=r2-r1, dc=c2-c1;
   const scan=(row,col,sr,sc)=>{
-    let res=[],cr=row+sr,cc=col+sc;
+    const res=[]; let cr=row+sr, cc=col+sc;
     while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[ROWS[cr]+COLS[cc]]===enemy){res.push(ROWS[cr]+COLS[cc]);cr+=sr;cc+=sc;}
     return res;
   };
@@ -605,7 +556,6 @@ function ph1PlayerHasAnyCapture(pieces, color) {
   return false;
 }
 
-// Vérifie si on est encore en Phase 1 (nonFM a plus de 5 pièces)
 function isStillPhase1(pieces, firstMoverColor) {
   const nonFM = firstMoverColor === "maintso" ? "mena" : "maintso";
   return Object.values(pieces).filter(v => v === nonFM).length > 5;
@@ -613,9 +563,9 @@ function isStillPhase1(pieces, firstMoverColor) {
 
 function ph2GetCaptures(pieces, s, e, color) {
   const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(e[0]),c2=COLS.indexOf(e[1]);
-  const enemy = color==="maintso"?"mena":"maintso", dr=r2-r1, dc=c2-c1;
+  const enemy=color==="maintso"?"mena":"maintso", dr=r2-r1, dc=c2-c1;
   const scan=(row,col,sr,sc)=>{
-    let res=[],cr=row+sr,cc=col+sc;
+    const res=[]; let cr=row+sr, cc=col+sc;
     while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[ROWS[cr]+COLS[cc]]===enemy){res.push(ROWS[cr]+COLS[cc]);cr+=sr;cc+=sc;}
     return res;
   };
@@ -627,9 +577,21 @@ function ph2CheckAvailableCaptures(pieces, s, visited, lastDir, color) {
   return moves.some(t => {
     if (pieces[t] || (visited && visited.includes(t))) return false;
     const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(t[0]),c2=COLS.indexOf(t[1]);
-    const dir=`${r2-r1},${c2-c1}`;   // ← NANAVAO: c2-c1 (tsy r2-r1 in'droa)
+    const dir=`${r2-r1},${c2-c1}`;
     if (lastDir && lastDir === dir) return false;
     const caps = ph2GetCaptures(pieces, s, t, color);
     return (caps.approach.length > 0 || caps.withdrawal.length > 0);
   });
+}
+
+function checkGameOver(pieces, timerMaintso, timerMena, minutes) {
+  const maintsoCount = Object.values(pieces).filter(v => v === "maintso").length;
+  const menaCount    = Object.values(pieces).filter(v => v === "mena").length;
+  if (maintsoCount === 0) return "mena";
+  if (menaCount    === 0) return "maintso";
+  if (minutes) {
+    if ((timerMaintso || 0) <= 0) return "mena";
+    if ((timerMena    || 0) <= 0) return "maintso";
+  }
+  return null;
 }
