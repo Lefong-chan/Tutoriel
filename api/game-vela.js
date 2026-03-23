@@ -225,12 +225,18 @@ async function handleMakeMove(body, res) {
         if (game.timerRunning === "maintso") timerUpd1.timerMaintso = Math.max(0, (game.timerMaintso||0)-el1);
         else timerUpd1.timerMena = Math.max(0, (game.timerMena||0)-el1);
       }
-      const winner1 = checkGameOver(
+      let winner1 = checkGameOver(
         pieces,
         timerUpd1.timerMaintso !== undefined ? timerUpd1.timerMaintso : (game.timerMaintso||0),
         timerUpd1.timerMena    !== undefined ? timerUpd1.timerMena    : (game.timerMena||0),
         game.minutes
       );
+      // ── Phase 1 : si le firstMover n'a aucune capture disponible à son tour → il gagne ──
+      if (!winner1 && nextColor === firstMover && isStillPhase1(pieces, firstMover)) {
+        if (!ph1PlayerHasAnyCapture(pieces, firstMover)) {
+          winner1 = firstMover;
+        }
+      }
       const payload1 = {
         pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
         moveHistory: [], lastTurnHistory: [...prevHistory, histEntry],
@@ -267,12 +273,19 @@ async function handleStopMove(body, res) {
     if (game.timerRunning === "maintso") stopTimerUpd.timerMaintso = Math.max(0, (game.timerMaintso||0)-elapsed);
     else stopTimerUpd.timerMena = Math.max(0, (game.timerMena||0)-elapsed);
   }
-  const stopWinner = checkGameOver(
+  let stopWinner = checkGameOver(
     pieces,
     stopTimerUpd.timerMaintso !== undefined ? stopTimerUpd.timerMaintso : (game.timerMaintso||0),
     stopTimerUpd.timerMena    !== undefined ? stopTimerUpd.timerMena    : (game.timerMena||0),
     game.minutes
   );
+  // ── Phase 1 : si le firstMover n'a aucune capture disponible à son tour → il gagne ──
+  const stopFM = game.firstMover || null;
+  if (!stopWinner && stopFM && nextColor === stopFM && isStillPhase1(pieces, stopFM)) {
+    if (!ph1PlayerHasAnyCapture(pieces, stopFM)) {
+      stopWinner = stopFM;
+    }
+  }
   const stopPayload = {
     pieces, turn: nextColor, movingPiece: "", visited: [], lastDir: "",
     moveHistory: [], lastTurnHistory: stopHistory,
@@ -489,6 +502,37 @@ const ALLOWED_MOVES = {
   'E4':['D4','E3','E5'],'E5':['D4','D5','D6','E4','E6'],'E6':['D6','E5','E7'],
   'E7':['D6','D7','D8','E6','E8'],'E8':['D8','E7','E9'],'E9':['D8','D9','E8'],
 };
+
+// ── Phase 1 helpers — check si le firstMover a des captures disponibles ──
+function ph1GetCaptures(pieces, s, e, color) {
+  const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(e[0]),c2=COLS.indexOf(e[1]);
+  const enemy = color==="maintso"?"mena":"maintso", dr=r2-r1, dc=c2-c1;
+  const scan=(row,col,sr,sc)=>{
+    let res=[],cr=row+sr,cc=col+sc;
+    while(cr>=0&&cr<5&&cc>=0&&cc<9&&pieces[ROWS[cr]+COLS[cc]]===enemy){res.push(ROWS[cr]+COLS[cc]);cr+=sr;cc+=sc;}
+    return res;
+  };
+  return { approach: scan(r2,c2,dr,dc), withdrawal: scan(r1,c1,-dr,-dc) };
+}
+
+function ph1PlayerHasAnyCapture(pieces, color) {
+  for (const s of Object.keys(pieces)) {
+    if (pieces[s] !== color) continue;
+    const moves = ALLOWED_MOVES[s] || [];
+    for (const t of moves) {
+      if (pieces[t]) continue;
+      const caps = ph1GetCaptures(pieces, s, t, color);
+      if (caps.approach.length > 0 || caps.withdrawal.length > 0) return true;
+    }
+  }
+  return false;
+}
+
+// Vérifie si on est encore en Phase 1 (nonFM a plus de 5 pièces)
+function isStillPhase1(pieces, firstMoverColor) {
+  const nonFM = firstMoverColor === "maintso" ? "mena" : "maintso";
+  return Object.values(pieces).filter(v => v === nonFM).length > 5;
+}
 
 function ph2GetCaptures(pieces, s, e, color) {
   const r1=ROWS.indexOf(s[0]),c1=COLS.indexOf(s[1]),r2=ROWS.indexOf(e[0]),c2=COLS.indexOf(e[1]);
