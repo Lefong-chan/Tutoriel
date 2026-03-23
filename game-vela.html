@@ -818,7 +818,7 @@
       stopPlayerTimerRaf();
     }
 
-    function showGameOverAlert(winnerColor, delayMs, isPh1End) {
+    function showGameOverAlert(winnerColor, delayMs) {
       if (gameOverTriggered) return;
       gameOverTriggered = true;
 
@@ -842,65 +842,70 @@
           'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
         ].join(';');
 
-        var iWon = (winnerColor === myColor);
+        var iWon       = (winnerColor === myColor);
+        var loserColor = iWon ? myOppColor : myColor;
+
+        // Case 1 : ilay panala capture (firstMover) tao amin'ny phase 1 no resy amin'ny phase 2
+        // winnerColor !== firstMover → firstMover no resy
+        var isCase1 = !!(firstMover && loserColor === firstMover);
+
         var title = document.createElement('div');
-        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:20px;';
+        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
 
-        if (isPh1End) {
-          // ── Fin Phase 1 : "Tsy afaka" / "Nampiraikitra", countdown 3s, auto-reset ──
+        if (isCase1) {
+          // Texte spécifique Case 1
           title.textContent = iWon ? 'Nampiraikitra' : 'Tsy afaka';
+        } else {
+          // Case 2 : textes normaux
+          title.innerHTML = iWon ? '&#127942; You win!' : '&#128532; You lose!';
+        }
 
-          var sub = document.createElement('div');
-          sub.style.cssText = 'font-size:0.85em;opacity:0.65;margin-bottom:22px;font-weight:400;';
-          sub.textContent = 'Manomboka indray...';
+        box.appendChild(title);
 
-          var countWrap = document.createElement('div');
-          countWrap.style.cssText = [
-            'display:flex','align-items:center','justify-content:center',
-            'gap:10px','color:rgba(255,255,255,0.75)','font-size:0.95em'
+        if (isCase1) {
+          // ── Case 1 : pas de boutons — countdown 3s puis auto-restart ──
+          var cdWrap = document.createElement('div');
+          cdWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
+
+          var countEl = document.createElement('div');
+          countEl.style.cssText = [
+            'font-size:2.4em','font-weight:900','color:#a5f3ff',
+            'background:rgba(165,243,255,0.12)','border-radius:50%',
+            'width:64px','height:64px','display:flex',
+            'align-items:center','justify-content:center',
+            'border:2px solid rgba(165,243,255,0.35)'
           ].join(';');
+          countEl.textContent = '3';
 
-          var countNum = document.createElement('span');
-          countNum.style.cssText = [
-            'display:inline-flex','align-items:center','justify-content:center',
-            'width:36px','height:36px','border-radius:50%',
-            'background:rgba(255,255,255,0.15)','font-size:1.3em','font-weight:800','color:white'
-          ].join(';');
-          countNum.textContent = '3';
+          var subEl = document.createElement('div');
+          subEl.style.cssText = 'font-size:0.82em;opacity:0.60;letter-spacing:0.03em;';
+          subEl.textContent = 'Miverina ny lalao...';
 
-          var countLabel = document.createElement('span');
-          countLabel.textContent = 'segondra';
-
-          countWrap.appendChild(countNum);
-          countWrap.appendChild(countLabel);
-
-          box.appendChild(title);
-          box.appendChild(sub);
-          box.appendChild(countWrap);
+          cdWrap.appendChild(countEl);
+          cdWrap.appendChild(subEl);
+          box.appendChild(cdWrap);
           overlay.appendChild(box);
           document.body.appendChild(overlay);
 
-          // Countdown 3→2→1→0 puis auto-reset
-          var countVal = 3;
-          var ph1CountIv = setInterval(function() {
-            countVal--;
-            if (countVal <= 0) {
-              clearInterval(ph1CountIv);
-              countNum.textContent = '0';
-              sub.textContent = 'Miandry...';
-              callApi(GAME_API_URL, 'auto-reset-ph1', { uid: myUid, gameId: gameId })
-                .catch(function(e) { console.warn('auto-reset-ph1 error:', e); });
-            } else {
-              countNum.textContent = String(countVal);
+          // Countdown 3 → 2 → 1 → 0 → auto-restart
+          var countdown = 3;
+          var countTimer = setInterval(function() {
+            countdown--;
+            // Si overlay efa nesorina (resetGameForRematch), mijanona
+            if (!document.body.contains(overlay)) { clearInterval(countTimer); return; }
+            countEl.textContent = countdown > 0 ? countdown : '0';
+            if (countdown <= 0) {
+              clearInterval(countTimer);
+              // Ny mpilalao resy (firstMover) no miantso ny API auto-restart
+              if (loserColor === myColor) {
+                callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
+                  .catch(function(e) { console.warn('auto-restart error:', e); });
+              }
             }
           }, 1000);
 
         } else {
-          // ── Fin normale : "You win!" / "You lose!" + boutons OK / Revanche ──
-          var myMsg = iWon ? '&#127942; You win!' : '&#128532; You lose!';
-          title.innerHTML = myMsg;
-          title.style.marginBottom = '28px';
-
+          // ── Case 2 : boutons OK + Revanche ──
           var btnRow = document.createElement('div');
           btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
 
@@ -942,7 +947,6 @@
             btnRow.appendChild(btnRevanche);
           }
 
-          box.appendChild(title);
           box.appendChild(btnRow);
           overlay.appendChild(box);
           document.body.appendChild(overlay);
@@ -1182,7 +1186,7 @@
         if (game.winner) {
           stopAllTimers();
           stopPlayerTimerRaf();
-          showGameOverAlert(game.winner, 0, game.ph1End || false);
+          showGameOverAlert(game.winner, 0);
           return;
         }
 
@@ -1204,14 +1208,14 @@
       localState = copyStatePh1(game);
       updateTurnIndicator(localState.turn);
 
-      // ── Phase 1 : si le firstMover n'a aucune capture → il perd (walker gagne) ──
+      // ── Phase 1 : si le firstMover n'a aucune capture → il gagne immédiatement ──
       var fmColor = localState.firstMover || firstMover;
       if (fmColor && localState.turn === fmColor && !localState.movingPiece && !gameOverTriggered) {
         if (!playerHasAnyCapturePh1(localState.pieces, fmColor)) {
-          var nonFMWinner = (fmColor === 'maintso') ? 'mena' : 'maintso';
+          // Le serveur aura déjà mis game.winner — on affiche juste le modal côté local
           stopAllTimers();
           stopPlayerTimerRaf();
-          showGameOverAlert(nonFMWinner, 0, true);
+          showGameOverAlert(fmColor, 0);
           return;
         }
       }
@@ -1267,14 +1271,13 @@
     function applyLocalStatePh1() {
       updateTurnIndicator(localState.turn);
 
-      // ── Phase 1 : si le firstMover n'a aucune capture → il perd (walker gagne) ──
+      // ── Phase 1 : contrôle no-capture pour le firstMover ──
       var fmApply = localState.firstMover || firstMover;
       if (fmApply && localState.turn === fmApply && !localState.movingPiece && !gameOverTriggered) {
         if (!playerHasAnyCapturePh1(localState.pieces, fmApply)) {
-          var nonFMWinnerApply = (fmApply === 'maintso') ? 'mena' : 'maintso';
           stopAllTimers();
           stopPlayerTimerRaf();
-          showGameOverAlert(nonFMWinnerApply, 0, true);
+          showGameOverAlert(fmApply, 0);
           return;
         }
       }
@@ -2137,6 +2140,19 @@
 
     function handleRematchPush(rematch, game) {
       if (!rematch) return false;
+
+      // ── Auto-restart (Case 1 : firstMover resy tao amin'ny phase 2) ──
+      // Treated the same as 'accepted' — direct reset, no invitation needed
+      if (rematch.status === 'auto-restarted') {
+        if (rematchResetDone) return true;
+        rematchResetDone = true;
+        rematchHandled   = false;
+        hideRematchNotif();
+        resetGameForRematch(game);
+        callApi(GAME_API_URL, 'mark-rematch-done', { uid: myUid, gameId: gameId })
+          .catch(function(e) { console.warn('mark-rematch-done (auto) error:', e); });
+        return true;
+      }
 
       if (rematch.status === 'accepted') {
         if (rematchResetDone) return true;
