@@ -83,38 +83,47 @@
     (function () {
       var SESSION_API_URL = '/api/session';
 
+      function wait(ms) { return new Promise(function(res) { setTimeout(res, ms); }); }
+
       async function checkSession() {
+        var start = Date.now();
+
+        var dest = 'login&register.html';
         try {
           var stored = localStorage.getItem('user');
-          if (!stored) { window.location.replace('login&register.html'); return; }
-          var local = JSON.parse(stored);
-          if (!local || !local.uid) { window.location.replace('login&register.html'); return; }
-          var token = localStorage.getItem('jwtToken') || '';
-          var r = await fetch(SESSION_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ action: 'get-session', uid: local.uid })
-          });
-          if (r.status === 401 || r.status === 403) {
-            localStorage.removeItem('user');
-            localStorage.removeItem('jwtToken');
-            window.location.replace('login&register.html');
-            return;
-          }
-          var d = await r.json();
-          if (d && d.success && d.user) {
-            localStorage.setItem('user', JSON.stringify(d.user));
-            window.location.replace('dashboard.html');
-          } else {
-            localStorage.removeItem('user');
-            localStorage.removeItem('jwtToken');
-            window.location.replace('login&register.html');
+          if (stored) {
+            var local = JSON.parse(stored);
+            if (local && local.uid) {
+              var token = localStorage.getItem('jwtToken') || '';
+              var r = await fetch(SESSION_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ action: 'get-session', uid: local.uid })
+              });
+              if (r.status !== 401 && r.status !== 403) {
+                var d = await r.json();
+                if (d && d.success && d.user) {
+                  localStorage.setItem('user', JSON.stringify(d.user));
+                  dest = 'dashboard.html';
+                } else {
+                  localStorage.removeItem('user');
+                  localStorage.removeItem('jwtToken');
+                }
+              } else {
+                localStorage.removeItem('user');
+                localStorage.removeItem('jwtToken');
+              }
+            }
           }
         } catch (err) {
           localStorage.removeItem('user');
           localStorage.removeItem('jwtToken');
-          window.location.replace('login&register.html');
         }
+
+        var elapsed = Date.now() - start;
+        var remaining = 1000 - elapsed;
+        if (remaining > 0) await wait(remaining);
+        window.location.replace(dest);
       }
 
       checkSession();
