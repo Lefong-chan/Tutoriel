@@ -818,7 +818,7 @@
       stopPlayerTimerRaf();
     }
 
-    function showGameOverAlert(winnerColor, delayMs) {
+    function showGameOverAlert(winnerColor, delayMs, isPh1End) {
       if (gameOverTriggered) return;
       gameOverTriggered = true;
 
@@ -842,58 +842,111 @@
           'box-shadow:0 8px 40px rgba(0,0,0,0.6)','max-width:320px','width:88vw'
         ].join(';');
 
-        var iWon  = (winnerColor === myColor);
-        var myMsg = iWon ? '&#127942; You win!' : '&#128532; You lose!';
-
+        var iWon = (winnerColor === myColor);
         var title = document.createElement('div');
-        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
-        title.textContent = myMsg;
+        title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:20px;';
 
-        var btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+        if (isPh1End) {
+          // ── Fin Phase 1 : "Tsy afaka" / "Nampiraikitra", countdown 3s, auto-reset ──
+          title.textContent = iWon ? 'Nampiraikitra' : 'Tsy afaka';
 
-        var btn = document.createElement('button');
-        btn.textContent = 'OK';
-        btn.style.cssText = [
-          'background:#0092FF','color:white','border:none',
-          'border-radius:10px','padding:12px 48px',
-          'font-size:1.1em','font-weight:700','cursor:pointer',
-          'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
-        ].join(';');
-        btn.onclick = function() { window.location.href = 'dashboard.html'; };
-        btnRow.appendChild(btn);
+          var sub = document.createElement('div');
+          sub.style.cssText = 'font-size:0.85em;opacity:0.65;margin-bottom:22px;font-weight:400;';
+          sub.textContent = 'Manomboka indray...';
 
-        // Revanche — Room Vela uniquement
-        if (gameSource === 'vela') {
-          var btnRevanche = document.createElement('button');
-          btnRevanche.innerHTML = '&#128260; Revanche';
-          btnRevanche.style.cssText = [
-            'background:#f59e0b','color:white','border:none',
-            'border-radius:10px','padding:12px 24px',
-            'font-size:1.1em','font-weight:700','cursor:pointer',
-            'box-shadow:0 2px 10px rgba(245,158,11,0.4)'
+          var countWrap = document.createElement('div');
+          countWrap.style.cssText = [
+            'display:flex','align-items:center','justify-content:center',
+            'gap:10px','color:rgba(255,255,255,0.75)','font-size:0.95em'
           ].join(';');
-          btnRevanche.onclick = function() {
-            btnRevanche.disabled = true;
-            btnRevanche.textContent = '...';
-            callApi(GAME_API_URL, 'request-rematch', { uid: myUid, gameId: gameId })
-              .then(function() {
-                btnRevanche.textContent = 'Demande envoyée';
-                btnRevanche.style.background = '#64748b';
-              })
-              .catch(function(e) {
-                btnRevanche.disabled = false;
-                btnRevanche.textContent = 'Revanche';
-                console.warn('request-rematch error:', e);
-              });
-          };
-          btnRow.appendChild(btnRevanche);
-        }
 
-        box.appendChild(title);
-        box.appendChild(btnRow);
-        overlay.appendChild(box);
-        document.body.appendChild(overlay);
+          var countNum = document.createElement('span');
+          countNum.style.cssText = [
+            'display:inline-flex','align-items:center','justify-content:center',
+            'width:36px','height:36px','border-radius:50%',
+            'background:rgba(255,255,255,0.15)','font-size:1.3em','font-weight:800','color:white'
+          ].join(';');
+          countNum.textContent = '3';
+
+          var countLabel = document.createElement('span');
+          countLabel.textContent = 'segondra';
+
+          countWrap.appendChild(countNum);
+          countWrap.appendChild(countLabel);
+
+          box.appendChild(title);
+          box.appendChild(sub);
+          box.appendChild(countWrap);
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
+
+          // Countdown 3→2→1→0 puis auto-reset
+          var countVal = 3;
+          var ph1CountIv = setInterval(function() {
+            countVal--;
+            if (countVal <= 0) {
+              clearInterval(ph1CountIv);
+              countNum.textContent = '0';
+              sub.textContent = 'Miandry...';
+              callApi(GAME_API_URL, 'auto-reset-ph1', { uid: myUid, gameId: gameId })
+                .catch(function(e) { console.warn('auto-reset-ph1 error:', e); });
+            } else {
+              countNum.textContent = String(countVal);
+            }
+          }, 1000);
+
+        } else {
+          // ── Fin normale : "You win!" / "You lose!" + boutons OK / Revanche ──
+          var myMsg = iWon ? '&#127942; You win!' : '&#128532; You lose!';
+          title.innerHTML = myMsg;
+          title.style.marginBottom = '28px';
+
+          var btnRow = document.createElement('div');
+          btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+
+          var btn = document.createElement('button');
+          btn.textContent = 'OK';
+          btn.style.cssText = [
+            'background:#0092FF','color:white','border:none',
+            'border-radius:10px','padding:12px 48px',
+            'font-size:1.1em','font-weight:700','cursor:pointer',
+            'box-shadow:0 2px 10px rgba(0,146,255,0.4)'
+          ].join(';');
+          btn.onclick = function() { window.location.href = 'dashboard.html'; };
+          btnRow.appendChild(btn);
+
+          // Revanche — Room Vela uniquement
+          if (gameSource === 'vela') {
+            var btnRevanche = document.createElement('button');
+            btnRevanche.innerHTML = '&#128260; Revanche';
+            btnRevanche.style.cssText = [
+              'background:#f59e0b','color:white','border:none',
+              'border-radius:10px','padding:12px 24px',
+              'font-size:1.1em','font-weight:700','cursor:pointer',
+              'box-shadow:0 2px 10px rgba(245,158,11,0.4)'
+            ].join(';');
+            btnRevanche.onclick = function() {
+              btnRevanche.disabled = true;
+              btnRevanche.textContent = '...';
+              callApi(GAME_API_URL, 'request-rematch', { uid: myUid, gameId: gameId })
+                .then(function() {
+                  btnRevanche.textContent = 'Demande envoyée';
+                  btnRevanche.style.background = '#64748b';
+                })
+                .catch(function(e) {
+                  btnRevanche.disabled = false;
+                  btnRevanche.textContent = 'Revanche';
+                  console.warn('request-rematch error:', e);
+                });
+            };
+            btnRow.appendChild(btnRevanche);
+          }
+
+          box.appendChild(title);
+          box.appendChild(btnRow);
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
+        }
       }, delay);
     }
 
@@ -1129,7 +1182,7 @@
         if (game.winner) {
           stopAllTimers();
           stopPlayerTimerRaf();
-          showGameOverAlert(game.winner, 0);
+          showGameOverAlert(game.winner, 0, game.ph1End || false);
           return;
         }
 
@@ -1151,14 +1204,14 @@
       localState = copyStatePh1(game);
       updateTurnIndicator(localState.turn);
 
-      // ── Phase 1 : si le firstMover n'a aucune capture → il gagne immédiatement ──
+      // ── Phase 1 : si le firstMover n'a aucune capture → il perd (walker gagne) ──
       var fmColor = localState.firstMover || firstMover;
       if (fmColor && localState.turn === fmColor && !localState.movingPiece && !gameOverTriggered) {
         if (!playerHasAnyCapturePh1(localState.pieces, fmColor)) {
-          // Le serveur aura déjà mis game.winner — on affiche juste le modal côté local
+          var nonFMWinner = (fmColor === 'maintso') ? 'mena' : 'maintso';
           stopAllTimers();
           stopPlayerTimerRaf();
-          showGameOverAlert(fmColor, 0);
+          showGameOverAlert(nonFMWinner, 0, true);
           return;
         }
       }
@@ -1214,13 +1267,14 @@
     function applyLocalStatePh1() {
       updateTurnIndicator(localState.turn);
 
-      // ── Phase 1 : contrôle no-capture pour le firstMover ──
+      // ── Phase 1 : si le firstMover n'a aucune capture → il perd (walker gagne) ──
       var fmApply = localState.firstMover || firstMover;
       if (fmApply && localState.turn === fmApply && !localState.movingPiece && !gameOverTriggered) {
         if (!playerHasAnyCapturePh1(localState.pieces, fmApply)) {
+          var nonFMWinnerApply = (fmApply === 'maintso') ? 'mena' : 'maintso';
           stopAllTimers();
           stopPlayerTimerRaf();
-          showGameOverAlert(fmApply, 0);
+          showGameOverAlert(nonFMWinnerApply, 0, true);
           return;
         }
       }
