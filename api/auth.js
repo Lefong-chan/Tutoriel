@@ -1,11 +1,14 @@
 // auth.js
 import admin from "firebase-admin";
+import jwt   from "jsonwebtoken";
 import { sendOTPEmail } from "./mailer.js";
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
+const jwtSecret     = process.env.JWT_SECRET;
 const isProd        = process.env.NODE_ENV === "production";
 
 if (!process.env.FIREBASE_KEY) throw new Error("FIREBASE_KEY not set");
+if (!jwtSecret)                throw new Error("JWT_SECRET not set");
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
@@ -27,6 +30,33 @@ const EMAIL_OTP_VALIDITY = 5 * 60 * 1000;
 const RESET_OTP_VALIDITY = 5 * 60 * 1000;
 const MAX_ATTEMPTS       = 5;
 const LOCK_TIME          = 24 * 60 * 60 * 1000;
+const JWT_EXPIRY         = "7d";
+
+// ── Actions that do NOT require a JWT (public endpoints) ──────────────────
+const PUBLIC_ACTIONS = new Set([
+  "register",
+  "login",
+  "verify-otp",
+  "resend-otp",
+  "forgot-password-request",
+  "forgot-password-verify",
+  "forgot-password-reset"
+]);
+
+// ── JWT helpers ────────────────────────────────────────────────────────────
+function signToken(uid, email) {
+  return jwt.sign({ uid, email }, jwtSecret, { expiresIn: JWT_EXPIRY });
+}
+
+function verifyToken(req) {
+  const header = req.headers["authorization"] || "";
+  if (!header.startsWith("Bearer ")) return null;
+  try {
+    return jwt.verify(header.slice(7), jwtSecret);
+  } catch {
+    return null;
+  }
+}
 
 // ── UID generator ──────────────────────────────────────────────────────────
 async function generateUID() {
@@ -49,11 +79,18 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed." });
-  if (allowedOrigin && req.headers.origin !== allowedOrigin) return res.status(403).json({ error: "Forbidden." });
+  if (req.method !== "POST")    return res.status(405).json({ error: "Method not allowed." });
+  if (allowedOrigin && req.headers.origin !== allowedOrigin)
+    return res.status(403).json({ error: "Forbidden." });
 
   const { action, ...payload } = req.body;
   if (!action) return res.status(400).json({ error: "Action required." });
+
+  // ── JWT guard for protected actions ──────────────────────────────────────
+  if (!PUBLIC_ACTIONS.has(action)) {
+    const decoded = verifyToken(req);
+    if (!decoded) return res.status(401).json({ error: "Unauthorized Access" });
+  }
 
   try {
     switch (action) {
@@ -74,11 +111,6 @@ export default async function handler(req, res) {
 }
 
 // ── Register ───────────────────────────────────────────────────────────────
-/**
- * 1. Crée l'utilisateur dans Firebase Auth (email + password)
- * 2. Crée le profil dans Firestore (sans champ password)
- * 3. emailVerified géré par Auth (false au départ)
- */
 async function handleRegister(body, res) {
   const { email, password } = body;
   if (!email || !password || password.length < 6) {
@@ -89,24 +121,19 @@ async function handleRegister(body, res) {
 
   const emailLower = email.toLowerCase().trim();
 
-  // Vérifier si email déjà utilisé dans Firestore (double sécurité)
   const existing = await usersCollection.where("email", "==", emailLower).limit(1).get();
   if (!existing.empty) {
     return res.status(400).json({ error: "An account with this email already exists." });
   }
 
-  // Générer UID custom (9 chiffres) — utilisé comme documentId Firestore ET uid Auth
   const uid = await generateUID();
   const otp = generateOTP();
 
-  // 1) Créer dans Firebase Auth avec l'uid custom
-  //    emailVerified = false (Auth gère cet état)
-  //    password stocké dans Auth (plus dans Firestore)
   try {
     await auth.createUser({
-      uid:           uid,
+      uid,
       email:         emailLower,
-      password:      password,
+      password,
       emailVerified: false
     });
   } catch (authErr) {
@@ -116,12 +143,9 @@ async function handleRegister(body, res) {
     throw authErr;
   }
 
-  // 2) Créer le profil Firestore (sans password, sans emailVerified)
   await usersCollection.doc(uid).set({
     uid,
     email:          emailLower,
-    // ← password: supprimé (stocké dans Firebase Auth)
-    // ← emailVerified: supprimé (géré par Firebase Auth)
     otp,
     otpExpires:     Date.now() + EMAIL_OTP_VALIDITY,
     otpAttempts:    0,
@@ -138,13 +162,6 @@ async function handleRegister(body, res) {
 }
 
 // ── Login ──────────────────────────────────────────────────────────────────
-/**
- * 1. Vérification email + password via Firebase Auth (signInWithEmailAndPassword côté Admin SDK)
- *    → On utilise auth.getUserByEmail() + firebase-admin ne supporte pas signIn direct
- *    → Solution: on vérifie via la REST API Firebase Auth (identitytoolkit)
- * 2. Vérifie emailVerified depuis Auth
- * 3. Retourne les infos utilisateur
- */
 async function handleLogin(body, res) {
   const { identifier, password } = body;
   if (!identifier || !password)
@@ -152,16 +169,13 @@ async function handleLogin(body, res) {
 
   const emailLower = identifier.toLowerCase().trim();
 
-  // Récupérer l'utilisateur Auth par email
   let authUser;
   try {
     authUser = await auth.getUserByEmail(emailLower);
-  } catch (e) {
-    // Utilisateur inexistant dans Auth
+  } catch {
     return res.status(400).json({ error: "Incorrect email or password." });
   }
 
-  // Vérifier le mot de passe via Firebase Auth REST API
   const apiKey = process.env.FIREBASE_API_KEY;
   if (!apiKey) throw new Error("FIREBASE_API_KEY not set");
 
@@ -178,7 +192,6 @@ async function handleLogin(body, res) {
     return res.status(400).json({ error: "Incorrect email or password." });
   }
 
-  // Vérifier le verrou OTP (stocké dans Firestore)
   const snap = await usersCollection.where("email", "==", emailLower).limit(1).get();
   if (snap.empty) return res.status(400).json({ error: "Incorrect email or password." });
 
@@ -191,7 +204,6 @@ async function handleLogin(body, res) {
     });
   }
 
-  // emailVerified vient de Firebase Auth (plus de Firestore)
   if (!authUser.emailVerified) {
     return res.status(403).json({
       error: "Your email address has not been verified.",
@@ -199,10 +211,12 @@ async function handleLogin(body, res) {
     });
   }
 
-  // Générer un Custom Token Firebase pour le client (optionnel mais propre)
-  // On retourne simplement les infos user — le client utilise localStorage
+  // Issue JWT token
+  const token = signToken(userData.uid, userData.email);
+
   return res.status(200).json({
     success: true,
+    token,
     user: {
       uid:      userData.uid,
       email:    userData.email,
@@ -212,10 +226,6 @@ async function handleLogin(body, res) {
 }
 
 // ── Verify OTP ─────────────────────────────────────────────────────────────
-/**
- * Vérifie le code OTP + marque emailVerified = true dans Firebase Auth
- * (plus de champ emailVerified dans Firestore)
- */
 async function handleVerifyOtp(body, res) {
   const { identifier, otp } = body;
   if (!identifier || !otp)
@@ -246,19 +256,20 @@ async function handleVerifyOtp(body, res) {
     });
   }
 
-  // Marquer emailVerified = true dans Firebase Auth
   await auth.updateUser(userData.uid, { emailVerified: true });
 
-  // Nettoyer les champs OTP dans Firestore (garder otpLockUntil si existant)
   await userDoc.ref.update({
     otp:         null,
     otpExpires:  null,
     otpAttempts: 0
-    // emailVerified supprimé de Firestore → Auth le gère
   });
+
+  // Issue JWT token after email verification
+  const token = signToken(userData.uid, userData.email);
 
   return res.status(200).json({
     success: true,
+    token,
     user: {
       uid:      userData.uid,
       email:    userData.email,
@@ -276,7 +287,7 @@ async function handleResendOtp(body, res) {
     .where("email", "==", identifier.toLowerCase().trim())
     .limit(1)
     .get();
-  if (snap.empty) return res.status(200).json({ success: true }); // silencieux
+  if (snap.empty) return res.status(200).json({ success: true });
 
   const userDoc = snap.docs[0];
   const otp     = generateOTP();
@@ -298,7 +309,7 @@ async function handleForgotPasswordRequest(body, res) {
     .where("email", "==", identifier.toLowerCase().trim())
     .limit(1)
     .get();
-  if (snap.empty) return res.status(200).json({ success: true }); // silencieux
+  if (snap.empty) return res.status(200).json({ success: true });
 
   const otp = generateOTP();
   await snap.docs[0].ref.update({
@@ -336,10 +347,6 @@ async function handleForgotPasswordVerify(body, res) {
 }
 
 // ── Forgot Password Reset ──────────────────────────────────────────────────
-/**
- * Reset le mot de passe directement dans Firebase Auth
- * (plus de bcrypt, plus de champ password dans Firestore)
- */
 async function handleForgotPasswordReset(body, res) {
   const { identifier, otp, newPassword } = body;
   if (!identifier || !otp || !newPassword)
@@ -364,24 +371,17 @@ async function handleForgotPasswordReset(body, res) {
     return res.status(400).json({ error: "Invalid or expired code. Please start the process again." });
   }
 
-  // Mettre à jour le mot de passe dans Firebase Auth
   await auth.updateUser(userData.uid, { password: newPassword });
 
-  // Nettoyer les champs reset dans Firestore
   await userDoc.ref.update({
     resetOTP:        null,
     resetOTPExpires: null
-    // password supprimé de Firestore → Auth le gère
   });
 
   return res.status(200).json({ success: true });
 }
 
-// ── Verify Password ────────────────────────────────────────────────────────
-/**
- * Vérifie le mot de passe actuel via Firebase Auth REST API
- * (plus de bcrypt.compare sur le hash Firestore)
- */
+// ── Verify Password (JWT protected) ────────────────────────────────────────
 async function handleVerifyPassword(body, res) {
   const { uid, password } = body;
   if (!uid || !password)
