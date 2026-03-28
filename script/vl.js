@@ -311,23 +311,34 @@
         var iWon       = (winnerColor === myColor);
         var loserColor = iWon ? myOppColor : myColor;
 
+        // isCase1: resy ny firstMover (na green na red) → countdown + auto-restart
+        //   - green resy  → miverina, green iany no firstMover (tsy misy fiovana)
+        //   - red resy    → miverina, red iany no firstMover (tsy misy fiovana)
         var isCase1 = !!(firstMover && loserColor === firstMover);
+
+        // isCase2: mandresy ny GREEN (firstMover=maintso) → "Mamaly lalao" + countdown, lasa RED no firstMover
+        var isCase2 = !isCase1 && !!(firstMover && firstMover === 'maintso' && winnerColor === 'maintso');
+
+        // isCase3: mandresy ny RED (firstMover=mena) → You Win / You lose + button roa
+        // (isCase1=false, isCase2=false → sisa rehetra)
 
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
 
         if (isCase1) {
-
           title.textContent = iWon ? 'Nampiraikitra' : 'Tsy afaka';
+        } else if (isCase2) {
+          title.textContent = 'Mamaly lalao';
         } else {
-
           title.innerHTML = iWon ? '&#127942; You win!' : '&#128532; You lose!';
         }
 
         box.appendChild(title);
 
-        if (isCase1) {
-
+        if (isCase1 || isCase2) {
+          // Countdown + auto-restart
+          // isCase1: firstMover tsy miova (green resy → green, red resy → red)
+          // isCase2: firstMover lasa mena (green mandresy → red no firstMover vaovao)
           var cdWrap = document.createElement('div');
           cdWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
@@ -354,21 +365,28 @@
           var countdown = 3;
           var countTimer = setInterval(function() {
             countdown--;
-
             if (!document.body.contains(overlay)) { clearInterval(countTimer); return; }
             countEl.textContent = countdown > 0 ? countdown : '0';
             if (countdown <= 0) {
               clearInterval(countTimer);
-
-              if (loserColor === myColor) {
-                callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
-                  .catch(function(e) { console.warn('auto-restart error:', e); });
+              if (isCase1) {
+                // Ny resy no manao auto-restart (firstMover tsy miova)
+                if (loserColor === myColor) {
+                  callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
+                    .catch(function(e) { console.warn('auto-restart (case1) error:', e); });
+                }
+              } else {
+                // isCase2: green nandresy → red (resy) no manao auto-restart → firstMover lasa red
+                if (!iWon) {
+                  callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
+                    .catch(function(e) { console.warn('auto-restart (case2) error:', e); });
+                }
               }
             }
           }, 1000);
 
         } else {
-
+          // isCase3: mandresy ny RED → You Win / You lose + button roa (tsy misy countdown)
           var btnRow = document.createElement('div');
           btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
 
@@ -1061,23 +1079,17 @@
 
     function onRealtimePh2(game) {
 
+      if (game.turn === myColor && ph2_movingInProgress) {
+        ph2_movingInProgress = false;
+        return;
+      }
+
       if (game.turn !== myColor) {
-        // Anjaran'ny adversary: reset moving flag, update state, render
         ph2_movingInProgress = false;
         ph2_localState = ph2CopyState(game);
         updateTurnIndicator(ph2_localState.turn);
         stopAllTimers();
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
-        return;
-      }
-
-      // game.turn === myColor
-      if (ph2_movingInProgress) {
-        // Mbola manao hetsika maromaro: tsy resena ny localState avy amin'ny server,
-        // averina ny local state ihany (tahaka fn.js)
-        ph2_movingInProgress = false;
-        ph2RenderPieces(ph2_localState.pieces, ph2_localState);
-        if (ph2_selectedSpot) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
         return;
       }
 
