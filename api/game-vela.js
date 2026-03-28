@@ -430,10 +430,16 @@ async function handleAutoRestart(body, res) {
   if (game.rematch && (game.rematch.status === "auto-restarted" || game.rematch.status === "accepted"))
     return res.status(200).json({ success: true });
 
-  if (!game.firstMover || game.winner === game.firstMover)
-    return res.status(400).json({ error: "Auto-restart only applies when the phase-1 firstMover lost." });
+  // isCase1: resy ny firstMover → newFirstMover = winner
+  // isCase2: mandresy ny GREEN (firstMover=maintso) → newFirstMover = mena (RED)
+  // isCase3: mandresy ny RED (firstMover=mena) → tsy azo auto-restart
+  const isCase2 = game.firstMover === "maintso" && game.winner === "maintso";
+  if (!game.firstMover || (game.winner === game.firstMover && !isCase2))
+    return res.status(400).json({ error: "Auto-restart only applies when the phase-1 firstMover lost, or when green (firstMover) won." });
 
-  const newFirstMover = game.winner === "maintso" ? "mena" : "maintso";
+  // isCase1: newFirstMover = non-firstMover teo aloha
+  // isCase2: newFirstMover = mena, satria lasa RED no manao hetsika voalohany
+  const newFirstMover = isCase2 ? "mena" : (game.winner === "maintso" ? "mena" : "maintso");
   const rematchCount  = (game.rematchCount || 0) + 1;
 
   const R = ["A","B","C","D","E"], C = ["1","2","3","4","5","6","7","8","9"];
