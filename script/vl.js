@@ -311,33 +311,31 @@
         var iWon       = (winnerColor === myColor);
         var loserColor = iWon ? myOppColor : myColor;
 
-        // isCase1 = ny mpandray anjara nanao hetsika voalohany amin'ity laingana ity no resy
-        // (tsy mbola aseho You Win/You Lose fa Mamaly lalao + countdown)
-        var isCase1 = !!(currentRoundFirstMover && loserColor === currentRoundFirstMover);
+        // isCase1: resy ny firstMover → Tsy afaka / Nampiraikitra + countdown + auto-restart (tsy ovaina)
+        var isCase1 = !!(firstMover && loserColor === firstMover);
+
+        // isCase2: mandresy ny GREEN (firstMover=maintso) → "Mamaly lalao" + countdown, lasa RED no firstMover
+        // = firstMover === 'maintso' ary winnerColor === 'maintso'
+        var isCase2 = !isCase1 && !!(firstMover && firstMover === 'maintso' && winnerColor === 'maintso');
+
+        // isCase3: mandresy ny RED (firstMover=mena) → You Win / You lose + button roa (tsy ovaina)
+        // = isCase1=false, isCase2=false → sisa rehetra
 
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
 
         if (isCase1) {
-          // Tsy afaka / Nampiraikitra — mbola tsy vita ny lalao
           title.textContent = iWon ? 'Nampiraikitra' : 'Tsy afaka';
+        } else if (isCase2) {
+          title.textContent = 'Mamaly lalao';
         } else {
-          // Vita ny lalao — You win / You lose
           title.innerHTML = iWon ? '&#127942; You win!' : '&#128532; You lose!';
         }
 
         box.appendChild(title);
 
         if (isCase1) {
-          // Case 1 : ny firstMover amin'ity laingana ity no resy
-          // → Mamaly lalao + countdown, averina ny lalao
-          // → ny mpitsaoka faharoa amin'ity laingana ity no lasa firstMover amin'ny laingana manaraka
-
-          var mamaly = document.createElement('div');
-          mamaly.style.cssText = 'font-size:1em;font-weight:700;color:#fde68a;margin-bottom:14px;';
-          mamaly.textContent = 'Mamaly lalao';
-          box.appendChild(mamaly);
-
+          // Countdown + auto-restart, mbola green no manao hetsika voalohany
           var cdWrap = document.createElement('div');
           cdWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
@@ -361,9 +359,6 @@
           overlay.appendChild(box);
           document.body.appendChild(overlay);
 
-          // Ny mpitsaoka faharoa amin'ity laingana ity no lasa firstMover amin'ny laingana manaraka
-          var nextRoundFirstMover = (currentRoundFirstMover === 'maintso') ? 'mena' : 'maintso';
-
           var countdown = 3;
           var countTimer = setInterval(function() {
             countdown--;
@@ -373,9 +368,6 @@
             if (countdown <= 0) {
               clearInterval(countTimer);
 
-              // Update currentRoundFirstMover ho an'ny laingana manaraka
-              currentRoundFirstMover = nextRoundFirstMover;
-
               if (loserColor === myColor) {
                 callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
                   .catch(function(e) { console.warn('auto-restart error:', e); });
@@ -383,10 +375,54 @@
             }
           }, 1000);
 
-        } else {
-          // Case 2 : ny mpitsaoka faharoa amin'ity laingana ity no resy → Vita ny lalao
-          // → You Win / You Lose + OK + Revanche
+        } else if (isCase2) {
+          // Mandresy ny GREEN: "Mamaly lalao" + countdown, lasa RED no firstMover aorian'izay
+          var cdWrap2 = document.createElement('div');
+          cdWrap2.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
+          var countEl2 = document.createElement('div');
+          countEl2.style.cssText = [
+            'font-size:2.4em','font-weight:900','color:#a5f3ff',
+            'background:rgba(165,243,255,0.12)','border-radius:50%',
+            'width:64px','height:64px','display:flex',
+            'align-items:center','justify-content:center',
+            'border:2px solid rgba(165,243,255,0.35)'
+          ].join(';');
+          countEl2.textContent = '3';
+
+          var subEl2 = document.createElement('div');
+          subEl2.style.cssText = 'font-size:0.82em;opacity:0.60;letter-spacing:0.03em;';
+          subEl2.textContent = 'Miverina ny lalao...';
+
+          cdWrap2.appendChild(countEl2);
+          cdWrap2.appendChild(subEl2);
+          box.appendChild(cdWrap2);
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
+
+          var countdown2 = 3;
+          var countTimer2 = setInterval(function() {
+            countdown2--;
+
+            if (!document.body.contains(overlay)) { clearInterval(countTimer2); return; }
+            countEl2.textContent = countdown2 > 0 ? countdown2 : '0';
+            if (countdown2 <= 0) {
+              clearInterval(countTimer2);
+
+              // Ny mpilalao rehetra afaka manao ny accept-rematch mba hanova firstMover ho mena
+              // Ny loser (= myOppColor eto fa green no nandresy) no manao auto-restart
+              // Saingy eto winnerColor = maintso (green), koa ny "loser" = myOppColor raha iWon, = myColor raha tsy iWon
+              // Ny tokony hanao auto-restart: ny mpilalao iray (avoaka ny race condition)
+              if (!iWon) {
+                // Izaho no resy (myColor = mena), koa izaho no manao ny auto-restart
+                callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
+                  .catch(function(e) { console.warn('auto-restart (case2) error:', e); });
+              }
+            }
+          }, 1000);
+
+        } else {
+          // isCase3: mandresy ny RED → You Win / You lose + button roa (tsy misy countdown)
           var btnRow = document.createElement('div');
           btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
 
@@ -672,11 +708,10 @@
       var fmColor = localState.firstMover || firstMover;
       if (fmColor && localState.turn === fmColor && !localState.movingPiece && !gameOverTriggered) {
         if (!playerHasAnyCapturePh1(localState.pieces, fmColor)) {
-          // fmColor no resy — ny mpandresy dia tsy fmColor
-          var fmLoserWinner = (fmColor === 'maintso') ? 'mena' : 'maintso';
+
           stopAllTimers();
           stopPlayerTimerRaf();
-          showGameOverAlert(fmLoserWinner, 0);
+          showGameOverAlert(fmColor, 0);
           return;
         }
       }
@@ -732,11 +767,9 @@
       var fmApply = localState.firstMover || firstMover;
       if (fmApply && localState.turn === fmApply && !localState.movingPiece && !gameOverTriggered) {
         if (!playerHasAnyCapturePh1(localState.pieces, fmApply)) {
-          // fmApply no resy — ny mpandresy dia tsy fmApply
-          var fmApplyWinner = (fmApply === 'maintso') ? 'mena' : 'maintso';
           stopAllTimers();
           stopPlayerTimerRaf();
-          showGameOverAlert(fmApplyWinner, 0);
+          showGameOverAlert(fmApply, 0);
           return;
         }
       }
@@ -1522,11 +1555,6 @@
       return l;
     }
 
-    // currentRoundFirstMover tracks who moves first in the current round.
-    // Starts as 'maintso' (green always goes first at game start).
-    // After a green-first-mover loss, it flips to 'mena' for the next round.
-    var currentRoundFirstMover = 'maintso';
-
     var rematchHandled   = false;
     var rematchResetDone = false;
     var rematchOverlayEl = null;
@@ -1645,9 +1673,6 @@
       else                    board.classList.remove('flipped');
 
       if (game.firstMover) firstMover = game.firstMover;
-
-      // Rematch vaovao: ny maintso indray no manomboka voalohany
-      currentRoundFirstMover = 'maintso';
 
       gameOverTriggered = false;
       movingInProgress  = false;
