@@ -1082,9 +1082,12 @@
     closeGsDropdown();
     if (roomSyncTimer) { clearInterval(roomSyncTimer); roomSyncTimer = null; }
     closeModal(gameSetupModal);
-    gameOrigin = 'room';
-    if (!matchupData) openGameSelectModal('room');
-    else openGameSelectModal('room');
+    var origin = gameOrigin;
+    if (origin === 'create') {
+      openGameSelectModal('create');
+    } else {
+      openGameSelectModal('room');
+    }
   });
   gameSetupModal.addEventListener('click', function (e) { if (e.target === gameSetupModal) closeGsDropdown(); });
 
