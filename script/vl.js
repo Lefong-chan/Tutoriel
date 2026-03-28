@@ -311,31 +311,23 @@
         var iWon       = (winnerColor === myColor);
         var loserColor = iWon ? myOppColor : myColor;
 
-        // isCase1: resy ny firstMover → Tsy afaka / Nampiraikitra + countdown + auto-restart (tsy ovaina)
         var isCase1 = !!(firstMover && loserColor === firstMover);
-
-        // isCase2: mandresy ny GREEN (firstMover=maintso) → "Mamaly lalao" + countdown, lasa RED no firstMover
-        // = firstMover === 'maintso' ary winnerColor === 'maintso'
-        var isCase2 = !isCase1 && !!(firstMover && firstMover === 'maintso' && winnerColor === 'maintso');
-
-        // isCase3: mandresy ny RED (firstMover=mena) → You Win / You lose + button roa (tsy ovaina)
-        // = isCase1=false, isCase2=false → sisa rehetra
 
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
 
         if (isCase1) {
+
           title.textContent = iWon ? 'Nampiraikitra' : 'Tsy afaka';
-        } else if (isCase2) {
-          title.textContent = 'Mamaly lalao';
         } else {
+
           title.innerHTML = iWon ? '&#127942; You win!' : '&#128532; You lose!';
         }
 
         box.appendChild(title);
 
         if (isCase1) {
-          // Countdown + auto-restart, mbola green no manao hetsika voalohany
+
           var cdWrap = document.createElement('div');
           cdWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
@@ -375,54 +367,8 @@
             }
           }, 1000);
 
-        } else if (isCase2) {
-          // Mandresy ny GREEN: "Mamaly lalao" + countdown, lasa RED no firstMover aorian'izay
-          var cdWrap2 = document.createElement('div');
-          cdWrap2.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
-
-          var countEl2 = document.createElement('div');
-          countEl2.style.cssText = [
-            'font-size:2.4em','font-weight:900','color:#a5f3ff',
-            'background:rgba(165,243,255,0.12)','border-radius:50%',
-            'width:64px','height:64px','display:flex',
-            'align-items:center','justify-content:center',
-            'border:2px solid rgba(165,243,255,0.35)'
-          ].join(';');
-          countEl2.textContent = '3';
-
-          var subEl2 = document.createElement('div');
-          subEl2.style.cssText = 'font-size:0.82em;opacity:0.60;letter-spacing:0.03em;';
-          subEl2.textContent = 'Miverina ny lalao...';
-
-          cdWrap2.appendChild(countEl2);
-          cdWrap2.appendChild(subEl2);
-          box.appendChild(cdWrap2);
-          overlay.appendChild(box);
-          document.body.appendChild(overlay);
-
-          var countdown2 = 3;
-          var countTimer2 = setInterval(function() {
-            countdown2--;
-
-            if (!document.body.contains(overlay)) { clearInterval(countTimer2); return; }
-            countEl2.textContent = countdown2 > 0 ? countdown2 : '0';
-            if (countdown2 <= 0) {
-              clearInterval(countTimer2);
-
-              // Ny mpilalao rehetra afaka manao ny accept-rematch mba hanova firstMover ho mena
-              // Ny loser (= myOppColor eto fa green no nandresy) no manao auto-restart
-              // Saingy eto winnerColor = maintso (green), koa ny "loser" = myOppColor raha iWon, = myColor raha tsy iWon
-              // Ny tokony hanao auto-restart: ny mpilalao iray (avoaka ny race condition)
-              if (!iWon) {
-                // Izaho no resy (myColor = mena), koa izaho no manao ny auto-restart
-                callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
-                  .catch(function(e) { console.warn('auto-restart (case2) error:', e); });
-              }
-            }
-          }, 1000);
-
         } else {
-          // isCase3: mandresy ny RED → You Win / You lose + button roa (tsy misy countdown)
+
           var btnRow = document.createElement('div');
           btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
 
@@ -1115,17 +1061,23 @@
 
     function onRealtimePh2(game) {
 
-      if (game.turn === myColor && ph2_movingInProgress) {
-        ph2_movingInProgress = false;
-        return;
-      }
-
       if (game.turn !== myColor) {
+        // Anjaran'ny adversary: reset moving flag, update state, render
         ph2_movingInProgress = false;
         ph2_localState = ph2CopyState(game);
         updateTurnIndicator(ph2_localState.turn);
         stopAllTimers();
         ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+        return;
+      }
+
+      // game.turn === myColor
+      if (ph2_movingInProgress) {
+        // Mbola manao hetsika maromaro: tsy resena ny localState avy amin'ny server,
+        // averina ny local state ihany (tahaka fn.js)
+        ph2_movingInProgress = false;
+        ph2RenderPieces(ph2_localState.pieces, ph2_localState);
+        if (ph2_selectedSpot) ph2RenderGuides(ph2_selectedSpot, ph2_localState);
         return;
       }
 
