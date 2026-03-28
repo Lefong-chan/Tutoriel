@@ -311,16 +311,15 @@
         var iWon       = (winnerColor === myColor);
         var loserColor = iWon ? myOppColor : myColor;
 
-        // isCase1: resy ny firstMover (na green na red) → countdown + auto-restart
-        //   - green resy  → miverina, green iany no firstMover (tsy misy fiovana)
-        //   - red resy    → miverina, red iany no firstMover (tsy misy fiovana)
+        // isCase1: resy ny firstMover → Tsy afaka / Nampiraikitra + countdown + auto-restart (tsy ovaina)
         var isCase1 = !!(firstMover && loserColor === firstMover);
 
         // isCase2: mandresy ny GREEN (firstMover=maintso) → "Mamaly lalao" + countdown, lasa RED no firstMover
+        // = firstMover === 'maintso' ary winnerColor === 'maintso'
         var isCase2 = !isCase1 && !!(firstMover && firstMover === 'maintso' && winnerColor === 'maintso');
 
-        // isCase3: mandresy ny RED (firstMover=mena) → You Win / You lose + button roa
-        // (isCase1=false, isCase2=false → sisa rehetra)
+        // isCase3: mandresy ny RED (firstMover=mena) → You Win / You lose + button roa (tsy ovaina)
+        // = isCase1=false, isCase2=false → sisa rehetra
 
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
@@ -335,10 +334,8 @@
 
         box.appendChild(title);
 
-        if (isCase1 || isCase2) {
-          // Countdown + auto-restart
-          // isCase1: firstMover tsy miova (green resy → green, red resy → red)
-          // isCase2: firstMover lasa mena (green mandresy → red no firstMover vaovao)
+        if (isCase1) {
+          // Countdown + auto-restart, mbola green no manao hetsika voalohany
           var cdWrap = document.createElement('div');
           cdWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
@@ -365,22 +362,61 @@
           var countdown = 3;
           var countTimer = setInterval(function() {
             countdown--;
+
             if (!document.body.contains(overlay)) { clearInterval(countTimer); return; }
             countEl.textContent = countdown > 0 ? countdown : '0';
             if (countdown <= 0) {
               clearInterval(countTimer);
-              if (isCase1) {
-                // Ny resy no manao auto-restart (firstMover tsy miova)
-                if (loserColor === myColor) {
-                  callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
-                    .catch(function(e) { console.warn('auto-restart (case1) error:', e); });
-                }
-              } else {
-                // isCase2: green nandresy → red (resy) no manao auto-restart → firstMover lasa red
-                if (!iWon) {
-                  callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
-                    .catch(function(e) { console.warn('auto-restart (case2) error:', e); });
-                }
+
+              if (loserColor === myColor) {
+                callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
+                  .catch(function(e) { console.warn('auto-restart error:', e); });
+              }
+            }
+          }, 1000);
+
+        } else if (isCase2) {
+          // Mandresy ny GREEN: "Mamaly lalao" + countdown, lasa RED no firstMover aorian'izay
+          var cdWrap2 = document.createElement('div');
+          cdWrap2.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
+
+          var countEl2 = document.createElement('div');
+          countEl2.style.cssText = [
+            'font-size:2.4em','font-weight:900','color:#a5f3ff',
+            'background:rgba(165,243,255,0.12)','border-radius:50%',
+            'width:64px','height:64px','display:flex',
+            'align-items:center','justify-content:center',
+            'border:2px solid rgba(165,243,255,0.35)'
+          ].join(';');
+          countEl2.textContent = '3';
+
+          var subEl2 = document.createElement('div');
+          subEl2.style.cssText = 'font-size:0.82em;opacity:0.60;letter-spacing:0.03em;';
+          subEl2.textContent = 'Miverina ny lalao...';
+
+          cdWrap2.appendChild(countEl2);
+          cdWrap2.appendChild(subEl2);
+          box.appendChild(cdWrap2);
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
+
+          var countdown2 = 3;
+          var countTimer2 = setInterval(function() {
+            countdown2--;
+
+            if (!document.body.contains(overlay)) { clearInterval(countTimer2); return; }
+            countEl2.textContent = countdown2 > 0 ? countdown2 : '0';
+            if (countdown2 <= 0) {
+              clearInterval(countTimer2);
+
+              // Ny mpilalao rehetra afaka manao ny accept-rematch mba hanova firstMover ho mena
+              // Ny loser (= myOppColor eto fa green no nandresy) no manao auto-restart
+              // Saingy eto winnerColor = maintso (green), koa ny "loser" = myOppColor raha iWon, = myColor raha tsy iWon
+              // Ny tokony hanao auto-restart: ny mpilalao iray (avoaka ny race condition)
+              if (!iWon) {
+                // Izaho no resy (myColor = mena), koa izaho no manao ny auto-restart
+                callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
+                  .catch(function(e) { console.warn('auto-restart (case2) error:', e); });
               }
             }
           }, 1000);
@@ -403,24 +439,25 @@
 
           if (gameSource === 'vela') {
             var btnRevanche = document.createElement('button');
-            btnRevanche.innerHTML = '&#128260; Revanche';
+            btnRevanche.textContent = 'Rematch';
             btnRevanche.style.cssText = [
               'background:#f59e0b','color:white','border:none',
               'border-radius:10px','padding:12px 24px',
               'font-size:1.1em','font-weight:700','cursor:pointer',
-              'box-shadow:0 2px 10px rgba(245,158,11,0.4)'
+              'box-shadow:0 2px 10px rgba(245,158,11,0.4)',
+              'min-width:120px'
             ].join(';');
             btnRevanche.onclick = function() {
               btnRevanche.disabled = true;
               btnRevanche.textContent = '...';
               callApi(GAME_API_URL, 'request-rematch', { uid: myUid, gameId: gameId })
                 .then(function() {
-                  btnRevanche.textContent = 'Demande envoyée';
+                  btnRevanche.textContent = 'Envoyé';
                   btnRevanche.style.background = '#64748b';
                 })
                 .catch(function(e) {
                   btnRevanche.disabled = false;
-                  btnRevanche.textContent = 'Revanche';
+                  btnRevanche.textContent = 'Rematch';
                   console.warn('request-rematch error:', e);
                 });
             };
@@ -964,7 +1001,9 @@
           if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
         }
         if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          var entry = piecesOnBoard[vKey];
+          entry.el.classList.remove('no-transition');
+          newPiecesOnBoard[target] = entry;
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
           piecesOnBoard[vKey].el.remove();
@@ -973,13 +1012,25 @@
 
       appeared.forEach(function(aKey) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
+        g.setAttribute('class', 'piece-group no-transition');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
         g.appendChild(c);
         grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
       });
+
+      (function(snapAppeared, snapBoard) {
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            snapAppeared.forEach(function(aKey) {
+              if (snapBoard[aKey] && snapBoard[aKey].el) {
+                snapBoard[aKey].el.classList.remove('no-transition');
+              }
+            });
+          });
+        });
+      })(appeared.slice(), newPiecesOnBoard);
 
       Object.keys(pieces).forEach(function(k) {
         if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
@@ -1317,7 +1368,9 @@
           if (pieces[appeared[i]] === color) { target = appeared[i]; break; }
         }
         if (target) {
-          newPiecesOnBoard[target] = piecesOnBoard[vKey];
+          var entry = piecesOnBoard[vKey];
+          entry.el.classList.remove('no-transition');
+          newPiecesOnBoard[target] = entry;
           appeared = appeared.filter(function(a) { return a !== target; });
         } else {
           piecesOnBoard[vKey].el.remove();
@@ -1326,13 +1379,25 @@
 
       appeared.forEach(function(aKey) {
         var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.setAttribute('class', 'piece-group');
+        g.setAttribute('class', 'piece-group no-transition');
         var c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         c.setAttribute('r', 8);
         g.appendChild(c);
         grp.appendChild(g);
         newPiecesOnBoard[aKey] = { el: g, color: pieces[aKey] };
       });
+
+      (function(snapAppeared, snapBoard) {
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            snapAppeared.forEach(function(aKey) {
+              if (snapBoard[aKey] && snapBoard[aKey].el) {
+                snapBoard[aKey].el.classList.remove('no-transition');
+              }
+            });
+          });
+        });
+      })(appeared.slice(), newPiecesOnBoard);
 
       Object.keys(pieces).forEach(function(k) {
         if (!newPiecesOnBoard[k]) newPiecesOnBoard[k] = piecesOnBoard[k];
