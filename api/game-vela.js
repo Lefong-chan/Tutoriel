@@ -68,6 +68,9 @@ export default async function handler(req, res) {
       case "decline-rematch":    return await handleDeclineRematch(payload, res);
       case "mark-rematch-done":  return await handleMarkRematchDone(payload, res);
       case "auto-restart":       return await handleAutoRestart(payload, res);
+      case "demande-request":    return await handleDemandeRequest(payload, res);
+      case "demande-accept":     return await handleDemandeAccept(payload, res);
+      case "demande-decline":    return await handleDemandeDecline(payload, res);
       default: return res.status(400).json({ error: "Invalid action." });
     }
   } catch (err) {
@@ -430,15 +433,10 @@ async function handleAutoRestart(body, res) {
   if (game.rematch && (game.rematch.status === "auto-restarted" || game.rematch.status === "accepted"))
     return res.status(200).json({ success: true });
 
-  // isCase1: resy ny firstMover → newFirstMover = winner
-  // isCase2: mandresy ny GREEN (firstMover=maintso) → newFirstMover = mena (RED)
-  // isCase3: mandresy ny RED (firstMover=mena) → tsy azo auto-restart
   const isCase2 = game.firstMover === "maintso" && game.winner === "maintso";
   if (!game.firstMover || (game.winner === game.firstMover && !isCase2))
     return res.status(400).json({ error: "Auto-restart only applies when the phase-1 firstMover lost, or when green (firstMover) won." });
 
-  // isCase1: newFirstMover = non-firstMover teo aloha
-  // isCase2: newFirstMover = mena, satria lasa RED no manao hetsika voalohany
   const newFirstMover = isCase2 ? "mena" : (game.winner === "maintso" ? "mena" : "maintso");
   const rematchCount  = (game.rematchCount || 0) + 1;
 
@@ -508,6 +506,68 @@ async function handleDeclareWinner(body, res) {
   }
   await gameRef.update({ winner });
   return res.status(200).json({ success: true, winner });
+}
+
+// ── Demande ────────────────────────────────────────────────────────────────
+
+async function handleDemandeRequest(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+  if (!isPhase2(game))
+    return res.status(400).json({ error: "Phase 2 ihany no azo atao demande." });
+
+  const existing = await rtdbGet(gameRef.child("demande"));
+  if (existing && existing.status === "pending")
+    return res.status(400).json({ error: "Efa misy demande am-piandrasana." });
+
+  const requesterUsername = uid === game.senderUid
+    ? (game.senderUsername   || uid)
+    : (game.receiverUsername || uid);
+
+  await gameRef.child("demande").set({
+    requestedBy:        uid,
+    requestedAt:        Date.now(),
+    status:             "pending",
+    requesterUsername:  requesterUsername
+  });
+  return res.status(200).json({ success: true });
+}
+
+async function handleDemandeAccept(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  const demande = await rtdbGet(gameRef.child("demande"));
+  if (!demande || demande.status !== "pending")
+    return res.status(400).json({ error: "Tsy misy demande am-piandrasana." });
+  if (demande.requestedBy === uid)
+    return res.status(400).json({ error: "Tsy azonao ekena ny demandanao." });
+
+  await gameRef.child("demande").update({ status: "accepted", answeredAt: Date.now() });
+  return res.status(200).json({ success: true });
+}
+
+async function handleDemandeDecline(body, res) {
+  const { uid, gameId } = body;
+  if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
+  const gameRef = gamesRef.child(gameId);
+  const game    = await rtdbGet(gameRef);
+  if (!game) return res.status(404).json({ error: "Game not found." });
+  if (game.senderUid !== uid && game.receiverUid !== uid)
+    return res.status(403).json({ error: "Not authorized." });
+
+  await gameRef.child("demande").update({ status: "declined", answeredAt: Date.now() });
+  return res.status(200).json({ success: true });
 }
 
 // ── Board helpers ──────────────────────────────────────────────────────────
