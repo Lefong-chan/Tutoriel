@@ -311,9 +311,15 @@
         var iWon       = (winnerColor === myColor);
         var loserColor = iWon ? myOppColor : myColor;
 
+        // isCase1: resy ny firstMover → Tsy afaka / Nampiraikitra + countdown + auto-restart (tsy ovaina)
         var isCase1 = !!(firstMover && loserColor === firstMover);
 
+        // isCase2: mandresy ny GREEN (firstMover=maintso) → "Mamaly lalao" + countdown, lasa RED no firstMover
+        // = firstMover === 'maintso' ary winnerColor === 'maintso'
         var isCase2 = !isCase1 && !!(firstMover && firstMover === 'maintso' && winnerColor === 'maintso');
+
+        // isCase3: mandresy ny RED (firstMover=mena) → You Win / You lose + button roa (tsy ovaina)
+        // = isCase1=false, isCase2=false → sisa rehetra
 
         var title = document.createElement('div');
         title.style.cssText = 'font-size:1.6em;font-weight:800;margin-bottom:28px;';
@@ -329,6 +335,7 @@
         box.appendChild(title);
 
         if (isCase1) {
+          // Countdown + auto-restart, mbola green no manao hetsika voalohany
           var cdWrap = document.createElement('div');
           cdWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
@@ -369,6 +376,7 @@
           }, 1000);
 
         } else if (isCase2) {
+          // Mandresy ny GREEN: "Mamaly lalao" + countdown, lasa RED no firstMover aorian'izay
           var cdWrap2 = document.createElement('div');
           cdWrap2.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
 
@@ -401,7 +409,12 @@
             if (countdown2 <= 0) {
               clearInterval(countTimer2);
 
+              // Ny mpilalao rehetra afaka manao ny accept-rematch mba hanova firstMover ho mena
+              // Ny loser (= myOppColor eto fa green no nandresy) no manao auto-restart
+              // Saingy eto winnerColor = maintso (green), koa ny "loser" = myOppColor raha iWon, = myColor raha tsy iWon
+              // Ny tokony hanao auto-restart: ny mpilalao iray (avoaka ny race condition)
               if (!iWon) {
+                // Izaho no resy (myColor = mena), koa izaho no manao ny auto-restart
                 callApi(GAME_API_URL, 'auto-restart', { uid: myUid, gameId: gameId })
                   .catch(function(e) { console.warn('auto-restart (case2) error:', e); });
               }
@@ -409,6 +422,7 @@
           }, 1000);
 
         } else {
+          // isCase3: mandresy ny RED → You Win / You lose + button roa (tsy misy countdown)
           var btnRow = document.createElement('div');
           btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
 
@@ -1607,7 +1621,9 @@
       if (!isPhase2(pieces)) return;
       if (demandeHandled) return;
       demandeHandled = true;
-      callApi(GAME_API_URL, 'demande-request', { uid: myUid, gameId: gameId })
+      var myNameEl   = document.getElementById('my-name-span');
+      var myUsername = myNameEl ? myNameEl.textContent.trim() : (myUid || 'Mpilalao');
+      callApi(GAME_API_URL, 'demande-request', { uid: myUid, gameId: gameId, requesterUsername: myUsername })
         .catch(function(e) {
           console.warn('demande-request error:', e);
           demandeHandled = false;
@@ -1663,7 +1679,6 @@
           .then(function() {
             hideDemandeNotif();
             demandeHandled = false;
-
             firebase.database().ref('games/' + gameId).once('value', function(gameSnap) {
               var gameData = gameSnap.val();
               if (!gameData) return;
@@ -1720,9 +1735,6 @@
         var demande = snap.val();
         if (!demande) return;
 
-        var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
-        if (!isPhase2(pieces)) return;
-
         if (demande.status === 'pending' && demande.requestedBy !== myUid) {
           if (demandeHandled) return;
           demandeHandled = true;
@@ -1749,6 +1761,7 @@
           });
         }
 
+        // Declined
         if (demande.status === 'declined' && demande.requestedBy === myUid) {
           hideDemandeNotif();
           demandeHandled = false;
