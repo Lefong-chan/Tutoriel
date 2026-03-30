@@ -1603,7 +1603,6 @@
     var demandeResultTimer  = null;
     var demandeHideTimer    = null;
 
-    // ── Demande : update button state ─────────────────────────────────────────
     function updateDemandeBtnState(inPhase2) {
       var btn = document.getElementById('demande-btn');
       if (!btn) return;
@@ -1640,12 +1639,9 @@
       var iconEl      = document.getElementById('rn-icon');
       var actionsEl   = document.getElementById('rn-actions');
       var acceptLabel = document.getElementById('rn-accept-label');
-      var badgeEl     = document.getElementById('dn-result-badge');
       if (!notif) return;
 
-      // Reset badge
-      badgeEl.style.display = 'none';
-      badgeEl.className     = 'dn-result-badge';
+      // Reset actions
       actionsEl.style.maxHeight = '';
       actionsEl.style.opacity   = '';
       actionsEl.style.marginTop = '';
@@ -1679,6 +1675,7 @@
           .then(function() {
             hideDemandeNotif();
             demandeHandled = false;
+
             firebase.database().ref('games/' + gameId).once('value', function(gameSnap) {
               var gameData = gameSnap.val();
               if (!gameData) return;
@@ -1761,7 +1758,7 @@
           });
         }
 
-        // Declined
+        // Declined 
         if (demande.status === 'declined' && demande.requestedBy === myUid) {
           hideDemandeNotif();
           demandeHandled = false;
