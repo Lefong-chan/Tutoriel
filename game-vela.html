@@ -384,58 +384,7 @@
     .rn-btn-decline:hover { background: #fee2e2; color: #ef4444; }
     @media (max-width: 600px) { .rematch-notif { width: calc(100vw - 24px); right: 12px; } }
 
-    /* ── Demande modal ── */
-    .demande-notif {
-      position: fixed; top: 14px; right: 14px; width: 260px;
-      background: white; border-radius: 14px;
-      box-shadow: 0 8px 32px rgba(91,33,182,0.2), 0 2px 8px rgba(0,0,0,0.08);
-      border: 1.5px solid #ede9f8; z-index: 10001; overflow: hidden;
-      opacity: 0; transform: translateX(110%);
-      transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
-      pointer-events: none;
-    }
-    .demande-notif.dn-visible { opacity: 1; transform: translateX(0); pointer-events: auto; }
-    .dn-body { padding: 10px 12px 12px; }
-    .dn-row-top { display: flex; align-items: flex-start; gap: 9px; }
-    .dn-icon {
-      width: 30px; height: 30px; border-radius: 8px;
-      background: linear-gradient(135deg, #0ea5e9, #6366f1);
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0; margin-top: 1px;
-    }
-    .dn-icon i { color: white; font-size: 0.82em; }
-    .dn-text-wrap { flex: 1; min-width: 0; }
-    .dn-label {
-      font-size: 0.65em; font-weight: 700; color: #94a3b8;
-      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px;
-    }
-    .dn-msg { font-size: 0.82em; font-weight: 600; color: #1e293b; line-height: 1.35; }
-    .dn-username { color: #7c3aed; font-weight: 800; }
-    .dn-result {
-      margin-top: 8px; padding: 6px 10px; border-radius: 8px;
-      font-size: 0.82em; font-weight: 700; text-align: center;
-      display: none;
-    }
-    .dn-result.afaka    { background: #dcfce7; color: #16a34a; }
-    .dn-result.tsy-afaka { background: #fee2e2; color: #dc2626; }
-    .dn-actions {
-      display: flex; gap: 7px; margin-top: 9px;
-    }
-    .dn-btn-accept {
-      flex: 1; padding: 7px 8px; border: none; border-radius: 9px;
-      background: linear-gradient(to right, #0ea5e9, #6366f1);
-      color: white; font-size: 0.8em; font-weight: 700; cursor: pointer;
-      transition: opacity 0.18s; display: flex; align-items: center;
-      justify-content: center; gap: 5px;
-    }
-    .dn-btn-accept:hover { opacity: 0.85; }
-    .dn-btn-decline {
-      width: 34px; height: 34px; border: none; border-radius: 9px;
-      background: #f1f5f9; color: #64748b; font-size: 0.95em;
-      cursor: pointer; transition: background 0.18s;
-      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    }
-    .dn-btn-decline:hover { background: #fee2e2; color: #ef4444; }
+    /* ── Demande button state ── */
     .dbtn.ph2-active {
       opacity: 1; pointer-events: all;
       background: linear-gradient(135deg, rgba(124,77,255,0.55), rgba(167,119,227,0.30));
@@ -444,6 +393,15 @@
     .dbtn.ph2-inactive {
       opacity: 0.35; pointer-events: none;
     }
+
+    /* ── Demande result badge (inside rematch-notif quand mode demande) ── */
+    .dn-result-badge {
+      margin-top: 8px; padding: 6px 10px; border-radius: 8px;
+      font-size: 0.82em; font-weight: 700; text-align: center;
+      display: none;
+    }
+    .dn-result-badge.afaka     { background: #dcfce7; color: #16a34a; }
+    .dn-result-badge.tsy-afaka { background: #fee2e2; color: #dc2626; }
   </style>
 </head>
 <body>
@@ -523,37 +481,20 @@
 
   <div id="error-msg"></div>
 
-  <!-- Demande modal -->
-  <div class="demande-notif" id="demande-notif">
-    <div class="dn-body">
-      <div class="dn-row-top">
-        <div class="dn-icon"><i class="fas fa-handshake"></i></div>
-        <div class="dn-text-wrap">
-          <div class="dn-label">Demande</div>
-          <div class="dn-msg" id="dn-msg">Mangataka ny ho afaka i <span class="dn-username" id="dn-username">Adversaire</span></div>
-        </div>
-      </div>
-      <div class="dn-result" id="dn-result"></div>
-      <div class="dn-actions" id="dn-actions">
-        <button class="dn-btn-accept" id="dn-accept-btn"><i class="fas fa-check"></i> Manaiky</button>
-        <button class="dn-btn-decline" id="dn-decline-btn"><i class="fas fa-times"></i></button>
-      </div>
-    </div>
-  </div>
-
   <div class="rematch-notif" id="rematch-notif">
     <div class="rn-progress-wrap"><div class="rn-progress-bar" id="rnProgressBar"></div></div>
     <div class="rn-body">
       <div class="rn-row-top">
-        <div class="rn-icon"><i class="fas fa-redo-alt"></i></div>
+        <div class="rn-icon" id="rn-icon"><i class="fas fa-redo-alt"></i></div>
         <div class="rn-text-wrap">
-          <div class="rn-label">Restart</div>
-          <div class="rn-msg"><span class="rn-username" id="rn-username">Adversaire</span> propose une revanche&nbsp;!</div>
+          <div class="rn-label" id="rn-label">Restart</div>
+          <div class="rn-msg" id="rn-msg"><span class="rn-username" id="rn-username">Adversaire</span> <span id="rn-msg-text">propose une revanche&nbsp;!</span></div>
         </div>
         <div class="rn-countdown" id="rn-countdown">10</div>
       </div>
-      <div class="rn-actions">
-        <button class="rn-btn-accept" id="rematch-accept-btn"><i class="fas fa-check"></i> Accepter</button>
+      <div class="dn-result-badge" id="dn-result-badge"></div>
+      <div class="rn-actions" id="rn-actions">
+        <button class="rn-btn-accept" id="rematch-accept-btn"><i class="fas fa-check"></i> <span id="rn-accept-label">Accepter</span></button>
         <button class="rn-btn-decline" id="rematch-decline-btn"><i class="fas fa-times"></i></button>
       </div>
     </div>
