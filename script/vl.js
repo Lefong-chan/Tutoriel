@@ -1602,7 +1602,6 @@
       }
     }
 
-    // ── Demande ────────────────────────────────
     function handleDemandeBtnClick() {
       var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
       if (!isPhase2(pieces)) return;
@@ -1662,19 +1661,18 @@
       document.getElementById('rematch-accept-btn').onclick = function() {
         callApi(GAME_API_URL, 'demande-accept', { uid: myUid, gameId: gameId })
           .then(function() {
-            actionsEl.style.maxHeight = '0';
-            actionsEl.style.opacity   = '0';
-            actionsEl.style.marginTop = '0';
-            var resultText = isRequesterFirstMover ? 'Afaka' : 'Tsy afaka';
-            var resultCss  = isRequesterFirstMover ? 'afaka' : 'tsy-afaka';
-            badgeEl.textContent = resultText;
-            badgeEl.className   = 'dn-result-badge ' + resultCss;
-            badgeEl.style.display = 'block';
-            if (demandeResultTimer) clearTimeout(demandeResultTimer);
-            demandeResultTimer = setTimeout(function() {
-              hideDemandeNotif();
-              demandeHandled = false;
-            }, 3000);
+            hideDemandeNotif();
+            demandeHandled = false;
+
+            firebase.database().ref('games/' + gameId).once('value', function(gameSnap) {
+              var gameData = gameSnap.val();
+              if (!gameData) return;
+              var fm = gameData.firstMover || firstMover;
+              var nonFm = fm === 'maintso' ? 'mena' : 'maintso';
+              var winnerColor = isRequesterFirstMover ? nonFm : fm;
+              gameOverTriggered = false;
+              showGameOverAlert(winnerColor, 0);
+            });
           })
           .catch(function(e) { console.warn('demande-accept error:', e); });
       };
@@ -1689,39 +1687,13 @@
     }
 
     function showDemandeRequesterResult(iAmFirstMover) {
-      var notif     = document.getElementById('rematch-notif');
-      var actionsEl = document.getElementById('rn-actions');
-      var badgeEl   = document.getElementById('dn-result-badge');
-      var labelEl   = document.getElementById('rn-label');
-      var iconEl    = document.getElementById('rn-icon');
-      var countdownEl = document.getElementById('rn-countdown');
-      if (!notif) return;
-
-      if (!notif.classList.contains('rn-visible')) {
-        iconEl.innerHTML  = '<i class="fas fa-handshake"></i>';
-        iconEl.style.background = 'linear-gradient(135deg, #0ea5e9, #6366f1)';
-        labelEl.textContent = 'Demande';
-        countdownEl.style.display = 'none';
-        document.getElementById('rnProgressBar').style.transform = 'scaleX(0)';
-        document.getElementById('rn-msg-text').textContent = '';
-        notif.classList.add('rn-visible', 'rn-expanded');
-      }
-
-      actionsEl.style.maxHeight = '0';
-      actionsEl.style.opacity   = '0';
-      actionsEl.style.marginTop = '0';
-
-      var resultText = iAmFirstMover ? 'Afaka' : 'Tsy afaka';
-      var resultCss  = iAmFirstMover ? 'afaka' : 'tsy-afaka';
-      badgeEl.textContent = resultText;
-      badgeEl.className   = 'dn-result-badge ' + resultCss;
-      badgeEl.style.display = 'block';
-
-      if (demandeResultTimer) clearTimeout(demandeResultTimer);
-      demandeResultTimer = setTimeout(function() {
-        hideDemandeNotif();
-        demandeHandled = false;
-      }, 3000);
+      hideDemandeNotif();
+      demandeHandled = false;
+      var fm    = firstMover || 'maintso';
+      var nonFm = fm === 'maintso' ? 'mena' : 'maintso';
+      var winnerColor = iAmFirstMover ? nonFm : fm;
+      gameOverTriggered = false;
+      showGameOverAlert(winnerColor, 0);
     }
 
     function hideDemandeNotif() {
@@ -1729,14 +1701,12 @@
       var countdownEl = document.getElementById('rn-countdown');
       var iconEl      = document.getElementById('rn-icon');
       var labelEl     = document.getElementById('rn-label');
-      var badgeEl     = document.getElementById('dn-result-badge');
       var acceptLabel = document.getElementById('rn-accept-label');
       var progressBar = document.getElementById('rnProgressBar');
       if (notif) notif.classList.remove('rn-visible', 'rn-expanded');
       if (iconEl)      { iconEl.innerHTML = '<i class="fas fa-redo-alt"></i>'; iconEl.style.background = ''; }
       if (labelEl)     labelEl.textContent = 'Restart';
       if (countdownEl) { countdownEl.style.display = ''; countdownEl.textContent = '10'; }
-      if (badgeEl)     { badgeEl.style.display = 'none'; badgeEl.className = 'dn-result-badge'; }
       if (acceptLabel) acceptLabel.textContent = 'Accepter';
       if (progressBar) { progressBar.style.transition = 'none'; progressBar.style.transform = 'scaleX(1)'; }
       if (demandeResultTimer) { clearTimeout(demandeResultTimer); demandeResultTimer = null; }
@@ -1795,7 +1765,6 @@
       var labelEl     = document.getElementById('rn-label');
       var iconEl      = document.getElementById('rn-icon');
       var acceptLabel = document.getElementById('rn-accept-label');
-      var badgeEl     = document.getElementById('dn-result-badge');
       if (!notif) return;
 
       iconEl.innerHTML         = '<i class="fas fa-redo-alt"></i>';
@@ -1803,8 +1772,6 @@
       labelEl.textContent      = 'Restart';
       acceptLabel.textContent  = 'Accepter';
       countdownEl.style.display = '';
-      badgeEl.style.display    = 'none';
-      badgeEl.className        = 'dn-result-badge';
 
       usernameEl.textContent  = oppUsername || 'Adversaire';
       msgTextEl.textContent   = 'propose une revanche\u00a0!';
@@ -1849,13 +1816,11 @@
       var iconEl      = document.getElementById('rn-icon');
       var labelEl     = document.getElementById('rn-label');
       var countdownEl = document.getElementById('rn-countdown');
-      var badgeEl     = document.getElementById('dn-result-badge');
       var acceptLabel = document.getElementById('rn-accept-label');
       var progressBar = document.getElementById('rnProgressBar');
       if (iconEl)      { iconEl.innerHTML = '<i class="fas fa-redo-alt"></i>'; iconEl.style.background = ''; }
       if (labelEl)     labelEl.textContent = 'Restart';
       if (countdownEl) { countdownEl.style.display = ''; }
-      if (badgeEl)     { badgeEl.style.display = 'none'; badgeEl.className = 'dn-result-badge'; }
       if (acceptLabel) acceptLabel.textContent = 'Accepter';
       if (progressBar) { progressBar.style.transition = 'none'; progressBar.style.transform = 'scaleX(1)'; }
     }
