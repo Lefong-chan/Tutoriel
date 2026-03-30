@@ -589,6 +589,7 @@
         drawBoardSpots();
 
         document.getElementById('stop-move-btn').onclick = function() { handleStopBtnDispatch(); };
+        document.getElementById('demande-btn').onclick = function() { handleDemandeBtnClick(); };
 
         var d = await callApi(GAME_API_URL, 'get-state', { uid: myUid, gameId: gameId });
         if (d.success) {
@@ -653,6 +654,8 @@
       var tokenData = await callApi(GAME_API_URL, 'get-firebase-token', { uid: myUid, gameId: gameId });
       await firebase.auth().signInWithCustomToken(tokenData.token);
 
+      attachDemandeListener();
+
       firebase.database().ref('games/' + gameId).on('value', function(snapshot) {
         var game = snapshot.val();
         if (!game) return;
@@ -701,6 +704,8 @@
     }
 
     function onRealtimePh1(game) {
+
+      updateDemandeBtnState(false);
 
       var prevTurn = localState ? localState.turn : null;
       localState = copyStatePh1(game);
@@ -1129,6 +1134,8 @@
     }
 
     function onRealtimePh2(game) {
+
+      updateDemandeBtnState(true);
 
       if (game.turn === myColor && ph2_movingInProgress) {
         ph2_movingInProgress = false;
@@ -1590,6 +1597,170 @@
 
     var rnCountdownTimer = null;
     var rnCountdownVal   = 10;
+
+    // ── Demande ────────────────────────────────────────────────────────────────
+    var demandeHandled      = false;
+    var demandeResultTimer  = null;
+    var demandeHideTimer    = null;
+
+    // ── Demande : update button state ─────────────────────────────────────────
+    function updateDemandeBtnState(inPhase2) {
+      var btn = document.getElementById('demande-btn');
+      if (!btn) return;
+      if (inPhase2) {
+        btn.classList.remove('ph2-inactive');
+        btn.classList.add('ph2-active');
+      } else {
+        btn.classList.remove('ph2-active');
+        btn.classList.add('ph2-inactive');
+      }
+    }
+
+    function handleDemandeBtnClick() {
+      var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
+      if (!isPhase2(pieces)) return;
+      if (demandeHandled) return;
+
+      var oppNameEl  = document.getElementById('opp-name-span');
+      var myNameEl   = document.getElementById('my-name-span');
+      var oppUsername = oppNameEl ? oppNameEl.textContent : 'Adversaire';
+      var myUsername  = myNameEl  ? myNameEl.textContent  : 'Mpilalao';
+
+      firebase.database().ref('games/' + gameId + '/demande').set({
+        requestedBy: myUid,
+        requestedAt: Date.now(),
+        status:      'pending',
+        requesterUsername: myUsername
+      });
+    }
+
+    function showDemandeNotif(requesterUsername, isRequesterFirstMover) {
+      var notif     = document.getElementById('demande-notif');
+      var msgEl     = document.getElementById('dn-msg');
+      var usernameEl= document.getElementById('dn-username');
+      var actionsEl = document.getElementById('dn-actions');
+      var resultEl  = document.getElementById('dn-result');
+      if (!notif) return;
+
+      resultEl.style.display = 'none';
+      resultEl.className     = 'dn-result';
+      actionsEl.style.display = 'flex';
+
+      if (isRequesterFirstMover) {
+        msgEl.innerHTML = 'Mangataka ny ho afaka i <span class="dn-username" id="dn-username">' +
+          escapeHtml(requesterUsername) + '</span>';
+      } else {
+        // Nanisaka fotsiny no mangataka → "Mangataka ho Sahala"
+        msgEl.innerHTML = 'Mangataka ho Sahala i <span class="dn-username" id="dn-username">' +
+          escapeHtml(requesterUsername) + '</span>';
+      }
+
+      notif.classList.add('dn-visible');
+
+      // Accept
+      document.getElementById('dn-accept-btn').onclick = function() {
+        firebase.database().ref('games/' + gameId + '/demande').update({
+          status: 'accepted',
+          answeredAt: Date.now()
+        });
+        actionsEl.style.display = 'none';
+        // Aseho result
+        if (isRequesterFirstMover) {
+          showDemandeResult('Afaka', 'afaka');
+        } else {
+          showDemandeResult('Tsy afaka', 'tsy-afaka');
+        }
+      };
+
+      // Decline
+      document.getElementById('dn-decline-btn').onclick = function() {
+        firebase.database().ref('games/' + gameId + '/demande').update({
+          status: 'declined',
+          answeredAt: Date.now()
+        });
+        hideDemandeNotif();
+        demandeHandled = false;
+      };
+    }
+
+    function showDemandeResult(text, cssClass) {
+      var resultEl  = document.getElementById('dn-result');
+      var actionsEl = document.getElementById('dn-actions');
+      if (!resultEl) return;
+      resultEl.textContent = text;
+      resultEl.className   = 'dn-result ' + cssClass;
+      resultEl.style.display = 'block';
+      actionsEl.style.display = 'none';
+      // Afenina aorian'ny 3s
+      if (demandeResultTimer) clearTimeout(demandeResultTimer);
+      demandeResultTimer = setTimeout(function() {
+        hideDemandeNotif();
+        demandeHandled = false;
+      }, 3000);
+    }
+
+    function hideDemandeNotif() {
+      var notif = document.getElementById('demande-notif');
+      if (notif) notif.classList.remove('dn-visible');
+      if (demandeResultTimer) { clearTimeout(demandeResultTimer); demandeResultTimer = null; }
+    }
+
+    // ── Demande : listener RTDB ───────────────────────────────────────────────
+    var demandeListenerAttached = false;
+    function attachDemandeListener() {
+      if (demandeListenerAttached) return;
+      demandeListenerAttached = true;
+      firebase.database().ref('games/' + gameId + '/demande').on('value', function(snap) {
+        var demande = snap.val();
+        if (!demande) return;
+
+        var pieces = ph2_localState ? ph2_localState.pieces : (localState ? localState.pieces : {});
+        if (!isPhase2(pieces)) return;
+
+        if (demande.status === 'pending' && demande.requestedBy !== myUid) {
+          if (demandeHandled) return;
+          demandeHandled = true;
+
+          firebase.database().ref('games/' + gameId).once('value', function(gameSnap) {
+            var gameData = gameSnap.val();
+            if (!gameData) return;
+            // Color-n'ilay nangataka
+            var requesterColor = (demande.requestedBy === gameData.senderUid)
+              ? (gameData.senderColor   || 'maintso')
+              : (gameData.receiverColor || 'mena');ph1
+            var requesterIsFirstMover = (requesterColor === gameData.firstMover);
+            showDemandeNotif(demande.requesterUsername || 'Adversaire', requesterIsFirstMover);
+          });
+        }
+
+        if (demande.status === 'accepted' && demande.requestedBy === myUid) {
+          firebase.database().ref('games/' + gameId).once('value', function(gameSnap) {
+            var gameData = gameSnap.val();
+            if (!gameData) return;
+            var myColorGame = (myUid === gameData.senderUid)
+              ? (gameData.senderColor   || 'maintso')
+              : (gameData.receiverColor || 'mena');
+            var iAmFirstMover = (myColorGame === gameData.firstMover);
+            // Aseho ilay result ao amin'ny notif (side-n'ilay nangataka)
+            var notif = document.getElementById('demande-notif');
+            if (notif && !notif.classList.contains('dn-visible')) {
+              notif.classList.add('dn-visible');
+            }
+            document.getElementById('dn-actions').style.display = 'none';
+            if (iAmFirstMover) {
+              showDemandeResult('Afaka', 'afaka');
+            } else {
+              showDemandeResult('Tsy afaka', 'tsy-afaka');
+            }
+          });
+        }
+
+        if (demande.status === 'declined' && demande.requestedBy === myUid) {
+          hideDemandeNotif();
+          demandeHandled = false;
+        }
+      });
+    }
 
     function showRematchNotif(oppUsername) {
       var notif       = document.getElementById('rematch-notif');
