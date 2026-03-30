@@ -511,7 +511,7 @@ async function handleDeclareWinner(body, res) {
 // ── Demande ────────────────────────────────────────────────────────────────
 
 async function handleDemandeRequest(body, res) {
-  const { uid, gameId } = body;
+  const { uid, gameId, requesterUsername } = body;
   if (!uid || !gameId) return res.status(400).json({ error: "uid and gameId required." });
   const gameRef = gamesRef.child(gameId);
   const game    = await rtdbGet(gameRef);
@@ -525,15 +525,11 @@ async function handleDemandeRequest(body, res) {
   if (existing && existing.status === "pending")
     return res.status(400).json({ error: "Efa misy demande am-piandrasana." });
 
-  const requesterUsername = uid === game.senderUid
-    ? (game.senderUsername   || uid)
-    : (game.receiverUsername || uid);
-
   await gameRef.child("demande").set({
-    requestedBy:        uid,
-    requestedAt:        Date.now(),
-    status:             "pending",
-    requesterUsername:  requesterUsername
+    requestedBy:       uid,
+    requestedAt:       Date.now(),
+    status:            "pending",
+    requesterUsername: requesterUsername || uid
   });
   return res.status(200).json({ success: true });
 }
