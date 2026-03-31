@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="mg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vela</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: sans-serif;
+      margin: 0; padding: 0;
+      background: linear-gradient(135deg, #6e8efb, #a777e3);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .left-group,
+    .right-group {
+      width: 15%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-shrink: 0;
+      padding: 12px 8px;
+    }
+
+    #game-board {
+      background-image: url('img/table-game.jpg');
+      background-size: cover;
+      border-radius: 20px;
+      width: 70vw;
+      flex-shrink: 0;
+      aspect-ratio: 440 / 240;
+      display: block;
+      touch-action: none;
+    }
+
+    #players-bar-top,
+    #players-bar-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1em;
+      font-weight: 700;
+      width: 100%;
+    }
+
+    .player-info {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      width: 100%;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .player-dot  { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.6); transition: box-shadow 0.3s; }
+    .dot-maintso { background: #22c55e; }
+    .dot-mena    { background: #ef4444; }
+    .player-dot.active-turn { box-shadow: 0 0 0 3px white, 0 0 10px 3px rgba(255,255,255,0.7); }
+
+    .player-name {
+      font-size: 0.95em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: clip;
+      max-width: 100%;
+      line-height: 1.2;
+      color: white;
+      font-weight: 600;
+      transition: font-size 0.15s;
+    }
+
+    .grid-line { stroke: darkgray; stroke-width: 2; }
+    .flipped { transform: rotate(180deg); }
+    .piece-group { transition: transform 0.22s ease-in-out; }
+    .piece-group.no-transition { transition: none; }
+    .selected-piece { stroke: #FFF700; stroke-width: 5px; paint-order: stroke; filter: drop-shadow(0 0 8px yellow); }
+    .movable-piece  { stroke: #ADFF2F; stroke-width: 5px; paint-order: stroke; }
+    .blocked-piece  { stroke: #FF4500; stroke-width: 5px; paint-order: stroke; }
+    .capture-target {
+      stroke: darkorange; stroke-width: 5px; cursor: pointer;
+      pointer-events: all !important; stroke-dasharray: 5;
+      animation: dash 1s linear infinite;
+    }
+    @keyframes dash { to { stroke-dashoffset: 10; } }
+    .spot { cursor: pointer; pointer-events: all; }
+    .lock-board .spot { pointer-events: none !important; }
+    .cross-line { stroke: white; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+    .guide-dot  { fill: #FFF700; opacity: 0.8; pointer-events: none; }
+
+    #loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0, 146, 255, 0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 100; color: white; font-size: 1.2em; font-weight: 700;
+      flex-direction: column; gap: 16px;
+      transition: opacity 0.4s ease;
+    }
+    #loading-overlay.hidden { display: none; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 4px solid rgba(255,255,255,0.3); border-top-color: white;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #error-msg {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fef08a;
+      font-size: 1em;
+      text-align: center;
+      z-index: 200;
+      background: rgba(0,0,0,0.5);
+      padding: 12px 24px;
+      border-radius: 10px;
+    }
+
+    .abtn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+      border: 1px solid rgba(255,255,255,0.18);
+      color: rgba(255,255,255,0.85);
+      font-size: 1.35em;
+      cursor: pointer;
+      transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.12s;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+    .abtn:hover {
+      background: linear-gradient(135deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08));
+      border-color: rgba(255,255,255,0.38);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.18);
+      transform: translateY(-1px);
+    }
+    .abtn:active {
+      transform: translateY(0) scale(0.97);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    }
+
+    button.abtn:not(.abtn.col):not(#stop-move-btn):not(.dbtn) i {
+      transition: color 0.18s, text-shadow 0.18s;
+    }
+    button.abtn:not(.abtn.col):not(#stop-move-btn):not(.dbtn):hover i {
+      color: #a5f3ff;
+      text-shadow: 0 0 10px rgba(165,243,255,0.6);
+    }
+
+    #stop-move-btn {
+      background: linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.06));
+      border-color: rgba(239,68,68,0.35);
+      color: rgba(255,180,180,0.75);
+      opacity: 0.35;
+      pointer-events: none;
+    }
+    #stop-move-btn.active {
+      opacity: 1;
+      pointer-events: all;
+      background: linear-gradient(135deg, rgba(239,68,68,0.40), rgba(239,68,68,0.15));
+      border-color: rgba(239,68,68,0.75);
+      color: #ffaaaa;
+      box-shadow: 0 0 14px rgba(239,68,68,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+      transform: scale(1.05);
+    }
+
+    .abtn.col {
+      flex-direction: column;
+      height: auto;
+      padding: 10px 12px;
+      align-items: stretch;
+      gap: 8px;
+      font-size: 1em;
+      background: linear-gradient(160deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05));
+      border: 1px solid rgba(255,255,255,0.20);
+    }
+
+    .tdiv {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.40), transparent);
+      flex-shrink: 0;
+    }
+
+    .tblk {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1;
+      gap: 1px;
+    }
+    .tlbl {
+      font-size: 0.6em;
+      opacity: 0.55;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: white;
+    }
+    .tval {
+      font-size: 1em;
+      font-weight: 700;
+      color: white;
+    }
+
+    .dbtn {
+      font-family: sans-serif;
+      font-size: 0.6em;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 0 9px;
+      background: linear-gradient(135deg, rgba(124,77,255,0.35), rgba(167,119,227,0.18));
+      border-color: rgba(167,119,227,0.55);
+      color: rgba(220,190,255,0.95);
+      box-shadow: 0 2px 12px rgba(124,77,255,0.25), inset 0 1px 0 rgba(255,255,255,0.10);
+    }
+    .dbtn:hover {
+      background: linear-gradient(135deg, rgba(124,77,255,0.55), rgba(167,119,227,0.30));
+      border-color: rgba(200,160,255,0.75);
+      color: #e8d5ff;
+      box-shadow: 0 4px 20px rgba(124,77,255,0.40), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+
+    .pbars {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .pbar {
+      width: 6px;
+      border-radius: 3px 3px 2px 2px;
+      background: rgba(255,255,255,0.18);
+      transition: background 0.4s;
+    }
+    .pbar:nth-child(1) { height: 6px;  }
+    .pbar:nth-child(2) { height: 10px; }
+    .pbar:nth-child(3) { height: 15px; }
+    .pbar:nth-child(4) { height: 20px; }
+    .pbar.on.ping-bad   { background: #ef4444; }
+    .pbar.on.ping-mid   { background: #ffd600; }
+    .pbar.on.ping-good  { background: #22c55e; }
+    .pbar.on.ping-great { background: #00e5ff; }
+
+    .ping-ms {
+      font-size: 0.62em;
+      color: rgba(255,255,255,0.75);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      line-height: 1;
+    }
+
+    #opp-timer-ls {
+      font-size: 1em;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.85);
+      transition: color 0.2s;
+    }
+    #opp-timer-ls.timer-active {
+      color: #fff;
+    }
+    #opp-timer-ls.timer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 10px rgba(255,100,100,0.6);
+    }
+
+    .tval.ptimer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 8px rgba(255,100,100,0.5);
+      animation: timerPulse 0.8s ease-in-out infinite;
+    }
+    @keyframes timerPulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.55; }
+    }
+
+    #opp-timer-ls {
+      font-size: 1em;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.85);
+      transition: color 0.2s;
+    }
+    #opp-timer-ls.timer-active { color: #fff; }
+    #opp-timer-ls.timer-urgent {
+      color: #ff6b6b;
+      text-shadow: 0 0 10px rgba(255,100,100,0.6);
+    }
+
+    .rematch-notif {
+      position: fixed; top: 14px; right: 14px; width: 272px;
+      background: white; border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(91,33,182,0.2), 0 2px 8px rgba(0,0,0,0.08);
+      border: 1.5px solid #ede9f8; z-index: 10000; overflow: hidden;
+      opacity: 0; transform: translateX(110%);
+      transition: opacity 0.32s ease, transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
+      pointer-events: none;
+    }
+    .rematch-notif.rn-visible { opacity: 1; transform: translateX(0); pointer-events: auto; }
+    .rn-progress-wrap { height: 3px; background: #f0ebff; overflow: hidden; }
+    .rn-progress-bar {
+      height: 100%; width: 100%;
+      background: linear-gradient(to right, #5b21b6, #a78bfa);
+      transform-origin: left;
+      transition: transform 10s linear;
+    }
+    .rn-body { padding: 10px 12px 12px; }
+    .rn-row-top { display: flex; align-items: flex-start; gap: 9px; }
+    .rn-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: linear-gradient(135deg, #5b21b6, #7c3aed);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .rn-icon i { color: white; font-size: 0.82em; }
+    .rn-text-wrap { flex: 1; min-width: 0; }
+    .rn-label {
+      font-size: 0.65em; font-weight: 700; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px;
+    }
+    .rn-msg { font-size: 0.82em; font-weight: 600; color: #1e293b; line-height: 1.35; }
+    .rn-username { color: #7c3aed; font-weight: 800; }
+    .rn-countdown {
+      font-size: 0.78em; font-weight: 800; color: #7c3aed;
+      background: #f5f0ff; border-radius: 6px; padding: 2px 7px;
+      flex-shrink: 0; align-self: flex-start; margin-top: 1px; line-height: 1.6;
+    }
+    .rn-actions {
+      display: flex; gap: 7px;
+      max-height: 0; overflow: hidden; opacity: 0;
+      transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+      margin-top: 0;
+    }
+    .rematch-notif.rn-expanded .rn-actions { max-height: 50px; opacity: 1; margin-top: 9px; }
+    .rn-btn-accept {
+      flex: 1; padding: 7px 8px; border: none; border-radius: 9px;
+      background: linear-gradient(to right, #5b21b6, #7c3aed);
+      color: white; font-size: 0.8em; font-weight: 700; cursor: pointer;
+      transition: opacity 0.18s; display: flex; align-items: center;
+      justify-content: center; gap: 5px;
+    }
+    .rn-btn-accept:hover { opacity: 0.85; }
+    .rn-btn-decline {
+      width: 34px; height: 34px; border: none; border-radius: 9px;
+      background: #f1f5f9; color: #64748b; font-size: 0.95em;
+      cursor: pointer; transition: background 0.18s;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .rn-btn-decline:hover { background: #fee2e2; color: #ef4444; }
+    @media (max-width: 600px) { .rematch-notif { width: calc(100vw - 24px); right: 12px; } }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div style="text-align:center;line-height:1.6;">
+      <div style="font-size:1.1em;font-weight:800;letter-spacing:0.03em;">Waiting for opponent</div>
+      <div style="font-size:0.85em;opacity:0.75;font-weight:400;margin-top:4px;">Waiting for opponent</div>
+    </div>
+  </div>
+
+  <div class="left-group">
+    <div class="abtn col">
+      <div id="players-bar-top">
+        <div class="player-info">
+          <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+          <span class="player-name" style="opacity:0.4;">---</span>
+        </div>
+      </div>
+      <div class="tdiv"></div>
+      <div class="tblk"><span class="tlbl">OPP</span><span class="tval">∞</span></div>
+    </div>
+
+    <div class="abtn" style="gap:8px;">
+      <div class="pbars" id="l-ping-bars">
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+        <div class="pbar on ping-great"></div>
+      </div>
+      <span class="ping-ms" id="l-ping-ms">— ms</span>
+    </div>
+
+    <div class="abtn" id="opp-timer-ls">--</div>
+    <button class="abtn"><i class="fas fa-comment-dots"></i></button>
+  </div>
+
+  <svg id="game-board" viewBox="-20 -20 440 240">
+    <defs>
+      <pattern id="mena-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+        <image href="img/button-red.png" x="0" y="0" width="100" height="100"/>
+      </pattern>
+      <pattern id="maintso-pat" x="0" y="0" width="1" height="1" viewBox="0 0 100 100">
+        <image href="img/button-green.png" x="0" y="0" width="100" height="100"/>
+      </pattern>
+    </defs>
+    <path class="grid-line" d="M0 0 H400 M0 50 H400 M0 100 H400 M0 150 H400 M0 200 H400
+      M0 0 V200 M50 0 V200 M100 0 V200 M150 0 V200 M200 0 V200
+      M250 0 V200 M300 0 V200 M350 0 V200 M400 0 V200
+      M0 0 L200 200 M100 0 L0 100 M100 0 L300 200
+      M200 0 L0 200 M200 0 L400 200 M300 0 L100 200
+      M300 0 L400 100 M400 0 L200 200
+      M0 100 L100 200 M400 100 L300 200"/>
+    <g id="guides-group"></g>
+    <g id="pieces-group"></g>
+    <g id="spots-group"></g>
+  </svg>
+
+  <div class="right-group">
+    <div class="abtn col">
+      <div id="players-bar-bottom">
+        <div class="player-info">
+          <div class="player-dot" style="background:rgba(255,255,255,0.2);"></div>
+          <span class="player-name" style="opacity:0.4;">---</span>
+        </div>
+      </div>
+      <div class="tdiv"></div>
+      <div class="tblk"><span class="tlbl">YOU</span><span class="tval">∞</span></div>
+    </div>
+
+    <button id="stop-move-btn" class="abtn"><i class="fas fa-times"></i></button>
+    <button class="abtn dbtn">DEMANDE</button>
+    <button class="abtn"><i class="fas fa-sliders-h"></i></button>
+  </div>
+
+  <div id="error-msg"></div>
+
+  <div class="rematch-notif" id="rematch-notif">
+    <div class="rn-progress-wrap"><div class="rn-progress-bar" id="rnProgressBar"></div></div>
+    <div class="rn-body">
+      <div class="rn-row-top">
+        <div class="rn-icon"><i class="fas fa-redo-alt"></i></div>
+        <div class="rn-text-wrap">
+          <div class="rn-label">Restart</div>
+          <div class="rn-msg"><span class="rn-username" id="rn-username">Adversaire</span> propose une revanche&nbsp;!</div>
+        </div>
+        <div class="rn-countdown" id="rn-countdown">10</div>
+      </div>
+      <div class="rn-actions">
+        <button class="rn-btn-accept" id="rematch-accept-btn"><i class="fas fa-check"></i> Accepter</button>
+        <button class="rn-btn-decline" id="rematch-decline-btn"><i class="fas fa-times"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <script src="script/vl.js"></script>
+</body>
+</html>
